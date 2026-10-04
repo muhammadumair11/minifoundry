@@ -6,7 +6,15 @@ import { createNotification } from '@/lib/notify'
 import { parseJsonSafe } from '@/lib/api-utils'
 import type { VersionCreatedEvent } from '@/lib/version-events'
 
-export async function handleVersionCreated(event: VersionCreatedEvent): Promise<void> {
+export interface CascadeContext {
+  parentRunId: string
+  cascadeDepth: number
+}
+
+export async function handleVersionCreated(
+  event: VersionCreatedEvent,
+  cascade?: CascadeContext,
+): Promise<void> {
   const candidates = await db.pipeline.findMany({
     where: { triggerMode: 'upstream' },
     select: { id: true, name: true, upstreamDatasetIds: true, maxRetries: true },
@@ -19,12 +27,15 @@ export async function handleVersionCreated(event: VersionCreatedEvent): Promise<
 
     const eventKey = `upstream:${pipeline.id}:${event.datasetId}:${event.versionNumber}`
     const job = await enqueuePipelineJob(pipeline.id, {
-      trigger: 'upstream', eventKey, maxAttempts: pipeline.maxRetries + 1,
+      trigger: cascade ? 'cascade' : 'upstream',
+      eventKey,
+      maxAttempts: pipeline.maxRetries + 1,
+      payload: cascade ? { parentRunId: cascade.parentRunId, cascadeDepth: cascade.cascadeDepth } : undefined,
     })
     if (job.status === 'queued' && job.attempt === 0) {
       await createNotification({
         type: 'pipeline_triggered', title: `Queued: ${pipeline.name}`,
-        body: `dataset ${event.datasetId} v${event.versionNumber}`,
+        body: `dataset ${event.datasetId} v${event.versionNumber}${cascade ? ` (cascade depth ${cascade.cascadeDepth})` : ''}`,
         resourceType: 'pipeline', resourceId: pipeline.id, href: `/pipelines/${pipeline.id}`,
       })
     }

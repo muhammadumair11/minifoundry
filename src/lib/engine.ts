@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { createDatasetFromRows, compareValues, resolveConsumerVersion, toNumber, type Row } from '@/lib/dataset-service'
 import { ensurePipelineVersion } from '@/lib/pipeline-version-service'
 import { emitVersionCreated } from '@/lib/version-events'
+import { enqueuePipelineJob } from '@/lib/execution-jobs'
 import type { PipelineRun } from '@prisma/client'
 import type { LogEntry } from '@/lib/api-utils'
 import { parseJsonSafe } from '@/lib/api-utils'
@@ -57,6 +58,8 @@ interface ExecContext {
   inputOverrides: Record<string, number>
   /** Captured manifest pieces (mutated by source/output node execution). */
   capture: ManifestCapture
+  /** Cascade depth for downstream event tagging. */
+  cascadeDepth: number
 }
 
 // ─── Run manifest types (Phase 1: reproducible builds) ──────────────
@@ -260,7 +263,7 @@ export async function runPipeline(
   const capture = newManifestCapture()
   try {
     const graphJson = opts.graphOverride ?? pipeline.graphJson
-    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {}, opts.outputJobId, opts.versionNumber ?? null)
+    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {}, opts.outputJobId, opts.versionNumber ?? null, opts.cascadeDepth ?? 0)
     const elapsed = Date.now() - startedAtMs
     log(
       'success',
@@ -306,6 +309,7 @@ export async function runPipeline(
   if (result) {
     await triggerCascades({
       parentPipelineId: pipeline.id,
+      parentRunId: run.id,
       outputDatasetId: result.outputDatasetId,
       cascadeDepth,
       chain,
@@ -323,6 +327,7 @@ export async function runPipeline(
 
 interface CascadeArgs {
   parentPipelineId: string
+  parentRunId: string
   outputDatasetId: string
   cascadeDepth: number
   chain: Set<string>
@@ -366,24 +371,21 @@ async function triggerCascades(args: CascadeArgs): Promise<void> {
       await args.persistLogs()
       continue
     }
-    args.log('info', `cascade: triggered '${child.name}' (depth ${args.cascadeDepth + 1})`)
+    args.log('info', `cascade: queued '${child.name}' (depth ${args.cascadeDepth + 1})`)
     await args.persistLogs()
     args.chain.add(child.id)
     try {
-      // M3.1: cascade runs pin the child's latest version too (cheap after first call).
-      const childVersion = await ensurePipelineVersion(child.id)
-      const childRun = await runPipeline(child.id, {
-        cascadeDepth: args.cascadeDepth + 1,
-        _chain: args.chain,
-        graphOverride: childVersion.graphJson,
-        versionNumber: childVersion.versionNumber,
+      const eventKey = `cascade:${child.id}:${args.outputDatasetId}:${args.cascadeDepth + 1}:${Date.now()}`
+      await enqueuePipelineJob(child.id, {
+        trigger: 'cascade',
+        eventKey,
+        payload: { parentRunId: args.parentRunId, cascadeDepth: args.cascadeDepth + 1 },
       })
-      args.log('info', `cascade: '${child.name}' finished with status ${childRun.status}`)
+      args.log('info', `cascade: '${child.name}' enqueued as durable job`)
     } catch (err) {
-      // A failing cascade must never fail the parent run.
       args.log(
         'error',
-        `cascade: '${child.name}' failed to start — ${err instanceof Error ? err.message : String(err)}`,
+        `cascade: '${child.name}' failed to enqueue — ${err instanceof Error ? err.message : String(err)}`,
       )
     }
     await args.persistLogs()
@@ -438,6 +440,7 @@ async function executeGraph(
   inputOverrides: Record<string, number> = {},
   outputJobId?: string,
   graphVersionNumber: number | null = null,
+  cascadeDepth: number = 0,
 ): Promise<ExecuteResult> {
   const graph = parseGraph(graphJson)
   log('info', `Pipeline '${pipelineName}' run started (graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges)`)
@@ -462,6 +465,7 @@ async function executeGraph(
     outputResult: { value: null },
     inputOverrides,
     capture,
+    cascadeDepth,
   }
 
   const outputs = new Map<string, Row[]>() // nodeId -> rows produced
@@ -1113,6 +1117,8 @@ async function execOutput(node: GraphNode, rows: Row[], ctx: ExecContext): Promi
     datasetId: dataset.id,
     versionNumber: version.versionNumber,
     source: `pipeline:${ctx.pipelineName}`,
+    cascadeParentRunId: ctx.runId,
+    cascadeDepth: ctx.cascadeDepth,
   })
 
   ctx.outputResult.value = {

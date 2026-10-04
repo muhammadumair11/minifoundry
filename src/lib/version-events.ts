@@ -22,6 +22,9 @@ export interface VersionCreatedEvent {
   versionNumber: number
   /** best-effort actor label for trigger logs, e.g. "pipeline:Shipment Overview" */
   source?: string
+  /** Cascade context from the producing run, if any. */
+  cascadeParentRunId?: string
+  cascadeDepth?: number
 }
 
 /**
@@ -42,7 +45,10 @@ export async function emitVersionCreated(event: VersionCreatedEvent): Promise<vo
   const dataset = await db.dataset.findUnique({ where: { id: event.datasetId }, select: { qualityGate: true } })
   if (!dataset?.qualityGate) {
     try {
-      await handleVersionCreated(event)
+      const cascade = event.cascadeParentRunId != null && event.cascadeDepth != null
+        ? { parentRunId: event.cascadeParentRunId, cascadeDepth: event.cascadeDepth }
+        : undefined
+      await handleVersionCreated(event, cascade)
     } catch (error) {
       console.error('[version-events] trigger-engine handler failed:', error)
     }
