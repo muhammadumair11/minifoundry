@@ -17,7 +17,8 @@ library can infer which application action Enter should invoke safely.
 - Destructive forms require their existing explicit confirmation condition.
   Opening a dialog or typing a partial confirmation cannot trigger deletion.
 - Shortcuts are scoped to the active surface and do not override browser or
-  editor shortcuts. Their labels are visible near the relevant controls.
+  editor shortcuts. Buttons reveal an activation key hint on keyboard focus;
+  controls with dedicated shortcuts supply an explicit `keyHint` label.
 
 ## Rollout
 
@@ -34,7 +35,8 @@ library can infer which application action Enter should invoke safely.
    flows. Replace ad hoc input key handlers with form submission where possible.
 5. Verify with keyboard-only browser runs at desktop and mobile widths, then
    with a screen reader. Check nested surfaces, focus restoration, repeated key
-   presses, disabled/loading states, and text editors before merge.
+   presses, disabled/loading states, key hint placement, and text editors before
+   merge.
 
 Do not add a global Enter handler: it could activate the wrong action in a
 dialog, especially for destructive operations.

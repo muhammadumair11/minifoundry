@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Kbd } from '@/components/ui/kbd'
 import { apiJson } from '@/lib/foundry-api'
 import type { SearchResponse, SearchResultItem } from '@/lib/foundry-types'
 
@@ -122,15 +123,17 @@ export function GlobalSearch() {
       <Button
         variant="outline"
         size="sm"
+        keyHint="Ctrl / ⌘ K"
+        aria-keyshortcuts="Control+K Meta+K"
         className="h-8 w-8 gap-2 px-0 text-muted-foreground md:w-auto md:px-3"
         onClick={() => setOpen(true)}
         aria-label="Search (Ctrl+K / Cmd+K)"
       >
         <Search className="h-4 w-4 shrink-0" aria-hidden />
         <span className="hidden md:inline">Search</span>
-        <kbd className="pointer-events-none hidden select-none items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground lg:inline-flex">
-          ⌘K
-        </kbd>
+        <Kbd className="hidden lg:inline-flex">
+          Ctrl / ⌘ K
+        </Kbd>
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

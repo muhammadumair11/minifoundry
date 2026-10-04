@@ -37,6 +37,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Kbd } from '@/components/ui/kbd'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -330,7 +331,7 @@ function DangerZoneSection() {
             <AlertDialogDescription>
               This deletes all datasets, pipelines, runs, workbooks, ontology, governance and API
               tokens, and cannot be undone. Only your login users survive. Type{' '}
-              <span className="font-mono text-foreground">{CONFIRM_WORD}</span> to confirm.
+              <span className="font-mono text-foreground">{CONFIRM_WORD}</span>, then press Enter to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <form
@@ -349,9 +350,12 @@ function DangerZoneSection() {
               className="font-mono"
             />
             <AlertDialogFooter>
-              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <AlertDialogCancel type="button" data-key-hint="Esc" aria-keyshortcuts="Escape">
+                Cancel <Kbd>Esc</Kbd>
+              </AlertDialogCancel>
               <Button
                 type="submit"
+                keyHint="Enter after RESET"
                 disabled={confirmText !== CONFIRM_WORD || resetMutation.isPending}
                 className="bg-rose-600 text-white hover:bg-rose-500 dark:bg-rose-500 dark:text-zinc-950 dark:hover:bg-rose-400"
               >
@@ -359,6 +363,7 @@ function DangerZoneSection() {
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 ) : null}
                 Delete everything
+                <Kbd>Enter</Kbd>
               </Button>
             </AlertDialogFooter>
           </form>

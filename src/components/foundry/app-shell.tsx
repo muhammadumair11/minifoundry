@@ -773,6 +773,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setFocus(false)}
+                  data-key-hint="Esc"
+                  aria-keyshortcuts="Escape"
                   aria-label="Exit focus mode (Esc)"
                   title="Exit focus mode (Esc)"
                   className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -823,6 +825,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={() => setFocus(true)}
+                    data-key-hint="Enter"
                     aria-label="Focus mode — hide the sidebar and top bar (Esc exits)"
                     title="Focus mode (Esc exits)"
                     className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:flex"
