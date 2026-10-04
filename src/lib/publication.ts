@@ -2,22 +2,21 @@
 //
 // A dataset with `qualityGate: true` holds every new version as a DRAFT.
 // Consumers (pipeline sources, dashboards, object layer, public API) read the
-// last PUBLISHED version — drafts are studio-only until an editor publishes.
+// last PUBLISHED version — drafts are studio-only until an admin approves.
 //
 // Publishing rules:
 //   - version must exist and be a draft
-//   - the version's quality state must not be 'failed' (any error-severity
-//     rule failing) — that is the whole point of the gate
+//   - an admin-approved request must pin the exact main-branch draft
+//   - quality evaluation must complete with passed or warned state
 //   - publishing moves dataset.publishedVersion to this version
 //
 // Toggling the gate:
 //   - enable:  publishedVersion backfilled to head (existing data becomes the
 //     baseline consumers keep seeing)
-//   - disable: all drafts are published immediately and the pointer follows
-//     head (ungated datasets have no unpublished state)
+//   - disable: requires no outstanding main-branch drafts
 
 import { db } from '@/lib/db'
-import { getHeadVersionNumber } from '@/lib/version-events'
+import { handleVersionCreated } from '@/lib/trigger-engine'
 
 export class PublicationError extends Error {
   status: number
@@ -65,20 +64,30 @@ export async function failingErrorRules(
 export async function publishDatasetVersion(
   datasetId: string,
   versionNumber: number,
+  approvalId: string,
+  decidedBy: string,
+  decisionNote?: string | null,
 ): Promise<PublishOutcome> {
+  const approval = await db.approvalRequest.findUnique({ where: { id: approvalId } })
+  if (!approval || approval.status !== 'pending' || approval.kind !== 'publish_dataset' ||
+      approval.targetId !== datasetId || approval.versionNumber !== versionNumber) {
+    throw new PublicationError('A pending approval for this exact draft is required', 403)
+  }
   const dataset = await db.dataset.findUnique({
     where: { id: datasetId },
     select: { id: true, name: true, qualityGate: true, publishedVersion: true },
   })
   if (!dataset) throw new PublicationError(`Dataset '${datasetId}' not found`, 404)
+  if (!dataset.qualityGate) throw new PublicationError('Dataset quality gate is disabled', 409)
 
   const version = await db.datasetVersion.findUnique({
     where: { datasetId_versionNumber: { datasetId, versionNumber } },
-    select: { versionNumber: true, lifecycle: true, qualityState: true, branch: true },
+    select: { versionNumber: true, lifecycle: true, qualityState: true, qualitySummaryJson: true, branch: true },
   })
   if (!version) {
     throw new PublicationError(`Version ${versionNumber} of '${dataset.name}' not found`, 404)
   }
+  if (version.branch !== 'main') throw new PublicationError('Only main branch versions can be published', 409)
   if (version.lifecycle === 'published') {
     throw new PublicationError(
       `v${versionNumber} is already published (only drafts can be published)`,
@@ -86,25 +95,44 @@ export async function publishDatasetVersion(
     )
   }
 
-  if (version.qualityState === 'failed') {
+  if (!version.qualitySummaryJson || (version.qualityState !== 'passed' && version.qualityState !== 'warned')) {
     const failures = await failingErrorRules(datasetId, versionNumber)
     throw new PublicationError(
-      `Publication blocked: v${versionNumber} failed ${failures.length} error-severity quality rule${failures.length === 1 ? '' : 's'}`,
+      `Publication blocked: v${versionNumber} requires a completed quality evaluation without error-severity failures (current: ${version.qualityState ?? 'not_evaluated'})`,
       403,
       failures.map((f) => `${f.name}${f.message ? ` — ${f.message}` : ''}`),
     )
   }
 
-  await db.$transaction([
-    db.datasetVersion.update({
-      where: { datasetId_versionNumber: { datasetId, versionNumber } },
+  await db.$transaction(async (tx) => {
+    const approved = await tx.approvalRequest.updateMany({
+      where: { id: approvalId, status: 'pending', versionNumber },
+      data: { status: 'approved', decidedBy, decidedAt: new Date(), decisionNote: decisionNote ?? null },
+    })
+    if (approved.count !== 1) throw new PublicationError('Approval was already decided', 409)
+    const published = await tx.datasetVersion.updateMany({
+      where: {
+        datasetId, versionNumber, branch: 'main', lifecycle: 'draft',
+        qualityState: { in: ['passed', 'warned'] },
+      },
       data: { lifecycle: 'published' },
-    }),
-    db.dataset.update({
+    })
+    if (published.count !== 1) throw new PublicationError('Draft changed before publication', 409)
+    const current = await tx.dataset.findUniqueOrThrow({ where: { id: datasetId }, select: { tags: true } })
+    const tags = JSON.parse(current.tags) as string[]
+    if (!tags.includes('production')) tags.push('production')
+    await tx.dataset.update({
       where: { id: datasetId },
-      data: { publishedVersion: versionNumber },
-    }),
-  ])
+      data: { publishedVersion: versionNumber, tags: JSON.stringify(tags) },
+    })
+  })
+
+  // Only a published version may trigger downstream consumers.
+  try {
+    await handleVersionCreated({ datasetId, versionNumber, source: 'publication' })
+  } catch (error) {
+    console.error('[publication] downstream trigger failed:', error)
+  }
 
   return {
     datasetId,
@@ -118,7 +146,7 @@ export async function publishDatasetVersion(
 /** Latest draft version of a dataset (highest versionNumber), or null. */
 export async function latestDraftVersion(datasetId: string): Promise<number | null> {
   const draft = await db.datasetVersion.findFirst({
-    where: { datasetId, lifecycle: 'draft' },
+    where: { datasetId, branch: 'main', lifecycle: 'draft' },
     orderBy: { versionNumber: 'desc' },
     select: { versionNumber: true },
   })
@@ -127,8 +155,8 @@ export async function latestDraftVersion(datasetId: string): Promise<number | nu
 
 /**
  * Toggle a dataset's quality gate. Called from PATCH /api/datasets/[id].
- * Enabling backfills the pointer; disabling publishes every draft so an
- * ungated dataset never has hidden unpublished state.
+ * Enabling backfills the pointer. Disabling requires that no main draft
+ * remains, so it cannot silently bypass publication.
  */
 export async function setQualityGate(datasetId: string, enabled: boolean): Promise<void> {
   const dataset = await db.dataset.findUnique({
@@ -138,24 +166,28 @@ export async function setQualityGate(datasetId: string, enabled: boolean): Promi
   if (!dataset || dataset.qualityGate === enabled) return
 
   if (enabled) {
-    const head = await getHeadVersionNumber(datasetId)
+    const head = await db.datasetVersion.findFirst({
+      where: { datasetId, branch: 'main', lifecycle: 'published' },
+      orderBy: { versionNumber: 'desc' }, select: { versionNumber: true },
+    })
     await db.dataset.update({
       where: { id: datasetId },
-      data: { qualityGate: true, publishedVersion: head || null },
+      data: { qualityGate: true, publishedVersion: head?.versionNumber ?? null },
     })
     return
   }
 
-  // Disabling: publish drafts + point consumers at head.
-  const head = await getHeadVersionNumber(datasetId)
-  await db.$transaction([
-    db.datasetVersion.updateMany({
-      where: { datasetId, lifecycle: 'draft' },
-      data: { lifecycle: 'published' },
-    }),
-    db.dataset.update({
-      where: { id: datasetId },
-      data: { qualityGate: false, ...(head > 0 ? { publishedVersion: head } : {}) },
-    }),
-  ])
+  const drafts = await db.datasetVersion.count({ where: { datasetId, branch: 'main', lifecycle: 'draft' } })
+  if (drafts > 0) {
+    throw new PublicationError('Resolve or remove all drafts before disabling the quality gate', 409)
+  }
+  // Disabling is an admin operation; no draft may be implicitly published.
+  const head = await db.datasetVersion.findFirst({
+    where: { datasetId, branch: 'main' }, orderBy: { versionNumber: 'desc' },
+    select: { versionNumber: true },
+  })
+  await db.dataset.update({
+    where: { id: datasetId },
+    data: { qualityGate: false, publishedVersion: head?.versionNumber ?? null },
+  })
 }

@@ -10,11 +10,14 @@
 //   • redirects are followed MANUALLY with a hard cap (3) and EVERY hop's
 //     Location is re-validated (a public entry point must not bounce inward).
 //
-// Learning-scale limitation (documented in the README): the fetch itself still
-// performs its own DNS resolution, so a DNS-rebinding TOCTOU window remains —
-// closing it requires pinning the resolved IP at the socket layer.
+// The validated address is pinned at socket creation. Each redirect gets a
+// fresh validation and connection; the HTTP client never resolves it again.
 
 import { lookup } from 'node:dns/promises'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
+import { Readable } from 'node:stream'
+import type { LookupFunction } from 'node:net'
 
 const MAX_REDIRECTS = 3
 
@@ -67,15 +70,22 @@ function isPrivateV6(ip: string): boolean {
   if (fill < 0) return true
   const groups = [...left, ...Array(fill).fill('0'), ...right]
   if (groups.length !== 8) return true
+  const hextets = groups.map((part) => Number.parseInt(part, 16))
+  if (hextets.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)) return true
+  if (hextets.slice(0, 5).every((part) => part === 0) && hextets[5] === 0xffff) {
+    const embedded = `${hextets[6] >> 8}.${hextets[6] & 255}.${hextets[7] >> 8}.${hextets[7] & 255}`
+    return isPrivateV4(embedded)
+  }
+  if (hextets.slice(0, 6).every((part) => part === 0)) return true // IPv4-compatible / unspecified
   const first = parseInt(groups[0], 16)
   if (Number.isNaN(first)) return true
+  if ((first & 0xe000) !== 0x2000) return true // only global unicast 2000::/3
   if ((first & 0xfe00) === 0xfc00) return true // fc00::/7 unique local
   if ((first & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
   if ((first & 0xff00) === 0xff00) return true // ff00::/8 multicast
   if (first === 0x2001 && groups[1].startsWith('db8')) return true // 2001:db8::/32 doc
-  if (first === 0x0064 && groups[1] === 'ff9b' && groups.slice(2, 6).every((g) => g === '0')) {
-    return true // 64:ff9b::/96 well-known NAT64 prefix
-  }
+  if (first === 0x2001 && hextets[1] === 0) return true // Teredo 2001::/32
+  if (first === 0x2002) return true // 6to4 can tunnel private IPv4
   return false
 }
 
@@ -89,7 +99,11 @@ function isBlockedAddress(address: string): boolean {
  * user-facing Error when the scheme is wrong, the host is private/reserved,
  * or DNS resolution fails / yields only non-public addresses.
  */
-export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
+async function resolvePublicHttpUrl(rawUrl: string): Promise<{
+  url: URL
+  address: string
+  family: number
+}> {
   let url: URL
   try {
     url = new URL(rawUrl)
@@ -104,7 +118,9 @@ export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
 
   // IP literal → check directly. Hostname → resolve ALL records and check each.
   const isLiteral = /^[\d.]+$/.test(host) || host.includes(':')
-  const addresses = isLiteral ? [{ address: host }] : await lookup(host, { all: true })
+  const addresses = isLiteral
+    ? [{ address: host, family: host.includes(':') ? 6 : 4 }]
+    : await lookup(host, { all: true })
   const blocked = addresses.filter((a) => isBlockedAddress(a.address))
   if (blocked.length > 0 || addresses.length === 0) {
     const sample = blocked[0]?.address ?? 'no addresses'
@@ -113,7 +129,47 @@ export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
         'Connectors may only reach the public internet.',
     )
   }
-  return url
+  return { url, address: addresses[0].address, family: addresses[0].family }
+}
+
+export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
+  return (await resolvePublicHttpUrl(rawUrl)).url
+}
+
+/** Connect to the already-validated address while retaining the original
+ * hostname for Host and TLS certificate checks. DNS is not queried again. */
+async function requestPinned(
+  target: Awaited<ReturnType<typeof resolvePublicHttpUrl>>,
+  init: { signal: AbortSignal; headers: Record<string, string> },
+): Promise<Response> {
+  const pinnedLookup: LookupFunction = (_hostname, _options, callback) => {
+    callback(null, target.address, target.family as 4 | 6)
+  }
+  return new Promise<Response>((resolve, reject) => {
+    const request = (target.url.protocol === 'https:' ? httpsRequest : httpRequest)(target.url, {
+      method: 'GET', headers: init.headers, signal: init.signal, agent: false,
+      lookup: pinnedLookup,
+    }, (incoming) => {
+      const headers = new Headers()
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) value.forEach((part) => headers.append(name, part))
+        else if (value !== undefined) headers.set(name, value)
+      }
+      const status = incoming.statusCode ?? 502
+      if (status < 200 || status > 599) {
+        incoming.destroy()
+        reject(new Error(`Unsupported HTTP response status ${status}`))
+        return
+      }
+      const noBody = status === 204 || status === 205 || status === 304
+      if (noBody) incoming.resume()
+      resolve(new Response(noBody ? null : Readable.toWeb(incoming) as unknown as ReadableStream<Uint8Array>, {
+        status, headers,
+      }))
+    })
+    request.on('error', reject)
+    request.end()
+  })
 }
 
 /**
@@ -125,13 +181,10 @@ export async function egressFetch(
   rawUrl: string,
   init: { signal: AbortSignal; headers: Record<string, string> },
 ): Promise<Response> {
-  let currentUrl = await assertPublicHttpUrl(rawUrl)
+  let current = await resolvePublicHttpUrl(rawUrl)
+  let headers = { ...init.headers }
   for (let hop = 0; ; hop++) {
-    const res = await fetch(currentUrl, {
-      signal: init.signal,
-      redirect: 'manual',
-      headers: init.headers,
-    })
+    const res = await requestPinned(current, { signal: init.signal, headers })
     if ([301, 302, 303, 307, 308].includes(res.status)) {
       if (hop >= MAX_REDIRECTS) {
         try { await res.body?.cancel() } catch { /* best-effort */ }
@@ -142,7 +195,13 @@ export async function egressFetch(
       if (!location) throw new Error(`Redirect ${res.status} without a Location header`)
       // Relative Locations resolve against the current URL; every hop is
       // re-validated (scheme + public host) before following.
-      currentUrl = await assertPublicHttpUrl(new URL(location, currentUrl).toString())
+      const next = await resolvePublicHttpUrl(new URL(location, current.url).toString())
+      if (next.url.origin !== current.url.origin) {
+        headers = Object.fromEntries(Object.entries(headers).filter(([name]) =>
+          !['authorization', 'cookie', 'proxy-authorization'].includes(name.toLowerCase()),
+        ))
+      }
+      current = next
       continue
     }
     return res

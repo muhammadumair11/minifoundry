@@ -712,6 +712,8 @@ export interface TransformRunSummary {
   error: string | null
   startedAt: string
   finishedAt: string | null
+  hasManifest?: boolean
+  replayOfRunId?: string | null
 }
 
 export interface TransformSummary {

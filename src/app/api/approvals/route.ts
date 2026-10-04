@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic'
  * — blocked (with the failing rule names), ready, no draft, or ungated.
  * Never throws (preview errors degrade to null).
  */
-async function gatePreview(targetId: string): Promise<PublishGatePreview | null> {
+async function gatePreview(targetId: string, versionNumber: number | null): Promise<PublishGatePreview | null> {
   try {
     const dataset = await db.dataset.findUnique({
       where: { id: targetId },
@@ -30,7 +30,7 @@ async function gatePreview(targetId: string): Promise<PublishGatePreview | null>
     if (!dataset.qualityGate) {
       return { status: 'ungated', gateOn: false, draftVersion: null, qualityState: null, failing: [] }
     }
-    const draft = await latestDraftVersion(targetId)
+    const draft = versionNumber
     if (draft == null) {
       return { status: 'no_draft', gateOn: true, draftVersion: null, qualityState: null, failing: [] }
     }
@@ -40,7 +40,7 @@ async function gatePreview(targetId: string): Promise<PublishGatePreview | null>
     })
     const failing = await failingErrorRules(targetId, draft)
     return {
-      status: failing.length > 0 ? 'blocked' : 'ready',
+      status: version?.qualityState === 'passed' || version?.qualityState === 'warned' ? 'ready' : 'blocked',
       gateOn: true,
       draftVersion: draft,
       qualityState: version?.qualityState ?? 'not_evaluated',
@@ -63,15 +63,15 @@ export async function GET(req: NextRequest) {
 
     // Enrich PENDING publish_dataset requests with the live gate preview
     // (additive; decided requests and publish_pipeline keep the shape).
-    const pendingDatasetIds = new Set(
+    const pendingDatasets = new Map(
       approvals
         .filter((a) => a.status === 'pending' && a.kind === 'publish_dataset')
-        .map((a) => a.targetId),
+        .map((a) => [a.targetId, a.versionNumber] as const),
     )
     const previews = new Map<string, PublishGatePreview | null>()
     await Promise.all(
-      [...pendingDatasetIds].map(async (id) => {
-        previews.set(id, await gatePreview(id))
+      [...pendingDatasets].map(async ([id, versionNumber]) => {
+        previews.set(id, await gatePreview(id, versionNumber))
       }),
     )
 
@@ -120,6 +120,11 @@ export async function POST(req: NextRequest) {
     }
     if (!targetName) return notFound(`Target '${targetId}' not found for kind '${kind}'`)
 
+    const versionNumber = kind === 'publish_dataset' ? await latestDraftVersion(targetId) : null
+    if (kind === 'publish_dataset' && versionNumber == null) {
+      return badRequest('No draft version exists to request publication')
+    }
+
     const duplicate = await db.approvalRequest.findFirst({
       where: { kind, targetId, status: 'pending' },
       select: { id: true },
@@ -132,6 +137,7 @@ export async function POST(req: NextRequest) {
       data: {
         kind,
         targetId,
+        versionNumber,
         targetName,
         requestedBy: role,
         note: note ?? null,

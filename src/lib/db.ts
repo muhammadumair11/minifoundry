@@ -7,7 +7,7 @@ import { PrismaClient } from '.prisma/client'
  * forever reusing the stale global instance (e.g. Schedule added in Round 2,
  * ObjectType/Property/LinkType/ActionType/ActionLog added in Round 3).
  */
-const PRISMA_CLIENT_STAMP = 'p2-trust-workflow'
+const PRISMA_CLIENT_STAMP = 'gap-closure-20261004'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -19,7 +19,7 @@ function getClient(): PrismaClient {
     return globalForPrisma.prisma
   }
   const client = new PrismaClient({
-    log: ['query'],
+    log: process.env.MF_PRISMA_QUERY_LOG === '1' ? ['query'] : ['error', 'warn'],
   })
   if (process.env.NODE_ENV !== 'production') {
     globalForPrisma.prisma = client

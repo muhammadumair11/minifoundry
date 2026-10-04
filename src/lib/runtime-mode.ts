@@ -41,14 +41,14 @@ export function configuredServiceToken(): string | null {
 
 /**
  * Whether this request may act as the trusted machine caller ('system'):
- * - when no service token is configured → true ONLY in demo mode (the
- *   historical no-cookie behavior; in shared mode a token is mandatory);
+ * - when no service token is configured → false in every mode. Demo's
+ *   no-cookie admin fallback is handled by the normal role guard;
  * - when a token IS configured → the request must present a matching
  *   constant value (length-safe comparison, not secret-dependent).
  */
 export function isServiceAuthorized(req: NextRequest): boolean {
   const configured = configuredServiceToken()
-  if (!configured) return isDemoMode()
+  if (!configured) return false
   const provided = req.headers.get(SERVICE_TOKEN_HEADER)?.trim() ?? ''
   if (provided.length !== configured.length) return false
   let diff = 0

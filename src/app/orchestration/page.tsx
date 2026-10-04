@@ -5,6 +5,7 @@ import { CalendarClock } from 'lucide-react'
 import { HealthStrip } from '@/components/foundry/orchestration/health-strip'
 import { SchedulesCard } from '@/components/foundry/orchestration/schedules-card'
 import { JobsCard } from '@/components/foundry/orchestration/jobs-card'
+import { ExecutionQueueCard } from '@/components/foundry/orchestration/execution-queue-card'
 import { FreshnessCard } from '@/components/foundry/orchestration/freshness-card'
 import { RunTrendCard } from '@/components/foundry/orchestration/run-trend-card'
 import { apiJson } from '@/lib/foundry-api'
@@ -52,6 +53,9 @@ export default function OrchestrationPage() {
       </div>
 
       {/* Jobs — full width */}
+      <div className="mt-4">
+        <ExecutionQueueCard />
+      </div>
       <div className="mt-4">
         <JobsCard />
       </div>

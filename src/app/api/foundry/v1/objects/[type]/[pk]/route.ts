@@ -4,7 +4,7 @@
 // so a marked pk can be resolved but its value never leaves unmasked.
 
 import { badRequest, jsonOk, notFound, parseJsonSafe, serverError } from '@/lib/api-utils'
-import { getDatasetVersion, type Row } from '@/lib/dataset-service'
+import { getDatasetVersion, resolveConsumerVersion, type Row } from '@/lib/dataset-service'
 import { findObjectType, looseEqual } from '@/lib/ontology-service'
 import { applyMasking } from '@/lib/governance'
 import { withApiToken } from '@/lib/api-v1'
@@ -29,7 +29,10 @@ export async function GET(
         return notFound(`Object type '${objectType.apiName}' has no backing dataset`)
       }
 
-      const version = await getDatasetVersion(objectType.sourceDatasetId)
+      const consumer = await resolveConsumerVersion(objectType.sourceDatasetId)
+      const version = consumer?.versionNumber == null
+        ? null
+        : await getDatasetVersion(objectType.sourceDatasetId, consumer.versionNumber)
       if (!version) {
         return notFound(`Dataset for object type '${objectType.apiName}' has no versions`)
       }
@@ -39,7 +42,6 @@ export async function GET(
       if (!row) {
         return notFound(`Object '${pk}' not found in type '${objectType.apiName}'`)
       }
-      const pkValue = row[objectType.primaryKey]
 
       const { rows: [maskedRow], maskedColumns } = await applyMasking(
         objectType.sourceDatasetId,
@@ -48,7 +50,7 @@ export async function GET(
       )
 
       return jsonOk({
-        object: { pk: pkValue, values: maskedRow ?? row, _masked: maskedColumns },
+        object: { pk: maskedRow?.[objectType.primaryKey] ?? null, values: maskedRow, _masked: maskedColumns },
       })
     })
   } catch (err) {

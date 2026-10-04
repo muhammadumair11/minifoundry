@@ -14,7 +14,7 @@ import { db } from '@/lib/db'
 import { emitVersionCreated, getHeadVersionNumber } from '@/lib/version-events'
 import type { DatasetBranchInfo, DatasetBranchesResponse, MergeBranchResponse } from '@/lib/foundry-types'
 import type { DatasetBranch } from '@prisma/client'
-import { pruneDatasetVersions } from '@/lib/dataset-service'
+import { MAX_ROWS, inferSchema, normalizeRows, pruneDatasetVersions, type Row } from '@/lib/dataset-service'
 
 function serializeBranch(b: DatasetBranch): DatasetBranchInfo {
   return {
@@ -68,6 +68,44 @@ export interface CreateBranchInput {
   name: string
   description?: string | null
   baseVersion?: number
+}
+
+/** Append an isolated branch commit. The expected head prevents stale edits. */
+export async function commitBranchVersion(
+  datasetId: string,
+  branchId: string,
+  rows: Row[],
+  expectedHeadVersion: number,
+  createdBy: string,
+): Promise<{ branchName: string; versionNumber: number; rowCount: number }> {
+  if (rows.length > MAX_ROWS) throw new BranchError(`Branch commits are limited to ${MAX_ROWS} rows`, 400)
+  const branch = await db.datasetBranch.findFirst({ where: { id: branchId, datasetId } })
+  if (!branch) throw new BranchError('Branch not found', 404)
+  if (branch.headVersion !== expectedHeadVersion) throw new BranchError('Branch head changed; reload before committing', 409)
+  const normalized = normalizeRows(rows)
+  const next = (await getHeadVersionNumber(datasetId)) + 1
+  await db.$transaction(async (tx) => {
+    const updated = await tx.datasetBranch.updateMany({
+      where: { id: branchId, datasetId, headVersion: expectedHeadVersion },
+      data: { headVersion: next, mergedAt: null, mergedInto: null },
+    })
+    if (updated.count !== 1) throw new BranchError('Branch head changed; reload before committing', 409)
+    await tx.datasetVersion.create({
+      data: {
+        datasetId, versionNumber: next, branch: branch.name,
+        parentVersion: expectedHeadVersion, createdBy,
+        lifecycle: 'draft', rowCount: normalized.length,
+        schemaJson: JSON.stringify(inferSchema(normalized)), dataJson: JSON.stringify(normalized),
+      },
+    })
+    await tx.versionLineageEdge.create({
+      data: {
+        fromDatasetId: datasetId, fromVersionNumber: expectedHeadVersion,
+        toDatasetId: datasetId, toVersionNumber: next,
+      },
+    })
+  })
+  return { branchName: branch.name, versionNumber: next, rowCount: normalized.length }
 }
 
 /** Create a branch pointing at a main version (defaults to the main head). */
@@ -140,6 +178,15 @@ export async function mergeBranch(
   if (!head) {
     throw new BranchError(`Branch head version ${branch.headVersion} no longer exists`, 400)
   }
+  if (branch.headVersion === branch.baseVersion) {
+    throw new BranchError('Branch has no commits to merge', 409)
+  }
+  const currentMain = await resolveBranchHead(datasetId, 'main')
+  if (currentMain !== branch.baseVersion) {
+    throw new BranchError(`Main advanced to v${currentMain}; create a fresh branch from current main before merging`, 409)
+  }
+
+  const target = await db.dataset.findUnique({ where: { id: datasetId }, select: { qualityGate: true } })
 
   const nextVersionNumber = (await getHeadVersionNumber(datasetId)) + 1
   const mergedAt = new Date()
@@ -155,13 +202,23 @@ export async function mergeBranch(
         createdBy: `branch-merge:${branch.name}`,
         branch: 'main',
         parentVersion: branch.headVersion,
+        lifecycle: target?.qualityGate ? 'draft' : 'published',
       },
     }),
     db.datasetBranch.update({
       where: { id: branch.id },
-      data: { mergedAt, mergedInto: nextVersionNumber },
+      data: { baseVersion: nextVersionNumber, mergedAt, mergedInto: nextVersionNumber },
     }),
-    db.dataset.update({ where: { id: datasetId }, data: { updatedAt: mergedAt } }),
+    db.versionLineageEdge.create({
+      data: {
+        fromDatasetId: datasetId, fromVersionNumber: branch.headVersion,
+        toDatasetId: datasetId, toVersionNumber: nextVersionNumber,
+      },
+    }),
+    db.dataset.update({
+      where: { id: datasetId },
+      data: { updatedAt: mergedAt, ...(target?.qualityGate ? {} : { publishedVersion: nextVersionNumber }) },
+    }),
   ])
 
   // Retention safety: prunes only main versions and never a branch head/base.
@@ -214,4 +271,3 @@ export async function protectedVersionNumbers(datasetId: string): Promise<Set<nu
   }
   return set
 }
-

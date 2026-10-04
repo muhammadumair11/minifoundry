@@ -1,0 +1,22 @@
+name: verify
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:../db/ci.db
+      MF_DEMO_MODE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+      - run: bunx prisma validate
+      - run: bunx prisma db push --skip-generate
+      - run: bun run lint
+      - run: bunx tsc --noEmit
+      - run: bun test
+      - run: bunx next build

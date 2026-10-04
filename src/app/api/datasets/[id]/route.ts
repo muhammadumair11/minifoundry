@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import {
   badRequest,
+  jsonError,
   jsonOk,
   notFound,
   parseJsonSafe,
@@ -19,7 +20,7 @@ import {
   zodErrorMessage,
 } from '@/lib/api-utils'
 import { audit, maskSchema, requireRole } from '@/lib/governance'
-import { setQualityGate } from '@/lib/publication'
+import { PublicationError, setQualityGate } from '@/lib/publication'
 import { resolveProvenanceMany } from '@/lib/provenance'
 import type { NextRequest } from 'next/server'
 
@@ -65,7 +66,7 @@ async function loadDetail(id: string, branchParam?: string | null) {
 
   // R14: resolve the head version for the requested branch. No/unknown param
   // keeps the legacy behavior (latest version overall = main head normally).
-  let headVersion: (typeof dataset.versions)[number] | null = dataset.versions[0] ?? null
+  let headVersion: (typeof dataset.versions)[number] | null = dataset.versions.find((v) => v.branch === 'main') ?? null
   let resolvedBranch: string | null = null
   if (branchParam && branchParam !== 'main') {
     const branch = await db.datasetBranch.findUnique({
@@ -132,6 +133,7 @@ export async function GET(
     if ('unknownBranch' in detail) {
       return badRequest(`Unknown branch '${detail.unknownBranch}' on dataset '${id}'`)
     }
+    audit({ req, action: 'dataset.view', resourceType: 'dataset', resourceId: id, resourceName: detail.dataset.name })
     return jsonOk(detail)
   } catch (err) {
     return serverError(err instanceof Error ? err.message : 'Failed to load dataset')
@@ -157,8 +159,17 @@ export async function PATCH(
     if (!parsed.success) return badRequest(zodErrorMessage(parsed))
     const data = parsed.data
 
+    if (data.qualityGate === false) {
+      const adminDenied = requireRole(req, 'admin')
+      if (adminDenied) return adminDenied
+    }
+
     const existing = await db.dataset.findUnique({ where: { id }, select: { id: true, name: true } })
     if (!existing) return notFound(`Dataset '${id}' not found`)
+    if (data.qualityGate === false) {
+      const drafts = await db.datasetVersion.count({ where: { datasetId: id, branch: 'main', lifecycle: 'draft' } })
+      if (drafts > 0) return jsonError(409, 'Resolve or remove all drafts before disabling the quality gate')
+    }
 
     // Validate the target project exists when assigning (null = unassign).
     if (data.projectId) {
@@ -204,6 +215,7 @@ export async function PATCH(
     const detail = await loadDetail(id)
     return jsonOk(detail)
   } catch (err) {
+    if (err instanceof PublicationError) return jsonError(err.status, err.message)
     return serverError(err instanceof Error ? err.message : 'Failed to update dataset')
   }
 }

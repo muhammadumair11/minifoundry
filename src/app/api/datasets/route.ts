@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       // per-dataset version count + head version number (one groupBy)
       db.datasetVersion.groupBy({
         by: ['datasetId'],
+        where: { branch: 'main' },
         _count: { versionNumber: true },
         _max: { versionNumber: true },
       }),

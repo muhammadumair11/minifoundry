@@ -16,7 +16,12 @@ differs from real Foundry.
 bun install
 bun run db:push      # create/update the SQLite schema
 bun run dev          # Next.js on http://localhost:3000
+bun run jobs:worker  # separate terminal: execute scheduled/upstream jobs
 ```
+
+For a local Windows checkout, set `DATABASE_URL=file:../db/custom.db` in your
+environment before running Prisma or the app. The bundled `.env` may still
+contain a path from the original Linux workspace.
 
 The scheduler mini-service (optional, enables recurring schedules):
 
@@ -35,7 +40,8 @@ role simulator from the app's Settings page in demo mode.
 | anonymous requests | resolve to `admin` (sandbox explorability) | resolve to `anonymous` — every role-guarded API 403s |
 | role simulator cookie | honored | **ignored** (escalation vector) |
 | machine callers (scheduler, curl) | no token needed | must send `x-service-token: <MF_SERVICE_TOKEN>` |
-| session secret | dev fallback (warns) | `AUTH_SECRET` required (fallback still warns) |
+| session secret | dev fallback (warns) | `AUTH_SECRET` required; startup fails without it |
+| code execution | local learning sandbox | code workbooks and free-form derive expressions disabled until an isolated runner is configured |
 
 Run shared mode like this:
 
@@ -48,6 +54,8 @@ MF_SERVICE_TOKEN=<same secret> bun run dev
 
 **Never expose demo mode to more than one person.** Its anonymous-admin
 fallback is a deliberate learning affordance, not a security model.
+In shared mode, pipeline sources read values with viewer-level masking so a
+pipeline output cannot declassify a marked column through an unmarked dataset.
 
 ## Architecture
 
@@ -60,7 +68,8 @@ CSV / JSON / REST / sample data ─▶ ingestion routes ─▶ SQLite dataset ve
                               Ontology objects + actions (writeback)
                                                           │
                                           dashboards · lineage · token API
-mini-services/scheduler-service ──polls──▶ /api/schedules/due ─▶ pipeline runs
+mini-services/scheduler-service ──polls──▶ /api/schedules/due ─▶ execution jobs
+job worker ──leases jobs──▶ pinned pipeline versions ─▶ pipeline runs
 ```
 
 - **Next.js 16 (App Router) + TypeScript** — UI, REST API, execution engines
@@ -68,12 +77,15 @@ mini-services/scheduler-service ──polls──▶ /api/schedules/due ─▶ p
 - **Prisma + SQLite** — metadata AND row snapshots (`prisma/schema.prisma`).
 - **Scheduler mini-service (Bun)** — polls for due schedules every 30s
   (`mini-services/scheduler-service`).
+- **Job worker (Bun)** — leases queued schedule and upstream events
+  (`scripts/job-worker.ts`).
 - **Gateway** — one exposed port; cross-service calls use `?XTransformPort=`.
 
 ## Quality gates
 
 ```bash
 bun run lint        # ESLint (must stay clean)
+bun run test        # focused security tests
 bunx tsc --noEmit   # TypeScript gate — the build FAILS on type errors
 ```
 
@@ -88,26 +100,34 @@ curl -s localhost:3000/api/settings/overview | head -c 300
 
 These differ from real Foundry **on purpose** — they are teaching moments:
 
-- Dataset versions are JSON snapshots (≤ 5,000 rows), not Parquet files.
-- Pipeline runs execute synchronously in-process; no durable worker queue.
-- Branches merge by copying the head version (Foundry's dataset branches do
-  not merge at all — pipeline-logic branches are a separate concept).
-- Quality rules are expectation checks, not a published-data gate (Phase 2
-  roadmap: preview → validate → approve → publish).
+- Dataset versions are JSON snapshots with a 5,000-row limit. Larger writes
+  fail with an error and do not discard trailing rows.
+- Scheduled and upstream pipeline runs use durable SQLite job records and a
+  separate worker. Manual runs and downstream cascade calls remain synchronous.
+  Lease recovery is at-least-once: a worker crash between writing an output and
+  completing its job can duplicate that output. The worker must be deployed as
+  an additional process; the packaged startup scripts do not launch it yet.
+- Branches support isolated row commits and copy the branch head into main at
+  merge. Foundry's dataset branches do not merge; pipeline-logic branches are
+  a separate concept.
+- Gated datasets keep drafts out of consumer reads until the current rules
+  pass and an admin approves the exact draft. Workbooks and pipelines consume
+  the published pointer.
 - User code runs in-process: SQL against the same SQLite file, JS via
   `node:vm`, Python as a `python3 -I -B` child with a **scrubbed environment**
   and 5s timeout. `node:vm` is NOT a security boundary — don't run untrusted
-  users' code in a shared deployment.
+  users' code in a shared deployment. Shared mode blocks these operations
+  while an isolated runner is being built.
 - REST connectors enforce SSRF egress controls (public http(s) targets only,
-  all DNS-resolved addresses checked, ≤ 3 re-validated redirects). A DNS
-  rebinding TOCTOU window remains; that requires socket-level pinning.
+  all DNS-resolved addresses checked, pinned destination sockets, and at most
+  three re-validated redirects).
 
 ## Roadmap (delivery order)
 
 0. **Foundation** ✅ — explicit demo/shared modes, service-token scheduler,
    consistent masking on dashboards, egress guard, TS gate, this README.
-1. **Reproducible builds** — run manifest pinning graph/code + input versions.
-2. **Trust workflow** — quality as a publication gate + version-level lineage.
-3. **Guided curriculum** — executable exercises with checkpoints.
-4. **Collaboration & UI** — real branch experimentation, builder polish.
-5. **Scale track (optional)** — file-backed datasets, indexed previews.
+1. **Reproducible builds** — pipeline and workbook manifests, version-level lineage, replay.
+2. **Trust workflow** — quality evaluation and exact-draft approval before publication.
+3. **Guided curriculum** — learner-attributed action evidence and checkpoints.
+4. **Collaboration & UI** — isolated branch commits and merge conflict detection; builder polish remains.
+5. **Durable execution, isolated code, scale** — open architectural packages. See [gap closure plan](docs/gap-closure-plan.md).

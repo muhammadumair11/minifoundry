@@ -32,12 +32,12 @@ export async function GET(
         }
         versionNumber = n
       }
-      // P2: the public API is a consumer — gated datasets default to the last
-      // published version (an explicit ?version= still wins).
-      if (versionNumber === undefined) {
-        const consumer = await resolveConsumerVersion(id)
-        versionNumber = consumer?.versionNumber ?? undefined
+      const consumer = await resolveConsumerVersion(id)
+      if (consumer?.versionNumber == null) return notFound(`Dataset '${dataset.name}' has no published version`)
+      if (consumer.gated && versionNumber !== undefined && versionNumber !== consumer.versionNumber) {
+        return notFound(`Version ${versionNumber} is not published for dataset '${dataset.name}'`)
       }
+      versionNumber ??= consumer.versionNumber
       const version = await getDatasetVersion(id, versionNumber)
       if (!version) {
         return notFound(
@@ -48,7 +48,7 @@ export async function GET(
       }
 
       const versions = await db.datasetVersion.findMany({
-        where: { datasetId: id },
+        where: { datasetId: id, lifecycle: 'published' },
         orderBy: { versionNumber: 'desc' },
         select: { versionNumber: true, rowCount: true, createdAt: true },
       })

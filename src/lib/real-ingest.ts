@@ -13,7 +13,7 @@
 // - CSV: papaparse (via parsers.ts) with header row, quoted fields, CRLF;
 //   values stay strings but columns that are UNIFORMLY numeric/boolean are
 //   coerced so the schema inference sees real types.
-// - Rows are capped at 5000 (dataset-service MAX_ROWS) and empty results throw.
+// - More than 5000 rows are rejected; ingestion never silently drops rows.
 // - Errors are explicit: non-2xx → status included, bad payload → detail,
 //   empty row set → 'no rows found'.
 
@@ -60,12 +60,12 @@ export async function fetchConnectorRows(config: RealIngestConfig): Promise<Real
       : jsonToRows(text, config.dataPath)
 
   if (rows.length === 0) throw new Error('no rows found')
-  const capped = rows.slice(0, MAX_ROWS)
+  if (rows.length > MAX_ROWS) throw new Error(`Connector returned ${rows.length} rows; the current storage limit is ${MAX_ROWS}. No rows were written.`)
   return {
-    rows: capped,
+    rows,
     format: config.format,
-    rowCount: capped.length,
-    columns: Object.keys(capped[0] ?? {}),
+    rowCount: rows.length,
+    columns: Object.keys(rows[0] ?? {}),
   }
 }
 
@@ -216,7 +216,9 @@ function csvRowsWithTypes(rows: Row[]): Row[] {
       const s = String(raw).trim()
       if (s === '') continue
       sawValue = true
-      if (numeric && !NUMERIC_RE.test(s)) numeric = false
+      if (numeric && (!NUMERIC_RE.test(s) || /^[-+]?0\d/.test(s) ||
+          !Number.isFinite(Number(s)) ||
+          (Number.isInteger(Number(s)) && !Number.isSafeInteger(Number(s))))) numeric = false
       if (boolean && !BOOLEAN_VALUES.has(s.toLowerCase())) boolean = false
       if (!numeric && !boolean) break
     }

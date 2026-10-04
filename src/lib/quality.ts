@@ -253,7 +253,6 @@ export async function evaluateRules(
         }),
       },
     })
-    .catch(() => undefined) // version may have been pruned mid-evaluation — never throw
 
   return {
     versionNumber,

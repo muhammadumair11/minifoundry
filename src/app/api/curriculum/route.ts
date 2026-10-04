@@ -9,6 +9,7 @@
 // DELETE → reset the caller's manual progress.
 
 import type { NextRequest } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { badRequest, jsonOk, serverError, zodErrorMessage } from '@/lib/api-utils'
@@ -25,8 +26,17 @@ function actorKeyOf(req: NextRequest): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const status = await getCurriculumStatus(actorKeyOf(req))
-    return jsonOk(status)
+    const actorKey = actorKeyOf(req)
+    if (actorKey.startsWith('sim:')) {
+      const learnerId = randomUUID()
+      const response = jsonOk(await getCurriculumStatus(`learner:${learnerId}`))
+      response.cookies.set('foundry-learner-id', learnerId, {
+        httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+      })
+      return response
+    }
+    return jsonOk(await getCurriculumStatus(actorKey))
   } catch (err) {
     return serverError(err instanceof Error ? err.message : 'Failed to load curriculum')
   }

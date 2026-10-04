@@ -34,6 +34,7 @@ import vm from 'node:vm'
 import type { NextRequest } from 'next/server'
 import type { Transform, TransformRun } from '@prisma/client'
 import { db } from '@/lib/db'
+import { isDemoMode } from '@/lib/runtime-mode'
 import { emitVersionCreated } from '@/lib/version-events'
 import {
   parseJsonSafe,
@@ -44,6 +45,7 @@ import {
   MAX_ROWS,
   createDatasetFromRows,
   getDatasetVersion,
+  resolveConsumerVersion,
   type Row,
   type SchemaColumn,
 } from '@/lib/dataset-service'
@@ -125,24 +127,48 @@ function sanitizeCell(v: unknown): unknown {
 interface LoadedInput {
   datasetId: string
   name: string
+  versionNumber: number
   rows: Row[]
   schema: SchemaColumn[]
 }
 
-async function loadInputs(transform: Transform, log: LogFn): Promise<LoadedInput[]> {
+export interface TransformManifest {
+  transformId: string
+  language: string
+  sourceCode: string
+  outputDatasetName: string
+  configuredInputs: string[]
+  inputs: { datasetId: string; versionNumber: number }[]
+  outputDatasetId: string | null
+  outputVersionNumber: number | null
+}
+
+export interface TransformRunOptions {
+  inputOverrides?: Record<string, number>
+  replayOfRunId?: string
+}
+
+async function loadInputs(transform: Transform, log: LogFn, options: TransformRunOptions = {}): Promise<LoadedInput[]> {
   const ids = parseJsonSafe<string[]>(transform.inputsJson, [])
   const loaded: LoadedInput[] = []
   if (ids.length === 0) {
     log('warn', 'no input datasets configured')
   }
   for (const id of ids) {
+    const pinnedVersion = options.inputOverrides?.[id]
     const dataset = await db.dataset.findUnique({ where: { id }, select: { id: true, name: true } })
     if (!dataset) {
+      if (pinnedVersion !== undefined) throw new Error(`Pinned input dataset '${id}' no longer exists`)
       log('warn', `input dataset '${id}' no longer exists — skipped`)
       continue
     }
-    const version = await getDatasetVersion(id)
+    const consumer = pinnedVersion === undefined ? await resolveConsumerVersion(id) : null
+    const selectedVersion = pinnedVersion ?? consumer?.versionNumber
+    const version = selectedVersion == null ? null : await getDatasetVersion(id, selectedVersion)
     if (!version) {
+      if (pinnedVersion !== undefined) {
+        throw new Error(`Pinned input dataset '${id}' v${pinnedVersion} no longer exists`)
+      }
       log('warn', `input "${dataset.name}" has no versions — skipped`)
       continue
     }
@@ -150,6 +176,7 @@ async function loadInputs(transform: Transform, log: LogFn): Promise<LoadedInput
     loaded.push({
       datasetId: id,
       name: dataset.name,
+      versionNumber: version.versionNumber,
       rows,
       schema: parseSchema(version),
     })
@@ -534,9 +561,10 @@ async function executePython(code: string, input: unknown, log: LogFn): Promise<
  * Never throws for user-code/validation failures: those are recorded on the
  * run (status failed + error + logs) so callers always get a run back.
  */
-export async function runTransform(transform: Transform, _req?: NextRequest): Promise<TransformRun> {
+export async function runTransform(transform: Transform, _req?: NextRequest, options: TransformRunOptions = {}): Promise<TransformRun> {
+  if (!isDemoMode()) throw new Error('Code transforms require an isolated runner and are disabled in shared mode')
   const run = await db.transformRun.create({
-    data: { transformId: transform.id, status: 'running', logsJson: '[]' },
+    data: { transformId: transform.id, status: 'running', logsJson: '[]', replayOfRunId: options.replayOfRunId ?? null },
   })
   const logs: LogEntry[] = []
   const log: LogFn = (level, msg) => {
@@ -549,10 +577,21 @@ export async function runTransform(transform: Transform, _req?: NextRequest): Pr
   let rowCount: number | null = null
   let outputDatasetId: string | null = null
   let outputVersionNumber: number | null = null
+  const manifest: TransformManifest = {
+    transformId: transform.id,
+    language: transform.language,
+    sourceCode: transform.sourceCode,
+    outputDatasetName: transform.outputDatasetName,
+    configuredInputs: parseJsonSafe<string[]>(transform.inputsJson, []),
+    inputs: [],
+    outputDatasetId: null,
+    outputVersionNumber: null,
+  }
 
   try {
     log('info', `run started (language=${transform.language})`)
-    const inputs = await loadInputs(transform, log)
+    const inputs = await loadInputs(transform, log, options)
+    manifest.inputs = inputs.map((input) => ({ datasetId: input.datasetId, versionNumber: input.versionNumber }))
 
     let rows: Row[]
     if (transform.language === 'javascript') {
@@ -578,8 +617,7 @@ export async function runTransform(transform: Transform, _req?: NextRequest): Pr
     }
 
     if (rows.length > MAX_ROWS) {
-      log('warn', `result truncated from ${rows.length} to ${MAX_ROWS} rows (MAX_ROWS)`)
-      rows = rows.slice(0, MAX_ROWS)
+      throw new Error(`Transform produced ${rows.length} rows; the current storage limit is ${MAX_ROWS}. No output was written.`)
     }
     rowCount = rows.length
 
@@ -590,6 +628,24 @@ export async function runTransform(transform: Transform, _req?: NextRequest): Pr
     })
     outputDatasetId = published.dataset.id
     outputVersionNumber = published.version.versionNumber
+    manifest.outputDatasetId = outputDatasetId
+    manifest.outputVersionNumber = outputVersionNumber
+    for (const input of inputs) {
+      await db.versionLineageEdge.create({
+        data: {
+          transformRunId: run.id, transformId: transform.id,
+          fromDatasetId: input.datasetId, fromVersionNumber: input.versionNumber,
+          toDatasetId: outputDatasetId, toVersionNumber: outputVersionNumber,
+        },
+      })
+      const existingEdge = await db.lineageEdge.findFirst({
+        where: { fromDatasetId: input.datasetId, toDatasetId: outputDatasetId, pipelineId: null },
+        select: { id: true },
+      })
+      if (!existingEdge) {
+        await db.lineageEdge.create({ data: { fromDatasetId: input.datasetId, toDatasetId: outputDatasetId } })
+      }
+    }
     log('success', `published output "${transform.outputDatasetName}" v${published.version.versionNumber} (${published.rowCount} rows)`)
 
     // R14: announce the new version — upstream-triggered pipelines listen here.
@@ -626,6 +682,7 @@ export async function runTransform(transform: Transform, _req?: NextRequest): Pr
       rowCount,
       outputDatasetId,
       outputVersionNumber,
+      manifestJson: JSON.stringify(manifest),
       error,
       finishedAt: new Date(),
     },
@@ -646,6 +703,8 @@ export type SerializedTransformRun = {
   error: string | null
   startedAt: Date | string
   finishedAt: Date | string | null
+  hasManifest: boolean
+  replayOfRunId: string | null
 }
 
 export function serializeTransformRun(run: TransformRun): SerializedTransformRun {
@@ -661,6 +720,8 @@ export function serializeTransformRun(run: TransformRun): SerializedTransformRun
     error: run.error,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
+    hasManifest: Boolean(run.manifestJson),
+    replayOfRunId: run.replayOfRunId,
   }
 }
 

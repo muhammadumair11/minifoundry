@@ -8,8 +8,8 @@
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { badRequest, notFound, parseJsonSafe, parseSchema, serverError } from '@/lib/api-utils'
-import { getDatasetVersion, type Row } from '@/lib/dataset-service'
+import { badRequest, jsonError, notFound, parseJsonSafe, parseSchema, serverError } from '@/lib/api-utils'
+import { getDatasetVersion, resolveConsumerVersion, type Row } from '@/lib/dataset-service'
 import { applyMasking, audit, getRole } from '@/lib/governance'
 import { rowsToCsv, slugifyName } from '@/lib/csv'
 import type { NextRequest } from 'next/server'
@@ -35,7 +35,10 @@ export async function GET(
       }
       versionNumber = n
     }
-    const version = await getDatasetVersion(id, versionNumber)
+    const role = getRole(req)
+    const consumer = role === 'viewer' && versionNumber == null ? await resolveConsumerVersion(id) : null
+    const selectedVersion = versionNumber ?? consumer?.versionNumber
+    const version = selectedVersion == null && role === 'viewer' ? null : await getDatasetVersion(id, selectedVersion ?? undefined)
     if (!version) {
       return notFound(
         versionNumber !== undefined
@@ -43,10 +46,12 @@ export async function GET(
           : `Dataset '${dataset.name}' has no versions`,
       )
     }
+    if (role === 'viewer' && version.lifecycle !== 'published') {
+      return jsonError(403, 'Draft and branch versions require editor role')
+    }
 
     const schema = parseSchema(version)
     const raw = parseJsonSafe<Row[]>(version.dataJson, [])
-    const role = getRole(req)
     const { rows } = await applyMasking(id, raw, role)
 
     audit({

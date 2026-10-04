@@ -122,6 +122,8 @@ model VersionLineageEdge {
   // pipeline run that produced the output version (null = non-pipeline writes)
   runId             String?
   pipelineId        String?
+  transformRunId    String?
+  transformId       String?
   fromDatasetId     String
   fromVersionNumber Int
   toDatasetId       String
@@ -189,6 +191,32 @@ model PipelineRun {
   // P5 scale track: hot-path indexes (per-pipeline history, jobs table, health).
   @@index([pipelineId, startedAt])
   @@index([status, startedAt])
+}
+
+// Durable pipeline requests. A worker leases a row and records each attempt.
+// A unique event key prevents repeated scheduler polls/version events from
+// enqueueing the same work twice.
+model ExecutionJob {
+  id              String    @id @default(cuid())
+  pipelineId      String
+  versionNumber   Int
+  trigger         String
+  scheduleId      String?
+  eventKey        String    @unique
+  status          String    @default("queued")
+  attempt         Int       @default(0)
+  maxAttempts     Int       @default(1)
+  availableAt     DateTime  @default(now())
+  leaseOwner      String?
+  leaseUntil      DateTime?
+  lastRunId       String?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  finishedAt      DateTime?
+
+  @@index([status, availableAt])
+  @@index([pipelineId, status])
 }
 
 // ─── P3: Guided curriculum progress ───────────────────────────────
@@ -409,6 +437,8 @@ model ApprovalRequest {
   // publish_dataset | publish_pipeline
   kind         String
   targetId     String
+  // Dataset draft pinned when the request is created; later drafts need a new request.
+  versionNumber Int?
   targetName   String
   requestedBy  String
   note         String?
@@ -485,6 +515,9 @@ model TransformRun {
   outputDatasetId     String?
   outputVersionNumber Int?
   error               String?
+  // Immutable code and input-version snapshot used for provenance and replay.
+  manifestJson        String?
+  replayOfRunId       String?
   startedAt           DateTime  @default(now())
   finishedAt          DateTime?
 

@@ -46,7 +46,8 @@ export function getActor(req: NextRequest): { role: string; email: string | null
   }
   const raw = req.cookies.get(ROLE_COOKIE)?.value
   const role: Role = raw && raw in ROLE_ORDER ? (raw as Role) : 'admin'
-  return { role, email: null }
+  const learnerId = req.cookies.get('foundry-learner-id')?.value
+  return { role, email: learnerId && /^[a-f0-9-]{36}$/.test(learnerId) ? `learner:${learnerId}` : null }
 }
 
 /**

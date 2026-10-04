@@ -4,7 +4,8 @@
 // stream regardless of the outcome. Requires editor+ role; audited.
 
 import { db } from '@/lib/db'
-import { jsonOk, notFound, parseSchema, serverError } from '@/lib/api-utils'
+import { jsonError, jsonOk, notFound, parseSchema, serverError } from '@/lib/api-utils'
+import { isDemoMode } from '@/lib/runtime-mode'
 import { audit, requireRole } from '@/lib/governance'
 import { runTransform, serializeTransformRun } from '@/lib/transform-engine'
 import { getDatasetVersion, type Row } from '@/lib/dataset-service'
@@ -21,6 +22,7 @@ export async function POST(
   try {
     const denied = requireRole(req, 'editor')
     if (denied) return denied
+    if (!isDemoMode()) return jsonError(403, 'Code transforms require an isolated runner and are disabled in shared mode')
 
     const { id } = await params
     const transform = await db.transform.findUnique({ where: { id } })

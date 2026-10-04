@@ -72,10 +72,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
 
     // P2: consumer read — gated datasets serve the last published version.
     const consumer = await resolveConsumerVersion(objectType.sourceDatasetId)
-    const version = await getDatasetVersion(
-      objectType.sourceDatasetId,
-      consumer?.versionNumber ?? undefined,
-    )
+    const version = consumer?.versionNumber == null
+      ? null
+      : await getDatasetVersion(objectType.sourceDatasetId, consumer.versionNumber)
     if (!version) {
       return notFound(`Dataset for object type '${objectType.apiName}' has no versions`)
     }
@@ -114,7 +113,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
         titleProperty:
           objectType.properties.find((p) => p.isTitle)?.apiName ?? objectType.primaryKey ?? null,
       },
-      object: { pk: pkValue, values: maskedRow ?? row, _masked: maskedColumns },
+      object: { pk: maskedRow?.[objectType.primaryKey] ?? null, values: maskedRow, _masked: maskedColumns },
       links,
     })
   } catch (err) {

@@ -6,8 +6,8 @@
 // response carries additive "maskedColumns" (masked column names).
 
 import { db } from '@/lib/db'
-import { badRequest, jsonOk, notFound, parseJsonSafe, parseSchema, serverError } from '@/lib/api-utils'
-import { compareValues, getDatasetVersion, type Row } from '@/lib/dataset-service'
+import { badRequest, jsonError, jsonOk, notFound, parseJsonSafe, parseSchema, serverError } from '@/lib/api-utils'
+import { compareValues, getDatasetVersion, resolveConsumerVersion, type Row } from '@/lib/dataset-service'
 import { applyMasking, getRole, maskSchema } from '@/lib/governance'
 import type { NextRequest } from 'next/server'
 
@@ -45,7 +45,12 @@ export async function GET(
       versionNumber = n
     }
     const branchVersion = await branchHeadFallback(id, url.searchParams.get('branch'))
-    const version = await getDatasetVersion(id, versionNumber ?? branchVersion)
+    const role = getRole(req)
+    const consumer = role === 'viewer' && versionNumber == null && branchVersion == null
+      ? await resolveConsumerVersion(id) : null
+    const selectedVersion = versionNumber ?? branchVersion ?? consumer?.versionNumber
+    const version = selectedVersion == null && role === 'viewer'
+      ? null : await getDatasetVersion(id, selectedVersion ?? undefined)
     if (!version) {
       return notFound(
         versionNumber !== undefined
@@ -53,13 +58,15 @@ export async function GET(
           : `Dataset '${dataset.name}' has no versions`,
       )
     }
+    if (role === 'viewer' && version.lifecycle !== 'published') {
+      return jsonError(403, 'Draft and branch versions require editor role')
+    }
 
     const columns = parseSchema(version)
 
     // Mask FIRST (all rows of the version), then search/sort/paginate on the
     // masked rows — counts and search can never reveal governed values.
     const raw = parseJsonSafe<Row[]>(version.dataJson, [])
-    const role = getRole(req)
     const { rows: maskedRows, maskedColumns } = await applyMasking(id, raw, role)
     let rows = maskedRows
 

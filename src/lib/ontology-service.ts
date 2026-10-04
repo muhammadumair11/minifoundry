@@ -288,9 +288,10 @@ export async function getObjectRows(
   // P2: the object layer is a CONSUMER — gated datasets serve the last
   // published version, never a draft.
   const consumer = await resolveConsumerVersion(objectType.sourceDatasetId)
+  if (consumer?.versionNumber == null) return empty
   const version = await getDatasetVersion(
     objectType.sourceDatasetId,
-    consumer?.versionNumber ?? undefined,
+    consumer.versionNumber,
   )
   if (!version) return empty
 
@@ -432,7 +433,8 @@ async function loadLatestDataset(datasetId: string): Promise<{ dataset: Dataset;
   if (!dataset) return null
   // P2: object/link reads are consumer reads — honor the publication gate.
   const consumer = await resolveConsumerVersion(datasetId)
-  const version = await getDatasetVersion(datasetId, consumer?.versionNumber ?? undefined)
+  if (consumer?.versionNumber == null) return null
+  const version = await getDatasetVersion(datasetId, consumer.versionNumber)
   if (!version) return null
   return {
     dataset,
@@ -668,8 +670,8 @@ async function appendDatasetVersion(
   rows: Row[],
   createdBy: string,
 ): Promise<{ versionNumber: number; rowCount: number }> {
-  const capped = rows.length > MAX_ROWS ? rows.slice(0, MAX_ROWS) : rows
-  const normalized = normalizeRows(capped)
+  if (rows.length > MAX_ROWS) throw new Error(`Write-back has ${rows.length} rows; the current storage limit is ${MAX_ROWS}. No version was written.`)
+  const normalized = normalizeRows(rows)
 
   const current = await getDatasetVersion(datasetId)
   const schemaJson = current?.schemaJson ?? JSON.stringify(inferSchema(normalized))

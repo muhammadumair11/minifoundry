@@ -12,7 +12,8 @@
 import type { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { jsonOk, parseJsonSafe, serverError } from '@/lib/api-utils'
-import type { Row } from '@/lib/dataset-service'
+import { resolveConsumerVersion, type Row } from '@/lib/dataset-service'
+import { applyMasking, getRole, type Role } from '@/lib/governance'
 import type { SearchResultItem, SearchResponse } from '@/lib/foundry-types'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,7 @@ const MAX_OBJECT_HITS_PER_TYPE = 5
 async function searchObjectInstances(
   needle: string,
   budget: number,
+  role: Role,
 ): Promise<SearchResultItem[]> {
   if (budget <= 0) return []
   const types = await db.objectType.findMany({
@@ -51,16 +53,19 @@ async function searchObjectInstances(
   const seenGlobal = new Set<string>()
   for (const t of types) {
     if (hits.length >= budget) break
-    const headVersion = await db.datasetVersion.findFirst({
-      where: { datasetId: t.sourceDatasetId ?? '' },
-      orderBy: { versionNumber: 'desc' },
+    if (!t.sourceDatasetId) continue
+    const consumer = await resolveConsumerVersion(t.sourceDatasetId)
+    if (consumer?.versionNumber == null) continue
+    const headVersion = await db.datasetVersion.findUnique({
+      where: { datasetId_versionNumber: { datasetId: t.sourceDatasetId, versionNumber: consumer.versionNumber } },
       select: { dataJson: true },
     })
     if (!headVersion) continue
-    const rows = parseJsonSafe<Row[]>(headVersion.dataJson, [])
+    const { rows, maskedColumns } = await applyMasking(t.sourceDatasetId, parseJsonSafe<Row[]>(headVersion.dataJson, []), role)
     if (rows.length === 0) continue
     const titleColumn = t.properties[0]?.apiName ?? t.primaryKey
     if (!titleColumn) continue
+    if (maskedColumns.includes(titleColumn)) continue
     // Data rows often repeat a title (e.g. many shipments of one product) —
     // keep one hit per unique title per type, capped per type.
     const seenTitles = new Set<string>()
@@ -77,7 +82,7 @@ async function searchObjectInstances(
       seenGlobal.add(dedupeKey)
       // objects page supports ?pk= deep-linking onto the instance row — the
       // pk is the type's primary-key value, not the (repeatable) title
-      const pk = t.primaryKey ? row[t.primaryKey] : null
+      const pk = t.primaryKey && !maskedColumns.includes(t.primaryKey) ? row[t.primaryKey] : null
       const href =
         pk !== null && pk !== undefined
           ? `/objects/${t.apiName}?pk=${encodeURIComponent(String(pk))}`
@@ -174,7 +179,7 @@ export async function GET(req: NextRequest) {
     ]
 
     // Object instances fill whatever budget the metadata results left.
-    const instances = await searchObjectInstances(needle, MAX_RESULTS - results.length)
+    const instances = await searchObjectInstances(needle, MAX_RESULTS - results.length, getRole(req))
     results.push(...instances)
 
     results.push(

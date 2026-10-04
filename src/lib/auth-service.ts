@@ -12,6 +12,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import type { User } from '@prisma/client'
+import { isDemoMode } from '@/lib/runtime-mode'
 
 // ─── Constants ───────────────────────────────────────────────────────
 
@@ -24,16 +25,17 @@ export const LEGACY_ROLE_COOKIE = 'foundry-role'
 /** 7 days, in seconds. */
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 
-const AUTH_SECRET = process.env.AUTH_SECRET ?? '<redacted>'
+const AUTH_SECRET = process.env.AUTH_SECRET || (isDemoMode() ? '<redacted>' : '')
 
-// Phase 0: the dev fallback is fine for the local sandbox, but it must be
-// UNMISTAKABLE in a shared deployment — sessions there would be forgeable by
-// anyone who read the source. Warn once at module load.
+if (!AUTH_SECRET) {
+  throw new Error('AUTH_SECRET must be configured before MiniFoundry can run in shared mode')
+}
+
+// The fallback exists only for a local demo. Shared mode refuses startup when
+// the secret is absent, since the published fallback is forgeable.
 if (!process.env.AUTH_SECRET) {
   console.warn(
-    '[minifoundry] AUTH_SECRET is not set — using the development fallback secret. ' +
-      'Set MF_DEMO_MODE=false AND AUTH_SECRET (and MF_SERVICE_TOKEN for the scheduler) ' +
-      'in any deployment shared with other people.',
+    '[minifoundry] AUTH_SECRET is not set — using the development fallback in demo mode only.',
   )
 }
 

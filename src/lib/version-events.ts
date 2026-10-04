@@ -29,11 +29,6 @@ export interface VersionCreatedEvent {
  * new version. Call AFTER the version is visible in the DB.
  */
 export async function emitVersionCreated(event: VersionCreatedEvent): Promise<void> {
-  try {
-    await handleVersionCreated(event)
-  } catch (error) {
-    console.error('[version-events] trigger-engine handler failed:', error)
-  }
   // P2: automatic quality evaluation for every new version (trigger label
   // 'post_run' when a pipeline produced it, 'auto' otherwise).
   try {
@@ -41,6 +36,16 @@ export async function emitVersionCreated(event: VersionCreatedEvent): Promise<vo
     await evaluateRules(event.datasetId, event.versionNumber, fromPipeline ? 'post_run' : 'auto')
   } catch (error) {
     console.error('[version-events] quality auto-evaluation failed:', error)
+  }
+  // Gated versions remain drafts until explicit publication. Triggering a
+  // downstream pipeline here would let it observe an unapproved version.
+  const dataset = await db.dataset.findUnique({ where: { id: event.datasetId }, select: { qualityGate: true } })
+  if (!dataset?.qualityGate) {
+    try {
+      await handleVersionCreated(event)
+    } catch (error) {
+      console.error('[version-events] trigger-engine handler failed:', error)
+    }
   }
   // P4: notify dataset watchers about the new version (Phase 4 collaboration).
   try {

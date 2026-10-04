@@ -31,9 +31,10 @@ export function normalizeValue(v: unknown): unknown {
     if (t === '') return ''
     if (t === 'true') return true
     if (t === 'false') return false
-    if (NUMERIC_RE.test(t)) {
+    // Keep identifier-like values such as ZIP codes and large integers exact.
+    if (NUMERIC_RE.test(t) && !/^-?0\d/.test(t)) {
       const n = Number(t)
-      if (Number.isFinite(n)) return n
+      if (Number.isFinite(n) && (!Number.isInteger(n) || Number.isSafeInteger(n))) return n
     }
     return t
   }
@@ -103,11 +104,14 @@ export interface CreateDatasetResult {
  * Create (or append a new version to) a dataset from raw rows.
  * - If no dataset with the exact name exists: create one (with tags) + version 1.
  * - If one exists: append the next version (max versionNumber + 1) and touch updatedAt.
- * Rows are capped at MAX_ROWS and normalized before storage.
+ * Oversized versions fail explicitly rather than silently discarding rows.
  */
 export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise<CreateDatasetResult> {
-  const truncated = opts.rows.length > MAX_ROWS
-  const normalized = normalizeRows(opts.rows.slice(0, MAX_ROWS))
+  if (opts.rows.length > MAX_ROWS) {
+    throw new Error(`Dataset version has ${opts.rows.length} rows; the current storage limit is ${MAX_ROWS}. No rows were written.`)
+  }
+  const truncated = false
+  const normalized = normalizeRows(opts.rows)
   const schema = inferSchema(normalized)
   const dataJson = JSON.stringify(normalized)
 
@@ -195,13 +199,12 @@ export async function resolveConsumerVersion(datasetId: string): Promise<{
   })
   if (!dataset) return null
   const head = await db.datasetVersion.findFirst({
-    where: { datasetId },
+    where: { datasetId, branch: 'main' },
     orderBy: { versionNumber: 'desc' },
     select: { versionNumber: true },
   })
   if (!head) return { versionNumber: null, gated: dataset.qualityGate, publishedVersion: dataset.publishedVersion }
-  const versionNumber =
-    dataset.qualityGate && dataset.publishedVersion != null ? dataset.publishedVersion : head.versionNumber
+  const versionNumber = dataset.qualityGate ? dataset.publishedVersion : head.versionNumber
   return { versionNumber, gated: dataset.qualityGate, publishedVersion: dataset.publishedVersion }
 }
 
@@ -213,7 +216,7 @@ export async function getDatasetVersion(datasetId: string, versionNumber?: numbe
     })
   }
   return db.datasetVersion.findFirst({
-    where: { datasetId },
+    where: { datasetId, branch: 'main' },
     orderBy: { versionNumber: 'desc' },
   })
 }
@@ -243,6 +246,17 @@ export async function pruneDatasetVersions(datasetId: string, keepLastN: number)
     select: { headVersion: true, baseVersion: true },
   })
   const protectedNums = new Set<number>()
+  const consumer = await db.dataset.findUnique({
+    where: { id: datasetId }, select: { publishedVersion: true },
+  })
+  if (consumer?.publishedVersion != null) protectedNums.add(consumer.publishedVersion)
+  const approvals = await db.approvalRequest.findMany({
+    where: { kind: 'publish_dataset', targetId: datasetId, status: 'pending' },
+    select: { versionNumber: true },
+  })
+  for (const approval of approvals) {
+    if (approval.versionNumber != null) protectedNums.add(approval.versionNumber)
+  }
   for (const b of branchRefs) {
     protectedNums.add(b.headVersion)
     protectedNums.add(b.baseVersion)

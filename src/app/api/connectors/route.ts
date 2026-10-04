@@ -9,7 +9,7 @@ import {
   serverError,
   zodErrorMessage,
 } from '@/lib/api-utils'
-import { requireRole } from '@/lib/governance'
+import { audit, requireRole } from '@/lib/governance'
 import type { NextRequest } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -66,6 +66,10 @@ export async function POST(req: NextRequest) {
         type: parsed.data.type,
         config: JSON.stringify(parsed.data.config ?? {}),
       },
+    })
+    audit({
+      req, action: 'connector.create', resourceType: 'connector',
+      resourceId: connector.id, resourceName: connector.name,
     })
     return jsonOk({ connector: serializeConnector(connector) }, 201)
   } catch (err) {

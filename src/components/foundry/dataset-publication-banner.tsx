@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GatedButton } from '@/components/foundry/governance/gated-button'
 import { apiSend, toastApiError } from '@/lib/foundry-api'
-import type { DatasetDetailResponse, EvaluateQualityResponse, PublishResponse } from '@/lib/foundry-types'
+import type { DatasetDetailResponse, EvaluateQualityResponse } from '@/lib/foundry-types'
 import { cn } from '@/lib/utils'
 
 const QUALITY_CHIP: Record<string, { label: string; className: string }> = {
@@ -38,8 +38,8 @@ export default function DatasetPublicationBanner({
   const queryClient = useQueryClient()
   const [blockedReasons, setBlockedReasons] = useState<string[] | null>(null)
 
-  const head = detail.versions[0]
-  const drafts = detail.versions.filter((v) => v.lifecycle === 'draft')
+  const head = detail.versions.find((v) => v.branch === 'main')
+  const drafts = detail.versions.filter((v) => v.branch === 'main' && v.lifecycle === 'draft')
   const latestDraft = drafts[0] // versions are ordered desc
   const publishedVersion = detail.dataset.publishedVersion ?? null
 
@@ -51,10 +51,10 @@ export default function DatasetPublicationBanner({
 
   const publishMutation = useMutation({
     mutationFn: () =>
-      apiSend<PublishResponse>(`/api/datasets/${datasetId}/publish`, 'POST', {}),
-    onSuccess: (res) => {
+      apiSend(`/api/approvals`, 'POST', { kind: 'publish_dataset', targetId: datasetId }),
+    onSuccess: () => {
       setBlockedReasons(null)
-      toast.success(`Published v${res.versionNumber} — consumers now read v${res.publishedVersion}`)
+      toast.success(`Approval requested for v${latestDraft.versionNumber}`)
       invalidateAll()
     },
     onError: (err) => {
@@ -66,7 +66,7 @@ export default function DatasetPublicationBanner({
       } else {
         setBlockedReasons(null)
       }
-      toastApiError(err, 'Publication blocked')
+      toastApiError(err, 'Could not request publication')
     },
   })
 
@@ -86,7 +86,7 @@ export default function DatasetPublicationBanner({
   })
 
   const chip = QUALITY_CHIP[latestDraft?.qualityState ?? 'not_evaluated'] ?? QUALITY_CHIP.not_evaluated
-  const blocked = latestDraft?.qualityState === 'failed'
+  const blocked = latestDraft?.qualityState !== 'passed' && latestDraft?.qualityState !== 'warned'
   const consumersLag = publishedVersion != null && head != null && publishedVersion < head.versionNumber
 
   // Hooks are done — the banner only renders for gated datasets with drafts.
@@ -169,7 +169,7 @@ export default function DatasetPublicationBanner({
             size="sm"
             className="h-8 text-xs"
             disabled={publishMutation.isPending || blocked}
-            title={blocked ? 'Publication blocked by failing error rules' : undefined}
+            title={blocked ? 'Complete a passing quality evaluation first' : undefined}
             onClick={() => publishMutation.mutate()}
           >
             {publishMutation.isPending ? (
@@ -177,7 +177,7 @@ export default function DatasetPublicationBanner({
             ) : (
               <UploadCloud className="h-3.5 w-3.5" aria-hidden />
             )}
-            Publish v{latestDraft.versionNumber}
+            Request approval for v{latestDraft.versionNumber}
           </GatedButton>
         </div>
       </div>

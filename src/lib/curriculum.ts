@@ -214,98 +214,36 @@ interface Evidence {
   evidence: string | null
 }
 
-/** Compute live, evidence-backed completion for every auto-verified step. */
-async function detectAutoSteps(): Promise<Record<string, Evidence>> {
-  const [
-    connectors,
-    ingestions,
-    datasets,
-    datasetVersions,
-    transforms,
-    transformRuns,
-    pipelineVersions,
-    pipelineCount,
-    pipelineRuns,
-    schedules,
-    objectTypes,
-    actionLogs,
-    dashboards,
-    columnMarkings,
-    publishAudits,
-    gatedPublished,
-    replays,
-    versionEdges,
-    apiTokens,
-  ] = await Promise.all([
-    db.connector.count(),
-    db.ingestion.count({ where: { status: 'success' } }),
-    db.dataset.count(),
-    db.datasetVersion.count(),
-    db.transform.count(),
-    db.transformRun.count({ where: { status: 'success' } }),
-    db.pipelineVersion.count(),
-    db.pipeline.count(),
-    db.pipelineRun.count({ where: { status: 'success' } }),
-    db.schedule.count(),
-    db.objectType.count(),
-    db.actionLog.count({ where: { result: 'success' } }),
-    db.dashboard.count({ where: { layoutJson: { not: '[]' } } }),
-    db.columnMarking.count(),
-    db.auditEntry.count({ where: { action: 'dataset.publish' } }),
-    db.dataset.count({ where: { qualityGate: true, publishedVersion: { not: null } } }),
-    db.pipelineRun.count({ where: { trigger: 'replay' } }),
-    db.versionLineageEdge.count(),
-    db.apiToken.count({ where: { revokedAt: null } }),
-  ])
-
-  const ev = (done: boolean, evidence: string | null): Evidence => ({ done, evidence })
-
+/** Attribute progress to actions performed by this learner after enrollment. */
+async function detectAutoSteps(actorKey: string, since: Date): Promise<Record<string, Evidence>> {
+  const entries = await db.auditEntry.findMany({
+    where: { actorEmail: actorKey, createdAt: { gte: since } },
+    select: { action: true, detail: true, resourceName: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  const evidence = (actions: string[], predicate?: (detail: string | null) => boolean): Evidence => {
+    const entry = entries.find((item) => actions.includes(item.action) && (!predicate || predicate(item.detail)))
+    return { done: Boolean(entry), evidence: entry ? `${entry.action}${entry.resourceName ? `: ${entry.resourceName}` : ''}` : null }
+  }
   return {
-    connectors: ev(connectors > 0, `${connectors} connector${connectors === 1 ? '' : 's'} registered`),
-    ingest: ev(ingestions > 0, `${ingestions} successful ingestion${ingestions === 1 ? '' : 's'}`),
-    datasets: ev(
-      datasets > 0 && datasetVersions > 0,
-      `${datasets} dataset${datasets === 1 ? '' : 's'} · ${datasetVersions} versions total`,
-    ),
-    'transform-write': ev(transforms > 0, `${transforms} workbook${transforms === 1 ? '' : 's'} saved`),
-    'transform-run': ev(
-      transformRuns > 0,
-      `${transformRuns} successful transform run${transformRuns === 1 ? '' : 's'}`,
-    ),
-    'pipeline-build': ev(
-      pipelineVersions > 0,
-      `${pipelineVersions} saved graph version${pipelineVersions === 1 ? '' : 's'} across ${pipelineCount} pipeline${pipelineCount === 1 ? '' : 's'}`,
-    ),
-    'pipeline-run': ev(
-      pipelineRuns > 0,
-      `${pipelineRuns} successful pipeline run${pipelineRuns === 1 ? '' : 's'}`,
-    ),
-    schedule: ev(schedules > 0, `${schedules} schedule${schedules === 1 ? '' : 's'} configured`),
-    ontology: ev(objectTypes > 0, `${objectTypes} object type${objectTypes === 1 ? '' : 's'} registered`),
-    'action-run': ev(
-      actionLogs > 0,
-      `${actionLogs} successful action${actionLogs === 1 ? '' : 's'}`,
-    ),
-    dashboard: ev(dashboards > 0, `${dashboards} dashboard${dashboards === 1 ? '' : 's'} with widgets`),
-    'column-marking': ev(
-      columnMarkings > 0,
-      `${columnMarkings} column marking${columnMarkings === 1 ? '' : 's'} active`,
-    ),
-    'quality-gate': ev(
-      publishAudits > 0 || gatedPublished > 0,
-      gatedPublished > 0
-        ? `${gatedPublished} gated dataset${gatedPublished === 1 ? '' : 's'} with a published pointer`
-        : `${publishAudits} gated publication${publishAudits === 1 ? '' : 's'} in the audit trail`,
-    ),
-    'run-replay': ev(replays > 0, `${replays} replay run${replays === 1 ? '' : 's'}`),
-    'version-lineage': ev(
-      versionEdges > 0,
-      `${versionEdges} version-level lineage edge${versionEdges === 1 ? '' : 's'} recorded`,
-    ),
-    'api-token': ev(apiTokens > 0, `${apiTokens} active token${apiTokens === 1 ? '' : 's'}`),
+    connectors: evidence(['connector.create']),
+    ingest: evidence(['ingest.complete']),
+    datasets: evidence(['dataset.view']),
+    'transform-write': evidence(['transform.create']),
+    'transform-run': evidence(['transform.run'], (detail) => detail?.includes('status=success') ?? false),
+    'pipeline-build': evidence(['pipeline.create', 'pipeline.update']),
+    'pipeline-run': evidence(['pipeline.run'], (detail) => detail?.includes('status=success') ?? false),
+    schedule: evidence(['schedule.create']),
+    ontology: evidence(['ontology.create']),
+    'action-run': evidence(['action.apply'], (detail) => !detail?.startsWith('FAILED')),
+    dashboard: evidence(['dashboard.create', 'dashboard.update']),
+    'column-marking': evidence(['marking.attach']),
+    'quality-gate': evidence(['dataset.publish']),
+    'run-replay': evidence(['pipeline.run'], (detail) => detail?.startsWith('replay of run') ?? false),
+    'version-lineage': evidence(['lineage.version.view']),
+    'api-token': evidence(['apiToken.create']),
   }
 }
-
 export interface CurriculumStepStatus extends CurriculumStep {
   done: boolean
   /** How it was verified: 'auto' evidence string, 'manual' check-off, or null when incomplete. */
@@ -328,8 +266,13 @@ export interface CurriculumStatus {
  * state, manual steps merged from the actor's persisted check-offs.
  */
 export async function getCurriculumStatus(actorKey: string): Promise<CurriculumStatus> {
+  const enrollment = await db.curriculumProgress.upsert({
+    where: { actorKey_stepId: { actorKey, stepId: '__started__' } },
+    create: { actorKey, stepId: '__started__', source: 'system' },
+    update: {},
+  })
   const [auto, manualRows] = await Promise.all([
-    detectAutoSteps().catch(() => ({}) as Record<string, Evidence>),
+    detectAutoSteps(actorKey, enrollment.completedAt).catch(() => ({}) as Record<string, Evidence>),
     db.curriculumProgress.findMany({ where: { actorKey } }),
   ])
   const manual = new Map(manualRows.map((r) => [r.stepId, r]))

@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
           take: pageSize,
           include: {
             versions: {
+              where: { branch: 'main', lifecycle: 'published' },
               orderBy: { versionNumber: 'desc' },
               take: 1,
               select: { versionNumber: true, rowCount: true, createdAt: true },

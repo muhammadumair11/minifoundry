@@ -62,13 +62,13 @@ async function triggerSchedule(schedule: DueSchedule): Promise<void> {
       body: JSON.stringify({ scheduleId: schedule.id }),
     })
     const body = (await res.json().catch(() => null)) as
-      | { run?: { id?: string; status?: string } }
+      | { job?: { id?: string; status?: string } }
       | null
-    const runStatus = body?.run?.status ?? 'unknown'
-    const runId = body?.run?.id ?? 'n/a'
+    const jobStatus = body?.job?.status ?? 'unknown'
+    const jobId = body?.job?.id ?? 'n/a'
     if (res.ok) {
       dueProcessed += 1
-      console.log(`[${ts()}] triggered ${label} -> HTTP ${res.status}, run ${runId} status: ${runStatus}`)
+      console.log(`[${ts()}] queued ${label} -> HTTP ${res.status}, job ${jobId} status: ${jobStatus}`)
     } else {
       console.log(`[${ts()}] trigger ${label} FAILED -> HTTP ${res.status}`)
     }

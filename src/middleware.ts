@@ -24,6 +24,7 @@ const ALLOWED_PREFIXES = [
   '/api/auth', // login/logout — how a caller becomes authenticated
   '/api/session', // role simulator + whoami (demo affordance)
   '/api/health', // liveness probe (aggregate platform health, no domain rows)
+  '/api/foundry/v1', // every v1 route validates its own bearer API token
 ]
 
 export function middleware(req: NextRequest) {
@@ -31,7 +32,7 @@ export function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl
   if (!pathname.startsWith('/api/')) return NextResponse.next()
-  if (ALLOWED_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next()
+  if (ALLOWED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next()
 
   const hasSession = Boolean(getSession(req))
   const hasServiceToken = isServiceAuthorized(req)

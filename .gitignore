@@ -50,5 +50,8 @@ test
 prompt
 
 server.log
+db/test-publication-*.db
+db/test-jobs-*.db
+db/*.backup-*
 # Skills directory
 /skills/

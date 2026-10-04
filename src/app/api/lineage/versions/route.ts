@@ -6,6 +6,7 @@
 import type { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { badRequest, jsonOk, serverError } from '@/lib/api-utils'
+import { audit } from '@/lib/governance'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
       }),
     ])
     if (!dataset) return badRequest(`Dataset '${datasetId}' not found`)
+    audit({ req, action: 'lineage.version.view', resourceType: 'dataset', resourceId: datasetId, resourceName: dataset.name, detail: `v${versionNumber}` })
 
     // Join display info for every referenced dataset / pipeline / run.
     const datasetIds = [
@@ -58,7 +60,9 @@ export async function GET(req: NextRequest) {
         [...upstream, ...downstream].flatMap((e) => [e.runId]).filter((v): v is string => v != null),
       ),
     ]
-    const [datasets, pipelines, runs] = await Promise.all([
+    const transformRunIds = [...new Set([...upstream, ...downstream]
+      .map((e) => e.transformRunId).filter((v): v is string => v != null))]
+    const [datasets, pipelines, runs, transformRuns] = await Promise.all([
       db.dataset.findMany({
         where: { id: { in: datasetIds } },
         select: { id: true, name: true },
@@ -72,10 +76,18 @@ export async function GET(req: NextRequest) {
             select: { id: true, trigger: true, status: true, startedAt: true },
           })
         : Promise.resolve([] as { id: string; trigger: string; status: string; startedAt: Date }[]),
+      transformRunIds.length > 0
+        ? db.transformRun.findMany({
+            where: { id: { in: transformRunIds } },
+            select: { id: true, status: true, startedAt: true, replayOfRunId: true,
+              transform: { select: { name: true } } },
+          })
+        : Promise.resolve([] as { id: string; status: string; startedAt: Date; replayOfRunId: string | null; transform: { name: string } }[]),
     ])
     const names = new Map(datasets.map((d) => [d.id, d.name]))
     const pipelineNames = new Map(pipelines.map((p) => [p.id, p.name]))
     const runsById = new Map(runs.map((r) => [r.id, r]))
+    const transformRunsById = new Map(transformRuns.map((r) => [r.id, r]))
 
     const shape = (e: (typeof upstream)[number], direction: 'up' | 'down') => ({
       fromDatasetId: e.fromDatasetId,
@@ -85,11 +97,19 @@ export async function GET(req: NextRequest) {
       toDatasetName: names.get(e.toDatasetId) ?? '(unknown)',
       toVersionNumber: e.toVersionNumber,
       runId: e.runId,
-      runTrigger: e.runId ? (runsById.get(e.runId)?.trigger ?? null) : null,
-      runStatus: e.runId ? (runsById.get(e.runId)?.status ?? null) : null,
-      startedAt: e.runId ? (runsById.get(e.runId)?.startedAt ?? null) : null,
+      runTrigger: e.transformRunId
+        ? (transformRunsById.get(e.transformRunId)?.replayOfRunId ? 'replay' : 'transform')
+        : e.runId ? (runsById.get(e.runId)?.trigger ?? null) : null,
+      runStatus: e.transformRunId
+        ? (transformRunsById.get(e.transformRunId)?.status ?? null)
+        : e.runId ? (runsById.get(e.runId)?.status ?? null) : null,
+      startedAt: e.transformRunId
+        ? (transformRunsById.get(e.transformRunId)?.startedAt ?? null)
+        : e.runId ? (runsById.get(e.runId)?.startedAt ?? null) : null,
       pipelineId: e.pipelineId,
       pipelineName: e.pipelineId ? (pipelineNames.get(e.pipelineId) ?? null) : null,
+      transformRunId: e.transformRunId,
+      transformName: e.transformRunId ? (transformRunsById.get(e.transformRunId)?.transform.name ?? null) : null,
       direction,
     })
 

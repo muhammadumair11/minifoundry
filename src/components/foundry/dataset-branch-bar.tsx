@@ -31,6 +31,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -68,6 +69,8 @@ export default function DatasetBranchBar({
   const [newDescription, setNewDescription] = useState('')
   const [mergeTarget, setMergeTarget] = useState<DatasetBranchInfo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DatasetBranchInfo | null>(null)
+  const [commitTarget, setCommitTarget] = useState<DatasetBranchInfo | null>(null)
+  const [rowsJson, setRowsJson] = useState('[\n  {}\n]')
 
   const branchesQuery = useQuery<DatasetBranchesResponse>({
     queryKey: ['dataset-branches', datasetId],
@@ -124,6 +127,28 @@ export default function DatasetBranchBar({
       if (deleted && branch === deleted.name) onBranchChange('main')
     },
     onError: (err) => toastApiError(err, 'Could not delete branch'),
+  })
+
+  const commitMutation = useMutation({
+    mutationFn: async () => {
+      if (!commitTarget) throw new Error('Choose a branch')
+      const rows: unknown = JSON.parse(rowsJson)
+      if (!Array.isArray(rows) || rows.some((row) => row === null || typeof row !== 'object' || Array.isArray(row))) {
+        throw new Error('Enter a JSON array of row objects')
+      }
+      return apiSend<{ versionNumber: number }>(
+        `/api/datasets/${datasetId}/branches/${commitTarget.id}/commit`,
+        'POST', { expectedHeadVersion: commitTarget.headVersion, rows },
+      )
+    },
+    onSuccess: (res) => {
+      toast.success(`Committed branch version v${res.versionNumber}`)
+      const name = commitTarget?.name
+      setCommitTarget(null)
+      invalidate()
+      if (name) onBranchChange(name)
+    },
+    onError: (err) => toastApiError(err, 'Branch commit failed'),
   })
 
   const branches = branchesQuery.data?.branches ?? []
@@ -273,8 +298,18 @@ export default function DatasetBranchBar({
                           reason="requires editor role"
                           variant="outline"
                           size="sm"
+                          className="h-6 px-1.5 text-[10px]"
+                          onClick={() => { setManageOpen(false); setCommitTarget(b); setRowsJson('[\n  {}\n]') }}
+                        >
+                          Commit rows
+                        </GatedButton>
+                        <GatedButton
+                          allowed={canEdit}
+                          reason="requires editor role"
+                          variant="outline"
+                          size="sm"
                           className="h-6 gap-1 px-1.5 text-[10px]"
-                          disabled={mergeMutation.isPending}
+                          disabled={mergeMutation.isPending || mergedNoNewCommits}
                           onClick={() => setMergeTarget(b)}
                         >
                           <GitMerge className="h-3 w-3" aria-hidden />
@@ -300,6 +335,29 @@ export default function DatasetBranchBar({
               })}
             </ul>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={commitTarget !== null} onOpenChange={(open) => !open && setCommitTarget(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Commit to {commitTarget?.name}</DialogTitle>
+            <DialogDescription className="text-xs">
+              Enter the complete replacement rows as a JSON array. This creates an isolated branch version; merge when ready.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            aria-label="Branch rows JSON"
+            value={rowsJson}
+            onChange={(event) => setRowsJson(event.target.value)}
+            className="min-h-52 font-mono text-xs"
+          />
+          <DialogFooter>
+            <Button size="sm" disabled={commitMutation.isPending} onClick={() => commitMutation.mutate()}>
+              {commitMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+              Commit version
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

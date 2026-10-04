@@ -10,6 +10,8 @@ import { emitVersionCreated } from '@/lib/version-events'
 import type { PipelineRun } from '@prisma/client'
 import type { LogEntry } from '@/lib/api-utils'
 import { parseJsonSafe } from '@/lib/api-utils'
+import { isDemoMode } from '@/lib/runtime-mode'
+import { applyMasking } from '@/lib/governance'
 
 // ─── Graph types ─────────────────────────────────────────────────────
 
@@ -667,6 +669,11 @@ async function execSource(node: GraphNode, ctx: ExecContext): Promise<Row[]> {
   if (override == null) {
     consumer = await resolveConsumerVersion(datasetId)
   }
+  if (override == null && consumer?.versionNumber == null) {
+    ctx.capture.inputs.push({ datasetId, datasetName: dataset.name, versionNumber: null, rowCount: 0 })
+    ctx.log('warn', `source (${node.id}): dataset '${dataset.name}' has no published version — 0 rows loaded`)
+    return []
+  }
   const version = await db.datasetVersion.findFirst({
     where: {
       datasetId,
@@ -688,7 +695,11 @@ async function execSource(node: GraphNode, ctx: ExecContext): Promise<Row[]> {
     ctx.log('warn', `source (${node.id}): dataset '${dataset.name}' has no versions — 0 rows loaded`)
     return []
   }
-  const rows = parseJsonSafe<Row[]>(version.dataJson, [])
+  if (!isDemoMode() && version.lifecycle !== 'published') {
+    throw new PipelineError(`Source dataset '${dataset.name}' v${version.versionNumber} is unpublished`)
+  }
+  const rawRows = parseJsonSafe<Row[]>(version.dataJson, [])
+  const rows = isDemoMode() ? rawRows : (await applyMasking(datasetId, rawRows, 'viewer')).rows
   ctx.capture.inputs.push({
     datasetId,
     datasetName: dataset.name,
@@ -743,6 +754,7 @@ function matchFilter(cell: unknown, operator: string, value: unknown): boolean {
 }
 
 function execDerive(node: GraphNode, rows: Row[], ctx: ExecContext): Row[] {
+  if (!isDemoMode()) throw new PipelineError('Free-form derive expressions require an isolated runner and are disabled in shared mode')
   const newColumn = requireString(node, 'newColumn')
   const expression = requireString(node, 'expression')
 

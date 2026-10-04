@@ -598,6 +598,20 @@ function WorkbookEditor({
     onError: (err) => toastApiError(err, 'Run request failed'),
   })
 
+  const replayMutation = useMutation({
+    mutationFn: (runId: string) => apiSend<{ run: TransformRunSummary }>(
+      `/api/transforms/${transform.id}/runs/${runId}/replay`, 'POST',
+    ),
+    onSuccess: (res) => {
+      toast[res.run.status === 'success' ? 'success' : 'error'](
+        `Replay ${res.run.status}`,
+        { description: `Run ${res.run.id.slice(0, 8)} used recorded code and input versions.` },
+      )
+      invalidateAfterChange(transform.id)
+    },
+    onError: (err) => toastApiError(err, 'Replay failed'),
+  })
+
   const saveMutation = useMutation({
     mutationFn: () =>
       apiSend<TransformDetailResponse>(`/api/transforms/${transform.id}`, 'PATCH', {
@@ -1023,6 +1037,19 @@ function WorkbookEditor({
                         <span className="rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground">
                           v{r.outputVersionNumber}
                         </span>
+                      )}
+                      {r.hasManifest && (
+                        <GatedButton
+                          allowed={canEdit}
+                          reason="requires editor role"
+                          variant="outline"
+                          size="sm"
+                          className="ml-auto h-6 px-2 text-[10px]"
+                          disabled={replayMutation.isPending}
+                          onClick={() => replayMutation.mutate(r.id)}
+                        >
+                          Replay
+                        </GatedButton>
                       )}
                       {r.error && (
                         <span
