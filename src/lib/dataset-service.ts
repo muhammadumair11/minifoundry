@@ -14,8 +14,10 @@ export interface SchemaColumn {
   type: ColumnType
 }
 
-/** Raw data is capped at this many rows per dataset version. */
-export const MAX_ROWS = 5000
+/** Default row cap for learning-scale datasets. Benchmarks and scaled deployments can override. */
+export const DEFAULT_MAX_ROWS = 5000
+/** Configurable limit — set via MAX_ROWS env or pass to createDatasetFromRows. */
+export const MAX_ROWS = Number(process.env.MAX_ROWS) || DEFAULT_MAX_ROWS
 
 // Plain decimal number: "42", "-3.14", "0.5" (no scientific notation, no leading '+')
 const NUMERIC_RE = /^-?(?:\d+\.?\d*|\.\d+)$/
