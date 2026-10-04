@@ -53,5 +53,6 @@ server.log
 db/test-publication-*.db
 db/test-jobs-*.db
 db/*.backup-*
+db/custom.db
 # Skills directory
 /skills/
