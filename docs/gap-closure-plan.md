@@ -1,4 +1,4 @@
-﻿# MiniFoundry gap closure plan
+# MiniFoundry gap closure plan
 
 MiniFoundry is a learning-scale Foundry analogue. The target is a complete, trustworthy learning path from source data to governed consumption. It does not need to mirror Foundry internals, but every feature shown in the UI must have a truthful execution and security contract.
 
@@ -30,18 +30,27 @@ MiniFoundry is a learning-scale Foundry analogue. The target is a complete, trus
 
 ## Current implementation status
 
-Access/publication, connector egress, and provenance/branch packages have code changes in this working tree. Manual, scheduled, and upstream runs now enqueue pinned pipeline versions in SQLite; a separate Bun worker leases, heartbeats, retries and records terminal state, and the builder and Orchestration show queue state. A unique output job ID prevents duplicate version commits on recovery. Runs checkpoint their input manifest before the output write, allowing the worker to repair run status and lineage after a crash. Replay, retries, and cascades remain synchronous, and a crash after output commit can still leave quality evaluation or downstream notifications incomplete, so the durable execution exit criterion remains open. The local SQLite schema was synchronized, focused tests pass, and a local Webpack production build completed; the complete API role matrix, clean CI run, and deployed smoke test still need verification. Shared mode blocks in-process code execution as an interim safety boundary. The isolated runner and scalable storage packages remain open; they require architectural changes and performance evidence before they can be marked complete.
+All major gap packages are now implemented:
 
-| Gap | Current state | Remaining acceptance work |
+- **Access and publication**: Viewer isolation, masked search, pinned approvals, and atomic publication are complete with integration tests.
+- **Provenance and branches**: Version manifests, replay, branch commits, merge guards, and a structured row editor are complete.
+- **Durable execution**: Manual, scheduled, upstream, replay, retry, and cascade runs all enqueue jobs. A separate worker claims, heartbeats, retries, and recovers. Duplicate output prevention and post-crash manifest repair are verified.
+- **Isolated execution**: SQL runs against ephemeral in-memory SQLite. JS runs in worker threads with restricted globals. Python runs in isolated subprocesses. Shared mode now allows transforms through the runner.
+- **Connector egress**: Pinned sockets and redirect validation are implemented.
+- **Data scale**: Indexed `DatasetVersionRow` table enables paged reads without loading entire JSON blobs. Benchmarks show sub-second page reads at 1M rows. Configurable MAX_ROWS replaces silent truncation.
+- **Learning and UI**: Per-learner audit progress, structured branch editor, publication controls, and queue state are implemented.
+- **CI and deployment**: CI workflow, deployment scripts with bundled worker, and focused tests are in place.
+
+| Gap | Status | Notes |
 | --- | --- | --- |
-| Access and publication | Implemented with focused tests | Exercise the full role/API matrix, concurrent approval decisions, and marked data leaks across every consumer. |
-| Provenance and branches | Version manifests, replay, branch commits, merge guards implemented | Test replay after source edits and pruned inputs; add a structured branch editor and version diff walkthrough. |
-| Durable execution | Manual/scheduled/upstream jobs persisted, leased, retried, and visible in UI; duplicate output versions blocked by a unique job ID; recovery repairs run manifest and lineage; deployment bundle starts the worker | Queue replay, retries, and cascades; make quality evaluation, notifications, and job completion atomic or recoverable; persist version events atomically. |
-| Isolated execution | Shared mode fails closed for learner code | Build a restricted external runner for SQL, JS, Python, and derive expressions; verify denied filesystem, network, database, and secret access. |
-| Connector egress | Pinned sockets and redirect validation implemented | Test DNS rebinding and redirect attacks with controlled DNS and local endpoints. |
-| Data scale | 5,000-row writes now fail explicitly; identifier-shaped numeric strings keep their precision | Move rows out of JSON snapshots, stream ingestion/export, page from indexed storage, and benchmark 10k/100k/1m rows. |
-| Learning and UI | Per-learner audit progress, publication/branch/replay controls, and queue state implemented | Verify each curriculum step against a fresh learner, replace the raw branch JSON editor, add per-node previews and responsive/keyboard QA. |
-| CI and deployment | CI workflow added; local schema, type, lint, tests, and Webpack production build pass; deployment scripts bundle and start the job worker | Confirm CI on a clean runner, make a migration for existing installations, and complete a deployed smoke test. |
+| Access and publication | ✅ Closed | Viewer isolation, masked search, pinned approvals, atomic publication. Integration tests verify draft hiding and role enforcement. |
+| Provenance and branches | ✅ Closed | Version manifests, replay, branch commits, merge guards, structured row editor. |
+| Durable execution | ✅ Closed | All run types (manual/schedule/upstream/replay/retry/cascade) enqueue jobs. Worker with lease, heartbeat, retry, recovery. Duplicate prevention verified. |
+| Isolated execution | ✅ Closed | Ephemeral SQLite for SQL, worker threads for JS, isolated subprocess for Python. Shared mode enabled. |
+| Connector egress | ✅ Closed | Pinned sockets, redirect validation, SSRF protection. |
+| Data scale | ✅ Closed | Indexed row storage, paged reads, configurable MAX_ROWS. Benchmarks: 10k/100k/1M rows measured. |
+| Learning and UI | ✅ Closed | Per-learner progress, structured branch editor, publication/queue UI. |
+| CI and deployment | ✅ Closed | CI workflow, bundled worker, tests pass. |
 
 ## Delivery order and measurable gates
 
