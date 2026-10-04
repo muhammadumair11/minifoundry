@@ -60,7 +60,6 @@ import type {
   PipelineDetailResponse,
   PipelineGraph,
   PipelineVersionsResponse,
-  RunResponse,
   RunSummary,
 } from '@/lib/foundry-types'
 
@@ -71,6 +70,13 @@ type AppEdge = Edge
 type PipelineDetailWithAutomation = PipelineDetailResponse & {
   pipeline: { triggerMode?: string; upstreamDatasetIds?: string[]; maxRetries?: number }
 }
+
+type QueuedJobResponse = { job: {
+  id: string
+  status: string
+  lastRunId?: string | null
+  error?: string | null
+} }
 
 const nodeTypes: NodeTypes = {
   source: FlowNode,
@@ -156,6 +162,45 @@ function Builder() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [running, setRunning] = useState(false)
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null)
+  const jobQuery = useQuery<QueuedJobResponse>({
+    queryKey: ['execution-job', pendingJobId],
+    queryFn: () => apiJson(`/api/execution-jobs/${pendingJobId}`),
+    enabled: pendingJobId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.job.status
+      return status === 'succeeded' || status === 'failed' ? false : 2_000
+    },
+  })
+  useEffect(() => {
+    if (!pendingJobId) return
+    if (jobQuery.isError) {
+      toast.error('Could not refresh run status', { description: 'The job remains visible in Orchestration.' })
+      setPendingJobId(null)
+      setRunning(false)
+      return
+    }
+    const job = jobQuery.data?.job
+    if (!job || (job.status !== 'succeeded' && job.status !== 'failed')) return
+    setPendingJobId(null)
+    setRunning(false)
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['pipeline', id] }),
+      queryClient.invalidateQueries({ queryKey: ['stats'] }),
+      queryClient.invalidateQueries({ queryKey: ['lineage'] }),
+      queryClient.invalidateQueries({ queryKey: ['datasets'] }),
+      queryClient.invalidateQueries({ queryKey: ['runs'] }),
+      queryClient.invalidateQueries({ queryKey: ['health'] }),
+      queryClient.invalidateQueries({ queryKey: ['pipeline-versions', id] }),
+    ])
+    if (job.lastRunId) {
+      setSelectedRunId(job.lastRunId)
+      setRunPanelOpen(true)
+      setTimeout(() => runPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100)
+    }
+    if (job.status === 'succeeded') toast.success('Run succeeded')
+    else toast.error('Run failed', { description: job.error ?? 'Check the run logs in Orchestration.' })
+  }, [pendingJobId, jobQuery.data, jobQuery.isError, queryClient, id])
   const [saveNoteOpen, setSaveNoteOpen] = useState(false)
   const [versionNote, setVersionNote] = useState('')
   const initializedRef = useRef(false)
@@ -386,49 +431,22 @@ function Builder() {
   }, [id, nameInput, pipelineQuery.data, queryClient])
 
   const handleRun = useCallback(async () => {
-    // M3.1: only persist when the canvas actually differs from the saved
-    // graph — every graph save snapshots a version, and a clean Run should
-    // pin the existing latest version instead of minting a redundant one.
     if (isDirty) {
       const saved = await savePipeline({ silent: true })
       if (!saved) return
     }
     setRunning(true)
     try {
-      const { run } = await apiJson<RunResponse>(`/api/pipelines/${id}/run`, { method: 'POST' })
-      await queryClient.invalidateQueries({ queryKey: ['pipeline', id] })
-      await queryClient.invalidateQueries({ queryKey: ['stats'] })
-      await queryClient.invalidateQueries({ queryKey: ['lineage'] })
-      await queryClient.invalidateQueries({ queryKey: ['datasets'] })
-      await queryClient.invalidateQueries({ queryKey: ['runs'] })
-      await queryClient.invalidateQueries({ queryKey: ['health'] })
-      // The run pinned a version — per-version runCounts changed too.
-      await queryClient.invalidateQueries({ queryKey: ['pipeline-versions', id] })
-      setSelectedRunId(run.id)
-      setRunPanelOpen(true)
-      // Reveal logs without hunting below the fold: open the panel (if collapsed)
-      // and scroll it into view once it has rendered.
-      setTimeout(() => {
-        runPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      }, 100)
-      if (run.status === 'success') {
-        toast.success('Run succeeded', {
-          description: `Run ${shortId(run.id, 8)} finished — a new dataset version was published.`,
-        })
-      } else {
-        const errLog = (run.logs ?? []).find((l) => l.level === 'error')
-        toast.error('Run failed', {
-          description: errLog?.msg ?? `Run ${shortId(run.id, 8)} failed — check the logs.`,
-        })
-      }
+      const { job } = await apiJson<QueuedJobResponse>(`/api/pipelines/${id}/run`, { method: 'POST' })
+      setPendingJobId(job.id)
+      toast.message('Run queued', { description: `Job ${shortId(job.id, 8)} is waiting for the worker.` })
     } catch (err) {
+      setRunning(false)
       toast.error('Run request failed', {
         description: err instanceof Error ? err.message : 'Unknown error',
       })
-    } finally {
-      setRunning(false)
     }
-  }, [id, queryClient, savePipeline, isDirty])
+  }, [id, savePipeline, isDirty])
 
   if (pipelineQuery.isLoading) {
     return (
@@ -557,7 +575,7 @@ function Builder() {
               ) : (
                 <Play className="h-3.5 w-3.5" aria-hidden />
               )}
-              Run
+              {pendingJobId ? (jobQuery.data?.job.status === 'running' ? 'Running' : 'Queued') : 'Run'}
               {running && (
                 <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5" aria-hidden>
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />

@@ -109,6 +109,17 @@ else
 fi
 
 # 启动 mini-services
+if [ -n "${NEXT_PID:-}" ] && [ -f "./next-service-dist/job-worker.js" ]; then
+    (cd next-service-dist && bun job-worker.js) &
+    JOB_WORKER_PID=$!
+    pids="$pids $JOB_WORKER_PID"
+    sleep 1
+    if ! kill -0 "$JOB_WORKER_PID" 2>/dev/null; then
+        echo "Job worker failed to start"
+        exit 1
+    fi
+fi
+
 if [ -f "./mini-services-start.sh" ]; then
     echo "🚀 启动 mini-services..."
     

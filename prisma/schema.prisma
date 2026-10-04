@@ -96,6 +96,9 @@ model DatasetVersion {
   dataJson      String   @default("[]")
   // ingestion id | pipeline run id | "seed"
   createdBy     String?
+  // Unique output identity for a queued pipeline job. A recovered worker may
+  // execute again, but it cannot commit a second output version for that job.
+  outputJobId   String?  @unique
   createdAt     DateTime @default(now())
   // R14: which branch this version belongs to ("main" = published lineage)
   branch        String   @default("main")

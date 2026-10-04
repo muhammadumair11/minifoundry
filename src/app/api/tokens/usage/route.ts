@@ -13,7 +13,7 @@ import type { NextRequest } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 /** Dashboard window — the endpoint always returns exactly this many buckets. */
-export const USAGE_WINDOW_HOURS = 24
+const USAGE_WINDOW_HOURS = 24
 
 /** Safety cap: aggregation runs on at most this many rows (learning-scale). */
 const USAGE_ROW_CAP = 20_000

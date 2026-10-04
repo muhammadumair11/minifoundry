@@ -44,7 +44,10 @@ test('a draft stays hidden until its exact approval and quality evaluation succe
       await db.datasetVersion.create({
         data: {
           datasetId: dataset.id, versionNumber, branch: 'main',
-          lifecycle, qualityState, schemaJson: '[]', dataJson: '[]', rowCount: 0,
+          lifecycle, qualityState,
+          schemaJson: '[{"name":"id","type":"number"},{"name":"secret","type":"string"}]',
+          dataJson: JSON.stringify([{ id: versionNumber, secret: versionNumber === 1 ? 'published-secret' : 'draft-secret' }]),
+          rowCount: 1,
         },
       })
     }
@@ -54,6 +57,51 @@ test('a draft stays hidden until its exact approval and quality evaluation succe
         requestedBy: 'editor', versionNumber: 2,
       },
     })
+    const marking = await db.marking.create({ data: { name: `secret-${randomUUID()}`, minRole: 'admin' } })
+    await db.columnMarking.create({ data: { datasetId: dataset.id, columnName: 'secret', markingId: marking.id } })
+    const { NextRequest } = await import('next/server')
+    const rowsRoute = await import('../src/app/api/datasets/[id]/rows/route')
+    const exportRoute = await import('../src/app/api/datasets/[id]/export/route')
+    const viewer = (suffix = '') => new NextRequest(`http://localhost/api/datasets/${dataset.id}/rows${suffix}`, {
+      headers: { cookie: 'foundry-role=viewer' },
+    })
+    const viewerRows = await rowsRoute.GET(viewer(), { params: Promise.resolve({ id: dataset.id }) })
+    expect(viewerRows.status).toBe(200)
+    const viewerText = await viewerRows.text()
+    expect(viewerText).toContain('"id":1')
+    expect(viewerText).not.toContain('draft-secret')
+    expect(viewerText).not.toContain('published-secret')
+    expect((await rowsRoute.GET(viewer('?version=2'), { params: Promise.resolve({ id: dataset.id }) })).status).toBe(403)
+    const viewerExport = await exportRoute.GET(viewer(), { params: Promise.resolve({ id: dataset.id }) })
+    expect(viewerExport.status).toBe(200)
+    const csv = await viewerExport.text()
+    expect(csv).not.toContain('published-secret')
+    expect(csv).not.toContain('draft-secret')
+    expect((await exportRoute.GET(viewer('?version=2'), { params: Promise.resolve({ id: dataset.id }) })).status).toBe(403)
+    const editorDraft = await rowsRoute.GET(new NextRequest(`http://localhost/api/datasets/${dataset.id}/rows?version=2`, {
+      headers: { cookie: 'foundry-role=editor' },
+    }), { params: Promise.resolve({ id: dataset.id }) })
+    expect(editorDraft.status).toBe(200)
+    const editorText = await editorDraft.text()
+    expect(editorText).toContain('"id":2')
+    expect(editorText).not.toContain('draft-secret')
+    const objectType = await db.objectType.create({ data: {
+      apiName: `secret-${randomUUID().slice(0, 8)}`,
+      displayName: 'Secret object', sourceDatasetId: dataset.id, primaryKey: 'id',
+    } })
+    await db.property.create({ data: {
+      objectTypeId: objectType.id, apiName: 'secret', displayName: 'Secret', isTitle: true,
+    } })
+    const searchRoute = await import('../src/app/api/search/route')
+    const search = async (term: string, role: string) => {
+      const response = await searchRoute.GET(new NextRequest(`http://localhost/api/search?q=${term}`, {
+        headers: { cookie: `foundry-role=${role}` },
+      }))
+      return await response.text()
+    }
+    expect(await search('published-secret', 'viewer')).not.toContain('published-secret')
+    expect(await search('published-secret', 'admin')).toContain('published-secret')
+    expect(await search('draft-secret', 'admin')).not.toContain('draft-secret')
     expect((await resolveConsumerVersion(dataset.id))?.versionNumber).toBe(1)
     await expect(publishDatasetVersion(dataset.id, 2, approval.id, 'admin')).rejects.toBeInstanceOf(PublicationError)
     expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: approval.id } })).status).toBe('pending')

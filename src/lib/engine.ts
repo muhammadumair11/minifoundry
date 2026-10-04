@@ -44,6 +44,7 @@ export class PipelineError extends Error {}
 interface ExecContext {
   pipelineId: string
   runId: string
+  outputJobId?: string
   /** Pipeline display name — used to label version-created events (loop guards). */
   pipelineName: string
   sourceDatasetIds: string[]
@@ -110,6 +111,8 @@ interface ExecuteResult {
 // ─── Public entry point ──────────────────────────────────────────────
 
 export interface RunPipelineOptions {
+  /** Unique job identity enforced on the output version for crash recovery. */
+  outputJobId?: string
   /** Schedule that triggered this run; advances lastRunAt/nextRunAt after the run (success OR failed). Not propagated to cascades. */
   scheduleId?: string | null
   /** Cascade depth: manual runs = 0, cascaded runs = parent + 1. Cascades stop once depth >= CASCADE_MAX_DEPTH. */
@@ -170,6 +173,7 @@ const CASCADE_MAX_CHILDREN = 5
 const CASCADE_MAX_DEPTH = 2
 /** A 'running' run older than this is considered stale (e.g. crashed dev server) and no longer blocks new runs. */
 const RUNNING_STALE_MS = 10 * 60 * 1000
+export const PIPELINE_BUSY_MESSAGE = 'Run skipped: another run is already in progress'
 
 /**
  * Execute a pipeline end-to-end and return the final PipelineRun record.
@@ -211,7 +215,7 @@ export async function runPipeline(
         trigger: opts.trigger ?? 'manual',
         attempt: opts.attempt ?? 1,
         durationMs: 0,
-        failureCause: 'Run skipped: another run is already in progress',
+        failureCause: PIPELINE_BUSY_MESSAGE,
         replayedFromRunId: opts.replayOfRunId ?? null,
         manifestJson: JSON.stringify({
           graphVersion: { versionNumber: opts.versionNumber ?? null, nodeCount: 0 },
@@ -220,7 +224,7 @@ export async function runPipeline(
           nodes: [],
         } satisfies RunManifest),
         logsJson: JSON.stringify([
-          { ts: now.toISOString(), level: 'error', msg: 'Run skipped: another run is already in progress' },
+          { ts: now.toISOString(), level: 'error', msg: PIPELINE_BUSY_MESSAGE },
         ] satisfies LogEntry[]),
       },
     })
@@ -255,7 +259,7 @@ export async function runPipeline(
   const capture = newManifestCapture()
   try {
     const graphJson = opts.graphOverride ?? pipeline.graphJson
-    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {})
+    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {}, opts.outputJobId)
     const elapsed = Date.now() - startedAtMs
     log(
       'success',
@@ -431,6 +435,7 @@ async function executeGraph(
   log: (level: LogEntry['level'], msg: string) => void,
   capture: ManifestCapture = newManifestCapture(),
   inputOverrides: Record<string, number> = {},
+  outputJobId?: string,
 ): Promise<ExecuteResult> {
   const graph = parseGraph(graphJson)
   log('info', `Pipeline '${pipelineName}' run started (graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges)`)
@@ -441,6 +446,7 @@ async function executeGraph(
   const ctx: ExecContext = {
     pipelineId,
     runId,
+    outputJobId,
     pipelineName,
     sourceDatasetIds: [
       ...new Set(
@@ -1033,6 +1039,7 @@ async function execOutput(node: GraphNode, rows: Row[], ctx: ExecContext): Promi
     name,
     rows,
     createdBy: ctx.runId,
+    outputJobId: ctx.outputJobId,
     tags: ['derived'],
   })
 

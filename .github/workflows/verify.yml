@@ -19,4 +19,4 @@ jobs:
       - run: bun run lint
       - run: bunx tsc --noEmit
       - run: bun test
-      - run: bunx next build
+      - run: bunx next build --webpack

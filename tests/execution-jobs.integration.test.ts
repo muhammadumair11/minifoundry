@@ -21,6 +21,7 @@ test('jobs deduplicate events, allow one lease, recover an expired lease, and ex
   process.env.DATABASE_URL = dbUrl
   const { db } = await import('../src/lib/db')
   const { enqueuePipelineJob, claimExecutionJob, processExecutionJob } = await import('../src/lib/execution-jobs')
+  const { runPipeline } = await import('../src/lib/engine')
   try {
     const pipeline = await db.pipeline.create({
       data: { name: 'queue-test', graphJson: '{"nodes":[],"edges":[]}' },
@@ -45,6 +46,59 @@ test('jobs deduplicate events, allow one lease, recover an expired lease, and ex
     expect(final.error).toBeTruthy()
     expect(final.lastRunId).toBeTruthy()
     expect(final.finishedAt).not.toBeNull()
+
+    const activeRun = await db.pipelineRun.create({ data: { pipelineId: pipeline.id, status: 'running' } })
+    const busyJob = await enqueuePipelineJob(pipeline.id, {
+      trigger: 'manual', eventKey: 'busy-manual-job', maxAttempts: 1,
+    })
+    const busyLease = await claimExecutionJob('busy-worker')
+    expect(busyLease?.id).toBe(busyJob.id)
+    await processExecutionJob(busyLease!, 'busy-worker')
+    const deferred = await db.executionJob.findUniqueOrThrow({ where: { id: busyJob.id } })
+    expect(deferred.status).toBe('queued')
+    expect(deferred.attempt).toBe(0)
+    await db.pipelineRun.update({ where: { id: activeRun.id }, data: { status: 'failed', finishedAt: new Date() } })
+
+    const input = await db.dataset.create({ data: { name: 'queue-input', publishedVersion: 1 } })
+    await db.datasetVersion.create({ data: {
+      datasetId: input.id, versionNumber: 1, schemaJson: '[{"name":"id","type":"number"}]',
+      dataJson: '[{"id":1}]', rowCount: 1,
+    } })
+    const graph = JSON.stringify({
+      nodes: [
+        { id: 'source', type: 'source', data: { datasetId: input.id } },
+        { id: 'output', type: 'output', data: { name: 'queue-output' } },
+      ],
+      edges: [{ id: 'source-output', source: 'source', target: 'output' }],
+    })
+    const outputPipeline = await db.pipeline.create({ data: { name: 'queue-output-test', graphJson: graph } })
+    const outputJob = await enqueuePipelineJob(outputPipeline.id, {
+      trigger: 'upstream', eventKey: 'queue-output-event', maxAttempts: 1,
+    })
+    const firstLease = await claimExecutionJob('worker-three')
+    expect(firstLease?.id).toBe(outputJob.id)
+    const firstRun = await runPipeline(outputPipeline.id, {
+      graphOverride: graph, versionNumber: outputJob.versionNumber, outputJobId: outputJob.id,
+    })
+    expect(firstRun.status).toBe('success')
+    // The run committed its output, but the worker died before acknowledging the job.
+    await db.executionJob.update({ where: { id: outputJob.id }, data: { leaseUntil: new Date(0) } })
+    const secondLease = await claimExecutionJob('worker-four')
+    expect(secondLease?.id).toBe(outputJob.id)
+    await processExecutionJob(secondLease!, 'worker-four')
+    expect((await db.executionJob.findUniqueOrThrow({ where: { id: outputJob.id } })).status).toBe('succeeded')
+    expect(await db.datasetVersion.count({ where: { outputJobId: outputJob.id } })).toBe(1)
+
+    const { NextRequest } = await import('next/server')
+    const { POST } = await import('../src/app/api/pipelines/[id]/run/route')
+    const response = await POST(
+      new NextRequest(`http://localhost/api/pipelines/${outputPipeline.id}/run`, { method: 'POST' }),
+      { params: Promise.resolve({ id: outputPipeline.id }) },
+    )
+    expect(response.status).toBe(202)
+    const submitted = await response.json() as { job: { id: string; status: string } }
+    expect(submitted.job.status).toBe('queued')
+    expect(await db.executionJob.count({ where: { id: submitted.job.id } })).toBe(1)
   } finally {
     await db.$disconnect()
     if (priorUrl === undefined) delete process.env.DATABASE_URL

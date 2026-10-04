@@ -16,7 +16,7 @@ differs from real Foundry.
 bun install
 bun run db:push      # create/update the SQLite schema
 bun run dev          # Next.js on http://localhost:3000
-bun run jobs:worker  # separate terminal: execute scheduled/upstream jobs
+bun run jobs:worker  # separate terminal: execute manual, scheduled, and upstream jobs
 ```
 
 For a local Windows checkout, set `DATABASE_URL=file:../db/custom.db` in your
@@ -102,11 +102,13 @@ These differ from real Foundry **on purpose** — they are teaching moments:
 
 - Dataset versions are JSON snapshots with a 5,000-row limit. Larger writes
   fail with an error and do not discard trailing rows.
-- Scheduled and upstream pipeline runs use durable SQLite job records and a
-  separate worker. Manual runs and downstream cascade calls remain synchronous.
-  Lease recovery is at-least-once: a worker crash between writing an output and
-  completing its job can duplicate that output. The worker must be deployed as
-  an additional process; the packaged startup scripts do not launch it yet.
+- Manual, scheduled, and upstream pipeline runs use SQLite job records and a
+  separate worker. A unique output job ID prevents a recovered worker from
+  committing a second output version. Downstream cascades, replay, and retries
+  still execute synchronously. A crash immediately after the output commit can
+  leave its manifest or downstream notifications incomplete. The worker must
+  be deployed as an additional process; packaged startup scripts do not yet
+  launch it.
 - Branches support isolated row commits and copy the branch head into main at
   merge. Foundry's dataset branches do not merge; pipeline-logic branches are
   a separate concept.

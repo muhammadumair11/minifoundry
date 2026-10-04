@@ -120,6 +120,8 @@ echo "📦 收集构建产物到 $BUILD_DIR..."
 if [ -d ".next/standalone" ]; then
     echo "  - 复制 .next/standalone"
     cp -r .next/standalone "$BUILD_DIR/next-service-dist/"
+    bun build scripts/job-worker.ts --target bun --external @prisma/client \
+        --outfile "$BUILD_DIR/next-service-dist/job-worker.js"
 fi
 
 # 复制 Next.js 静态文件

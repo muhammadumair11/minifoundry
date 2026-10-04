@@ -89,6 +89,7 @@ export interface CreateDatasetOptions {
   tags?: string[]
   /** createdBy: ingestion id | pipeline run id | "seed" */
   createdBy?: string | null
+  outputJobId?: string | null
   rows: Row[]
 }
 
@@ -135,6 +136,7 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
           rowCount: normalized.length,
           dataJson,
           createdBy: opts.createdBy ?? null,
+          outputJobId: opts.outputJobId ?? null,
           lifecycle,
         },
       }),
@@ -174,6 +176,7 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
       rowCount: normalized.length,
       dataJson,
       createdBy: opts.createdBy ?? null,
+      outputJobId: opts.outputJobId ?? null,
       lifecycle: 'published',
     },
   })
@@ -236,7 +239,7 @@ export async function pruneDatasetVersions(datasetId: string, keepLastN: number)
   const versions = await db.datasetVersion.findMany({
     where: { datasetId, branch: 'main' },
     orderBy: { versionNumber: 'desc' },
-    select: { id: true, versionNumber: true },
+    select: { id: true, versionNumber: true, outputJobId: true },
   })
   // Never touch the newest 2 main versions (merge parents / active lineage).
   const keepCount = Math.max(keepLastN, 2)
@@ -260,6 +263,17 @@ export async function pruneDatasetVersions(datasetId: string, keepLastN: number)
   for (const b of branchRefs) {
     protectedNums.add(b.headVersion)
     protectedNums.add(b.baseVersion)
+  }
+  const activeOutputJobs = versions.flatMap((version) => version.outputJobId ? [version.outputJobId] : [])
+  if (activeOutputJobs.length > 0) {
+    const activeJobs = await db.executionJob.findMany({
+      where: { id: { in: activeOutputJobs }, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    })
+    const activeIds = new Set(activeJobs.map((job) => job.id))
+    for (const version of versions) {
+      if (version.outputJobId && activeIds.has(version.outputJobId)) protectedNums.add(version.versionNumber)
+    }
   }
   const excessIds = versions
     .slice(keepCount)

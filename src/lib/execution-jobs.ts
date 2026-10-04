@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { Prisma, type ExecutionJob } from '@prisma/client'
 import { db } from '@/lib/db'
 import { ensurePipelineVersion } from '@/lib/pipeline-version-service'
-import { runPipeline } from '@/lib/engine'
+import { PIPELINE_BUSY_MESSAGE, runPipeline } from '@/lib/engine'
 import { createNotification } from '@/lib/notify'
 
 const LEASE_MS = 2 * 60_000
 const RETRY_DELAY_MS = 2_000
 
 export interface EnqueuePipelineOptions {
-  trigger: 'schedule' | 'upstream'
+  trigger: 'manual' | 'schedule' | 'upstream'
   eventKey: string
   scheduleId?: string
   maxAttempts?: number
@@ -91,6 +91,7 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
     )
   }, 15_000)
   try {
+    if (await completeCommittedOutput(job.id, workerId)) return
     const version = await db.pipelineVersion.findUnique({
       where: { pipelineId_versionNumber: { pipelineId: job.pipelineId, versionNumber: job.versionNumber } },
     })
@@ -98,6 +99,7 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
     const run = await runPipeline(job.pipelineId, {
       graphOverride: version.graphJson,
       versionNumber: version.versionNumber,
+      outputJobId: job.id,
       // The schedule window was reserved when the job was enqueued.
       trigger: job.attempt === 1 ? job.trigger : 'retry',
       attempt: job.attempt,
@@ -106,6 +108,17 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
       where: { id: job.id, status: 'running', leaseOwner: workerId },
       data: { lastRunId: run.id },
     })
+    if (run.failureCause === PIPELINE_BUSY_MESSAGE) {
+      await db.executionJob.updateMany({
+        where: { id: job.id, status: 'running', leaseOwner: workerId },
+        data: {
+          status: 'queued', attempt: { decrement: 1 },
+          availableAt: new Date(Date.now() + RETRY_DELAY_MS),
+          leaseOwner: null, leaseUntil: null, error: PIPELINE_BUSY_MESSAGE,
+        },
+      })
+      return
+    }
     if (run.status !== 'success') {
       throw new Error(run.failureCause ?? `Pipeline run ${run.id} failed`)
     }
@@ -117,6 +130,9 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
       },
     })
   } catch (error) {
+    // A worker can lose its lease after the version was committed but before
+    // it acknowledged the job. Never write a second output for the same job.
+    if (await completeCommittedOutput(job.id, workerId)) return
     const message = error instanceof Error ? error.message : String(error)
     const exhausted = job.attempt >= job.maxAttempts
     const updated = await db.executionJob.updateMany({
@@ -141,6 +157,26 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
   } finally {
     clearInterval(heartbeat)
   }
+}
+
+async function completeCommittedOutput(jobId: string, workerId: string): Promise<boolean> {
+  const output = await db.datasetVersion.findUnique({ where: { outputJobId: jobId } })
+  if (!output) return false
+  const runId = output.createdBy
+  if (!runId) throw new Error(`Output for job ${jobId} has no producing run`)
+  await db.pipelineRun.updateMany({
+    where: { id: runId, status: 'running' },
+    data: {
+      status: 'success', finishedAt: new Date(), outputDatasetId: output.datasetId,
+      outputVersionNumber: output.versionNumber,
+      failureCause: null,
+    },
+  })
+  await db.executionJob.updateMany({
+    where: { id: jobId, status: 'running', leaseOwner: workerId },
+    data: { status: 'succeeded', lastRunId: runId, leaseOwner: null, leaseUntil: null, finishedAt: new Date() },
+  })
+  return true
 }
 
 export async function processNextExecutionJob(workerId: string = randomUUID()): Promise<boolean> {

@@ -1,5 +1,4 @@
-// POST /api/pipelines/[id]/run — manual runs execute synchronously;
-// scheduled calls enqueue a pinned pipeline version for the job worker.
+// POST /api/pipelines/[id]/run — enqueue a pinned pipeline version.
 // Optional JSON body { scheduleId?, cascadeDepth? } (body may be empty = manual run).
 // When scheduleId is set, the route reserves that schedule's window on enqueue.
 // M3.1: every run pins the pipeline version it executed — ensurePipelineVersion
@@ -11,17 +10,16 @@
 // historical no-cookie fallback). Schedule-originated runs audit as actorRole
 // 'system' with detail "schedule <name|id>".
 
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import {
   badRequest,
   jsonOk,
   notFound,
-  serializeRun,
   serverError,
   zodErrorMessage,
 } from '@/lib/api-utils'
-import { runPipelineVersion } from '@/lib/engine'
 import { enqueuePipelineJob } from '@/lib/execution-jobs'
 import { audit, requireRole } from '@/lib/governance'
 import { isDemoMode, isServiceAuthorized } from '@/lib/runtime-mode'
@@ -61,6 +59,7 @@ export async function POST(
     }
     const parsed = runOptionsSchema.safeParse(body)
     if (!parsed.success) return badRequest(zodErrorMessage(parsed))
+    if ((parsed.data.cascadeDepth ?? 0) !== 0) return badRequest('cascadeDepth is not supported for queued runs')
 
     const scheduleId = parsed.data.scheduleId ?? null
     if (scheduleId) {
@@ -86,14 +85,14 @@ export async function POST(
       })
       audit({ req, actorRole: 'system', action: 'pipeline.run', resourceType: 'pipeline',
         resourceId: id, resourceName: pipeline.name, detail: `schedule ${schedule.name} job=${job.id}` })
-      return jsonOk({ job: { id: job.id, status: job.status, eventKey: job.eventKey } })
+      return jsonOk({ job: { id: job.id, status: job.status, eventKey: job.eventKey } }, 202)
     }
-    // Manual calls preserve the original completed-run response contract.
-    const run = await runPipelineVersion(id, {
-      trigger: scheduleId ? 'schedule' : 'manual',
-      attempt: 1,
-      scheduleId,
-      cascadeDepth: parsed.data.cascadeDepth ?? 0,
+    const requestKey = req.headers.get('idempotency-key')?.trim()
+    if (requestKey && requestKey.length > 128) return badRequest('Idempotency-Key must be at most 128 characters')
+    const job = await enqueuePipelineJob(id, {
+      trigger: 'manual',
+      eventKey: `manual:${id}:${requestKey || randomUUID()}`,
+      maxAttempts: 1,
     })
 
     // Manual runs use the caller's role in the audit log.
@@ -103,12 +102,9 @@ export async function POST(
         resourceType: 'pipeline',
         resourceId: pipeline.id,
         resourceName: pipeline.name,
-        detail: `status=${run.status}`,
+        detail: `job=${job.id}`,
       })
-
-    // A graph/validation failure is recorded on the run (status 'failed' + logs)
-    // and returned as a normal 200 so the UI can display the run's log stream.
-    return jsonOk({ run: serializeRun(run) })
+    return jsonOk({ job: { id: job.id, status: job.status, eventKey: job.eventKey } }, 202)
   } catch (err) {
     return serverError(err instanceof Error ? err.message : 'Failed to run pipeline')
   }
