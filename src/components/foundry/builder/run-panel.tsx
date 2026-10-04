@@ -21,7 +21,7 @@ export function RunPanel({
   onClose: () => void
 }) {
   return (
-    <section aria-label="Run panel" className="border-t border-border bg-card">
+    <section aria-label="Run panel" className="overflow-hidden border-t border-border bg-card">
       {/* header */}
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">

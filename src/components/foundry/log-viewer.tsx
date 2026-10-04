@@ -49,7 +49,7 @@ export function LogViewer({
   return (
     <div
       className={cn(
-        'foundry-scroll overflow-y-auto rounded-md border border-border bg-card p-3 font-mono text-xs leading-5',
+        'foundry-scroll overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs leading-5',
         maxHeightClass,
         className,
       )}
@@ -64,12 +64,12 @@ export function LogViewer({
           /* keep placeholder */
         }
         return (
-          <div key={i} className="flex gap-2 whitespace-pre-wrap break-words">
+          <div key={i} className="flex gap-2 whitespace-pre">
             <span className="shrink-0 text-muted-foreground/80">{time}</span>
             <span className={cn('shrink-0 w-12 text-right font-medium', LEVEL_STYLES[log.level] ?? LEVEL_STYLES.info)}>
               {log.level.toUpperCase()}
             </span>
-            <span className="text-foreground">{log.msg}</span>
+            <span className="min-w-0 text-foreground">{log.msg}</span>
           </div>
         )
       })}

@@ -624,7 +624,7 @@ function Builder() {
                 zoomable
                 nodeColor={miniMapColor}
                 maskColor={isDark ? 'rgb(9, 9, 11, 0.7)' : 'rgb(250, 250, 250, 0.7)'}
-                position="bottom-right"
+                position="top-right"
                 className="hidden sm:block"
               />
             </ReactFlow>
