@@ -31,7 +31,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -41,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { GatedButton } from '@/components/foundry/governance/gated-button'
+import BranchRowEditor from '@/components/foundry/branch-row-editor'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
 import type {
   CreateBranchResponse,
@@ -70,7 +70,7 @@ export default function DatasetBranchBar({
   const [mergeTarget, setMergeTarget] = useState<DatasetBranchInfo | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DatasetBranchInfo | null>(null)
   const [commitTarget, setCommitTarget] = useState<DatasetBranchInfo | null>(null)
-  const [rowsJson, setRowsJson] = useState('[\n  {}\n]')
+  const [commitRows, setCommitRows] = useState<Record<string, unknown>[]>([])
 
   const branchesQuery = useQuery<DatasetBranchesResponse>({
     queryKey: ['dataset-branches', datasetId],
@@ -132,13 +132,10 @@ export default function DatasetBranchBar({
   const commitMutation = useMutation({
     mutationFn: async () => {
       if (!commitTarget) throw new Error('Choose a branch')
-      const rows: unknown = JSON.parse(rowsJson)
-      if (!Array.isArray(rows) || rows.some((row) => row === null || typeof row !== 'object' || Array.isArray(row))) {
-        throw new Error('Enter a JSON array of row objects')
-      }
+      if (commitRows.length === 0) throw new Error('Add at least one row')
       return apiSend<{ versionNumber: number }>(
         `/api/datasets/${datasetId}/branches/${commitTarget.id}/commit`,
-        'POST', { expectedHeadVersion: commitTarget.headVersion, rows },
+        'POST', { expectedHeadVersion: commitTarget.headVersion, rows: commitRows },
       )
     },
     onSuccess: (res) => {
@@ -299,7 +296,7 @@ export default function DatasetBranchBar({
                           variant="outline"
                           size="sm"
                           className="h-6 px-1.5 text-[10px]"
-                          onClick={() => { setManageOpen(false); setCommitTarget(b); setRowsJson('[\n  {}\n]') }}
+                          onClick={() => { setManageOpen(false); setCommitTarget(b); setCommitRows([]) }}
                         >
                           Commit rows
                         </GatedButton>
@@ -339,23 +336,22 @@ export default function DatasetBranchBar({
       </Dialog>
 
       <Dialog open={commitTarget !== null} onOpenChange={(open) => !open && setCommitTarget(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-sm">Commit to {commitTarget?.name}</DialogTitle>
             <DialogDescription className="text-xs">
-              Enter the complete replacement rows as a JSON array. This creates an isolated branch version; merge when ready.
+              Edit rows in the table below. This creates an isolated branch version; merge when ready.
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            aria-label="Branch rows JSON"
-            value={rowsJson}
-            onChange={(event) => setRowsJson(event.target.value)}
-            className="min-h-52 font-mono text-xs"
+          <BranchRowEditor
+            initialRows={commitRows}
+            onChange={setCommitRows}
+            maxRows={200}
           />
           <DialogFooter>
-            <Button size="sm" disabled={commitMutation.isPending} onClick={() => commitMutation.mutate()}>
+            <Button size="sm" disabled={commitMutation.isPending || commitRows.length === 0} onClick={() => commitMutation.mutate()}>
               {commitMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-              Commit version
+              Commit {commitRows.length} row{commitRows.length !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>

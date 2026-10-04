@@ -75,7 +75,7 @@ async function main() {
   console.log('MiniFoundry Row Storage Benchmark')
   console.log('=================================')
 
-  const results = []
+  const results: Array<{ size: number; ingestMs: number; readMs: number; midMs: number; lastMs: number }> = []
   for (const size of SIZES) {
     try {
       results.push(await benchmark(size))
