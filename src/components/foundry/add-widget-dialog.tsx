@@ -365,7 +365,7 @@ export function AddWidgetDialog({
           <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button size="sm" className="gap-1.5" disabled={blocked} onClick={handleAdd}>
+          <Button data-dialog-submit size="sm" className="gap-1.5" disabled={blocked} onClick={handleAdd}>
             <Plus className="h-3.5 w-3.5" aria-hidden />
             Add widget
           </Button>

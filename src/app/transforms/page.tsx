@@ -1085,9 +1085,6 @@ function WorkbookEditor({
               id="rename-input"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitRename()
-              }}
               className="h-8 text-sm"
             />
           </div>
@@ -1096,6 +1093,7 @@ function WorkbookEditor({
               Cancel
             </Button>
             <Button
+              data-dialog-submit
               size="sm"
               onClick={submitRename}
               disabled={!renameValue.trim() || renameMutation.isPending}

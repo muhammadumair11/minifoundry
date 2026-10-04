@@ -181,6 +181,7 @@ function NewMarkingDialog({ open, onClose }: { open: boolean; onClose: () => voi
             Cancel
           </Button>
           <Button
+            data-dialog-submit
             size="sm"
             disabled={!name.trim() || createMutation.isPending}
             onClick={() =>

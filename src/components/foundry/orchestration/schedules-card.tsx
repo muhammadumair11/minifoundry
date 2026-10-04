@@ -296,6 +296,7 @@ export function SchedulesCard() {
                 Cancel
               </Button>
               <Button
+                data-dialog-submit
                 size="sm"
                 onClick={handleSubmit}
                 disabled={!canSubmit || createMutation.isPending}

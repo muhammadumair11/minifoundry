@@ -388,6 +388,7 @@ export default function DatasetQualityPanel({
               </div>
               <DialogFooter>
                 <Button
+                  data-dialog-submit
                   size="sm"
                   className="h-8 text-xs"
                   disabled={!name.trim() || createMutation.isPending || (!COLUMN_LESS.has(kind) && !column)}

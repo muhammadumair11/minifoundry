@@ -414,6 +414,7 @@ export function RestConnectorsCard() {
                 Cancel
               </Button>
               <Button
+                data-dialog-submit
                 size="sm"
                 className="gap-1.5 text-xs"
                 disabled={!formValid || saveMutation.isPending}

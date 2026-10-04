@@ -136,6 +136,8 @@ function AlertDialogCancel({
 }: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
   return (
     <AlertDialogPrimitive.Cancel
+      data-key-hint="Esc"
+      aria-keyshortcuts="Escape"
       className={cn(buttonVariants({ variant: "outline" }), className)}
       {...props}
     />

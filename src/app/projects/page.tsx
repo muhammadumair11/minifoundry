@@ -396,9 +396,6 @@ function CreateProjectDialog({
               id="project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submit()
-              }}
               placeholder="e.g. Supply Chain Ops"
               className="h-8 text-sm"
             />
@@ -421,6 +418,7 @@ function CreateProjectDialog({
             Cancel
           </Button>
           <Button
+            data-dialog-submit
             size="sm"
             onClick={submit}
             disabled={!name.trim() || createMutation.isPending}
@@ -499,9 +497,6 @@ function RenameProjectDialog({
               id="rename-project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submit()
-              }}
               className="h-8 text-sm"
             />
           </div>
@@ -522,6 +517,7 @@ function RenameProjectDialog({
             Cancel
           </Button>
           <Button
+            data-dialog-submit
             size="sm"
             onClick={submit}
             disabled={!name.trim() || renameMutation.isPending}

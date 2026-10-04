@@ -463,11 +463,6 @@ function CreateTokenDialog({
                 maxLength={64}
                 autoFocus
                 className="font-mono text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && nameValid && !createMutation.isPending) {
-                    createMutation.mutate()
-                  }
-                }}
               />
             </div>
             <DialogFooter>
@@ -478,6 +473,7 @@ function CreateTokenDialog({
                 Cancel
               </Button>
               <Button
+                data-dialog-submit
                 onClick={() => createMutation.mutate()}
                 disabled={!nameValid || createMutation.isPending}
                 className="shrink-0"

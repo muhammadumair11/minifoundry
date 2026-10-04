@@ -670,15 +670,13 @@ function Builder() {
               placeholder="Version note — what changed? (optional)"
               aria-label="Version note"
               className="text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleSaveWithNote()
-              }}
             />
             <DialogFooter>
               <Button variant="outline" onClick={() => setSaveNoteOpen(false)}>
                 Cancel
               </Button>
               <Button
+                data-dialog-submit
                 onClick={() => void handleSaveWithNote()}
                 disabled={saving}
                 className="gap-1.5"

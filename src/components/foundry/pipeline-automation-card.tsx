@@ -302,6 +302,7 @@ export function PipelineAutomation({ pipelineId, config, datasets }: PipelineAut
             </Button>
             {canEdit && (
               <Button
+                data-dialog-submit
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending}
                 className="gap-1.5"

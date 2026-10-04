@@ -131,6 +131,21 @@
 /* Keyboard-focus help for native buttons and links styled as buttons. The
    hint appears only when navigating by keyboard, so dense toolbars stay calm. */
 @layer components {
+  /* Dialog actions that accept Enter from a single-line field show a keycap
+     even before focus reaches the button. */
+  button[data-dialog-submit]::before {
+    content: "↵";
+    order: 10;
+    flex: none;
+    border: 1px solid currentColor;
+    border-radius: 0.2rem;
+    padding: 0.08rem 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    line-height: 1;
+    opacity: 0.65;
+  }
+
   button:focus-visible:not(:disabled, [data-key-hint="none"]),
   a[data-slot="button"]:focus-visible:not([data-key-hint="none"]) {
     position: relative;

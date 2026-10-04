@@ -225,6 +225,7 @@ export default function DatasetBranchBar({
           </div>
           <DialogFooter>
             <Button
+              data-dialog-submit
               size="sm"
               className="h-8 text-xs"
               disabled={!newName.trim() || createMutation.isPending}

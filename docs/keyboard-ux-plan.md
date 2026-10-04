@@ -30,9 +30,13 @@ library can infer which application action Enter should invoke safely.
 3. Move dialog actions to native form submission one flow at a time. This
    branch converts the workspace reset dialog: Enter submits only after the
    exact confirmation word is entered, and Escape remains owned by Radix.
-4. Audit the remaining dialog consumers in `src/app` and
-   `src/components/foundry`. Prioritize creation, rename, approval, and delete
-   flows. Replace ad hoc input key handlers with form submission where possible.
+   Other single-line dialogs opt into the shared Enter handler by marking one
+   enabled action with `data-dialog-submit`. Textareas, editors, composed input,
+   and forms retain their own keyboard behavior.
+4. The dialog audit now covers single-line creation and edit flows in projects,
+   connectors, datasets, pipelines, workbooks, schedules, ontology, governance,
+   widgets, and API tokens. Existing forms keep native submission. Multiline
+   notes and the branch row editor keep Enter for editing.
 5. Verify with keyboard-only browser runs at desktop and mobile widths, then
    with a screen reader. Check nested surfaces, focus restoration, repeated key
    presses, disabled/loading states, key hint placement, and text editors before

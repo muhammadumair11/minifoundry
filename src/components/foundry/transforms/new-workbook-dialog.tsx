@@ -242,6 +242,7 @@ function WorkbookForm({
           Cancel
         </Button>
         <Button
+          data-dialog-submit
           size="sm"
           onClick={submit}
           disabled={!name.trim() || !output.trim() || createMutation.isPending}
