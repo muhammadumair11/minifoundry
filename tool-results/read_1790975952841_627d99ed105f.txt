@@ -1,0 +1,860 @@
+     1→// MiniFoundry — pipeline execution engine (M3).
+     2→// Executes a pipeline graph synchronously: topologically sorts nodes, streams rows
+     3→// between nodes in memory, writes the output dataset version and captures lineage.
+     4→
+     5→import { db } from '@/lib/db'
+     6→import { createDatasetFromRows, compareValues, toNumber, type Row } from '@/lib/dataset-service'
+     7→import type { PipelineRun } from '@prisma/client'
+     8→import type { LogEntry } from '@/lib/api-utils'
+     9→import { parseJsonSafe } from '@/lib/api-utils'
+    10→
+    11→// ─── Graph types ─────────────────────────────────────────────────────
+    12→
+    13→export interface GraphNode {
+    14→  id: string
+    15→  type: string
+    16→  data: Record<string, unknown>
+    17→  position?: { x: number; y: number }
+    18→}
+    19→
+    20→export interface GraphEdge {
+    21→  id: string
+    22→  source: string
+    23→  target: string
+    24→}
+    25→
+    26→export interface PipelineGraph {
+    27→  nodes: GraphNode[]
+    28→  edges: GraphEdge[]
+    29→}
+    30→
+    31→const KNOWN_NODE_TYPES = [
+    32→  'source', 'filter', 'derive', 'select', 'rename', 'join',
+    33→  'aggregate', 'sort', 'dedupe', 'union', 'limit', 'output',
+    34→] as const
+    35→
+    36→/** Errors with a clean, user-facing message (graph validation / pipeline runtime). */
+    37→export class PipelineError extends Error {}
+    38→
+    39→interface ExecContext {
+    40→  pipelineId: string
+    41→  runId: string
+    42→  sourceDatasetIds: string[]
+    43→  log: (level: LogEntry['level'], msg: string) => void
+    44→  /** Mutable holder: the output node reports its write result here. */
+    45→  outputResult: { value: ExecuteResult | null }
+    46→}
+    47→
+    48→interface ExecuteResult {
+    49→  outputDatasetId: string
+    50→  outputName: string
+    51→  outputVersionNumber: number
+    52→  outputRowCount: number
+    53→}
+    54→
+    55→// ─── Public entry point ──────────────────────────────────────────────
+    56→
+    57→export interface RunPipelineOptions {
+    58→  /** Schedule that triggered this run; advances lastRunAt/nextRunAt after the run (success OR failed). Not propagated to cascades. */
+    59→  scheduleId?: string | null
+    60→  /** Cascade depth: manual runs = 0, cascaded runs = parent + 1. Cascades stop once depth >= CASCADE_MAX_DEPTH. */
+    61→  cascadeDepth?: number
+    62→  /** Internal: pipeline ids already visited in the current cascade chain (loop guard). Callers should not set this. */
+    63→  _chain?: Set<string>
+    64→}
+    65→
+    66→/** Max downstream pipelines triggered per successful run. */
+    67→const CASCADE_MAX_CHILDREN = 5
+    68→/** Max cascade depth (manual run = 0 → children at 1 → grandchildren at 2 → stop). */
+    69→const CASCADE_MAX_DEPTH = 2
+    70→/** A 'running' run older than this is considered stale (e.g. crashed dev server) and no longer blocks new runs. */
+    71→const RUNNING_STALE_MS = 10 * 60 * 1000
+    72→
+    73→/**
+    74→ * Execute a pipeline end-to-end and return the final PipelineRun record.
+    75→ * The run is created up-front (status 'running') and updated to success/failed.
+    76→ * Throws only if the pipeline itself does not exist (no run record possible).
+    77→ *
+    78→ * Side effects after a SUCCESSFUL run (cascade): every pipeline whose source
+    79→ * nodes reference the output dataset is triggered (max 5, max depth 2, guarded
+    80→ * against loops). A failing cascade never fails the parent run.
+    81→ * If opts.scheduleId is set, the schedule window is advanced after the run
+    82→ * regardless of outcome, so failed schedules retry on the next interval.
+    83→ */
+    84→export async function runPipeline(
+    85→  pipelineId: string,
+    86→  opts: RunPipelineOptions = {},
+    87→): Promise<PipelineRun> {
+    88→  const cascadeDepth = opts.cascadeDepth ?? 0
+    89→  const chain = opts._chain ?? new Set<string>()
+    90→  chain.add(pipelineId)
+    91→
+    92→  const pipeline = await db.pipeline.findUnique({ where: { id: pipelineId } })
+    93→  if (!pipeline) throw new PipelineError(`Pipeline ${pipelineId} not found`)
+    94→
+    95→  // Concurrency guard: only one in-flight run per pipeline (prevents scheduler
+    96→  // overlap pile-ups). Simple "is anything still running?" check at learning scale.
+    97→  const staleCutoff = new Date(Date.now() - RUNNING_STALE_MS)
+    98→  const active = await db.pipelineRun.findFirst({
+    99→    where: { pipelineId, status: 'running', startedAt: { gt: staleCutoff } },
+   100→    select: { id: true },
+   101→  })
+   102→  if (active) {
+   103→    const now = new Date()
+   104→    const skipped = await db.pipelineRun.create({
+   105→      data: {
+   106→        pipelineId,
+   107→        status: 'failed',
+   108→        finishedAt: now,
+   109→        logsJson: JSON.stringify([
+   110→          { ts: now.toISOString(), level: 'error', msg: 'Run skipped: another run is already in progress' },
+   111→        ] satisfies LogEntry[]),
+   112→      },
+   113→    })
+   114→    // Advance the schedule anyway so a due schedule cannot fire every tick against a busy pipeline.
+   115→    await advanceSchedule(opts.scheduleId)
+   116→    return skipped
+   117→  }
+   118→
+   119→  const run = await db.pipelineRun.create({
+   120→    data: { pipelineId, status: 'running', logsJson: '[]' },
+   121→  })
+   122→
+   123→  const logs: LogEntry[] = []
+   124→  const log = (level: LogEntry['level'], msg: string) => {
+   125→    logs.push({ ts: new Date().toISOString(), level, msg })
+   126→  }
+   127→  /** Flush the current in-memory log buffer to the run row (used for cascade logs after finalization). */
+   128→  const persistLogs = () =>
+   129→    db.pipelineRun.update({ where: { id: run.id }, data: { logsJson: JSON.stringify(logs) } })
+   130→
+   131→  const startedAtMs = Date.now()
+   132→  let result: ExecuteResult | null = null
+   133→  try {
+   134→    result = await executeGraph(pipelineId, run.id, pipeline.name, pipeline.graphJson, log)
+   135→    const elapsed = Date.now() - startedAtMs
+   136→    log(
+   137→      'success',
+   138→      `Pipeline '${pipeline.name}' completed in ${elapsed}ms — output dataset '${result.outputName}' (v${result.outputVersionNumber}, ${result.outputRowCount} rows)`,
+   139→    )
+   140→  } catch (err) {
+   141→    const msg = err instanceof Error ? err.message : String(err)
+   142→    log('error', `Pipeline failed: ${msg}`)
+   143→  }
+   144→
+   145→  // Finalize the run itself (success or failed) before cascade side-effects,
+   146→  // so the run never lingers as 'running' while downstream pipelines execute.
+   147→  const finalRun = await db.pipelineRun.update({
+   148→    where: { id: run.id },
+   149→    data: {
+   150→      status: result ? 'success' : 'failed',
+   151→      finishedAt: new Date(),
+   152→      logsJson: JSON.stringify(logs),
+   153→    },
+   154→  })
+   155→
+   156→  // Schedule bookkeeping happens for success AND failed runs (next interval retries).
+   157→  await advanceSchedule(opts.scheduleId)
+   158→
+   159→  // Cascade: trigger downstream pipelines that consume this run's output dataset.
+   160→  if (result) {
+   161→    await triggerCascades({
+   162→      parentPipelineId: pipeline.id,
+   163→      outputDatasetId: result.outputDatasetId,
+   164→      cascadeDepth,
+   165→      chain,
+   166→      log,
+   167→      persistLogs,
+   168→    })
+   169→  }
+   170→
+   171→  // Re-read so the returned record includes any cascade log lines appended above.
+   172→  const fresh = await db.pipelineRun.findUnique({ where: { id: run.id } })
+   173→  return fresh ?? finalRun
+   174→}
+   175→
+   176→// ─── Cascade orchestration (M5) ──────────────────────────────────────
+   177→
+   178→interface CascadeArgs {
+   179→  parentPipelineId: string
+   180→  outputDatasetId: string
+   181→  cascadeDepth: number
+   182→  chain: Set<string>
+   183→  log: (level: LogEntry['level'], msg: string) => void
+   184→  persistLogs: () => Promise<unknown>
+   185→}
+   186→
+   187→/**
+   188→ * After a successful run wrote output dataset D, find pipelines whose graph's
+   189→ * source nodes reference D (parsed safely, self excluded) and trigger up to 5
+   190→ * of them at cascadeDepth + 1. scheduleId is intentionally NOT propagated —
+   191→ * cascades are pipeline-triggered, not schedule-triggered. Every trigger and
+   192→ * outcome is logged on the PARENT run; a failing cascade never fails the parent.
+   193→ */
+   194→async function triggerCascades(args: CascadeArgs): Promise<void> {
+   195→  if (args.cascadeDepth >= CASCADE_MAX_DEPTH) return
+   196→
+   197→  let candidates: Array<{ id: string; name: string }>
+   198→  try {
+   199→    const pipelines = await db.pipeline.findMany({
+   200→      where: { id: { not: args.parentPipelineId } },
+   201→      select: { id: true, name: true, graphJson: true },
+   202→      orderBy: { createdAt: 'asc' },
+   203→    })
+   204→    candidates = pipelines
+   205→      .filter((p) => graphSourcesIncludeDataset(p.graphJson, args.outputDatasetId))
+   206→      .slice(0, CASCADE_MAX_CHILDREN)
+   207→      .map((p) => ({ id: p.id, name: p.name }))
+   208→  } catch (err) {
+   209→    args.log(
+   210→      'warn',
+   211→      `cascade: failed to look up downstream pipelines — ${err instanceof Error ? err.message : String(err)}`,
+   212→    )
+   213→    await args.persistLogs()
+   214→    return
+   215→  }
+   216→
+   217→  for (const child of candidates) {
+   218→    if (args.chain.has(child.id)) {
+   219→      args.log('info', `cascade: skipped '${child.name}' (already in chain)`)
+   220→      await args.persistLogs()
+   221→      continue
+   222→    }
+   223→    args.log('info', `cascade: triggered '${child.name}' (depth ${args.cascadeDepth + 1})`)
+   224→    await args.persistLogs()
+   225→    args.chain.add(child.id)
+   226→    try {
+   227→      const childRun = await runPipeline(child.id, {
+   228→        cascadeDepth: args.cascadeDepth + 1,
+   229→        _chain: args.chain,
+   230→      })
+   231→      args.log('info', `cascade: '${child.name}' finished with status ${childRun.status}`)
+   232→    } catch (err) {
+   233→      // A failing cascade must never fail the parent run.
+   234→      args.log(
+   235→        'error',
+   236→        `cascade: '${child.name}' failed to start — ${err instanceof Error ? err.message : String(err)}`,
+   237→      )
+   238→    }
+   239→    await args.persistLogs()
+   240→  }
+   241→}
+   242→
+   243→/** True when any source node in a pipeline's graph references the given dataset id. */
+   244→function graphSourcesIncludeDataset(graphJson: string, datasetId: string): boolean {
+   245→  const graph = parseJsonSafe<Partial<PipelineGraph> | null>(graphJson, null)
+   246→  if (!graph || !Array.isArray(graph.nodes)) return false
+   247→  return graph.nodes.some(
+   248→    (n) =>
+   249→      n?.type === 'source' &&
+   250→      n?.data &&
+   251→      typeof n.data === 'object' &&
+   252→      (n.data as Record<string, unknown>).datasetId === datasetId,
+   253→  )
+   254→}
+   255→
+   256→/**
+   257→ * Advance a schedule window after its triggered run completes (success OR failed):
+   258→ * lastRunAt = now, nextRunAt = now + intervalMinutes. Silently ignores unknown
+   259→ * schedule ids / update failures — the run outcome must not depend on this.
+   260→ */
+   261→async function advanceSchedule(scheduleId?: string | null): Promise<void> {
+   262→  if (!scheduleId) return
+   263→  try {
+   264→    const schedule = await db.schedule.findUnique({ where: { id: scheduleId } })
+   265→    if (!schedule) return
+   266→    const now = new Date()
+   267→    await db.schedule.update({
+   268→      where: { id: schedule.id },
+   269→      data: {
+   270→        lastRunAt: now,
+   271→        nextRunAt: new Date(now.getTime() + schedule.intervalMinutes * 60_000),
+   272→      },
+   273→    })
+   274→  } catch (err) {
+   275→    console.error(`[engine] failed to advance schedule '${scheduleId}':`, err)
+   276→  }
+   277→}
+   278→
+   279→// ─── Graph orchestration ─────────────────────────────────────────────
+   280→
+   281→async function executeGraph(
+   282→  pipelineId: string,
+   283→  runId: string,
+   284→  pipelineName: string,
+   285→  graphJson: string,
+   286→  log: (level: LogEntry['level'], msg: string) => void,
+   287→): Promise<ExecuteResult> {
+   288→  const graph = parseGraph(graphJson)
+   289→  log('info', `Pipeline '${pipelineName}' run started (graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges)`)
+   290→
+   291→  validateGraph(graph)
+   292→  const order = topoSort(graph)
+   293→
+   294→  const ctx: ExecContext = {
+   295→    pipelineId,
+   296→    runId,
+   297→    sourceDatasetIds: [
+   298→      ...new Set(
+   299→        graph.nodes
+   300→          .filter((n) => n.type === 'source' && typeof n.data.datasetId === 'string')
+   301→          .map((n) => n.data.datasetId as string),
+   302→      ),
+   303→    ],
+   304→    log,
+   305→    outputResult: { value: null },
+   306→  }
+   307→
+   308→  const outputs = new Map<string, Row[]>() // nodeId -> rows produced
+   309→  let result: ExecuteResult | null = null
+   310→
+   311→  for (const node of order) {
+   312→    const inputs = graph.edges
+   313→      .filter((e) => e.target === node.id)
+   314→      .map((e) => {
+   315→        const rows = outputs.get(e.source)
+   316→        if (!rows) {
+   317→          throw new PipelineError(`Internal error: input from node '${e.source}' was not computed before '${node.id}'`)
+   318→        }
+   319→        return rows
+   320→      })
+   321→
+   322→    const inCount = inputs.reduce((n, rows) => n + rows.length, 0)
+   323→    const out = await execNode(node, inputs, ctx)
+   324→    outputs.set(node.id, out)
+   325→    log('info', `node ${node.type} (${node.id}): ${inCount} rows in -> ${out.length} rows out`)
+   326→    if (node.type === 'output') {
+   327→      if (!ctx.outputResult.value) throw new PipelineError('output node did not produce a result')
+   328→      result = ctx.outputResult.value
+   329→    }
+   330→  }
+   331→
+   332→  if (!result) throw new PipelineError('Pipeline did not produce an output dataset')
+   333→  return result
+   334→}
+   335→
+   336→function parseGraph(graphJson: string): PipelineGraph {
+   337→  const parsed = parseJsonSafe<Partial<PipelineGraph> | null>(graphJson, null)
+   338→  if (!parsed || typeof parsed !== 'object') {
+   339→    throw new PipelineError('Pipeline graph is not valid JSON')
+   340→  }
+   341→  if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+   342→    throw new PipelineError('Pipeline graph must contain "nodes" and "edges" arrays')
+   343→  }
+   344→  const nodes: GraphNode[] = parsed.nodes.map((n, i) => ({
+   345→    id: typeof n?.id === 'string' ? n.id : `node-${i}`,
+   346→    type: typeof n?.type === 'string' ? n.type : String(n?.type ?? ''),
+   347→    data: (n?.data && typeof n.data === 'object' && !Array.isArray(n.data)
+   348→      ? n.data
+   349→      : {}) as Record<string, unknown>,
+   350→    position:
+   351→      n?.position && typeof n.position === 'object'
+   352→        ? (n.position as { x: number; y: number })
+   353→        : undefined,
+   354→  }))
+   355→  const edges: GraphEdge[] = parsed.edges
+   356→    .filter((e) => e && typeof e.source === 'string' && typeof e.target === 'string')
+   357→    .map((e, i) => ({
+   358→      id: typeof e.id === 'string' ? e.id : `edge-${i}`,
+   359→      source: e.source,
+   360→      target: e.target,
+   361→    }))
+   362→  return { nodes, edges }
+   363→}
+   364→
+   365→function validateGraph(graph: PipelineGraph): void {
+   366→  if (graph.nodes.length === 0) throw new PipelineError('Pipeline graph has no nodes')
+   367→
+   368→  const ids = new Set<string>()
+   369→  for (const node of graph.nodes) {
+   370→    if (!node.id) throw new PipelineError('A node is missing an id')
+   371→    if (ids.has(node.id)) throw new PipelineError(`Duplicate node id '${node.id}'`)
+   372→    ids.add(node.id)
+   373→    if (!KNOWN_NODE_TYPES.includes(node.type as (typeof KNOWN_NODE_TYPES)[number])) {
+   374→      throw new PipelineError(`Unknown node type '${node.type}' (node '${node.id}')`)
+   375→    }
+   376→  }
+   377→  for (const edge of graph.edges) {
+   378→    if (!ids.has(edge.source)) {
+   379→      throw new PipelineError(`Edge '${edge.id}' references unknown source node '${edge.source}'`)
+   380→    }
+   381→    if (!ids.has(edge.target)) {
+   382→      throw new PipelineError(`Edge '${edge.id}' references unknown target node '${edge.target}'`)
+   383→    }
+   384→  }
+   385→
+   386→  const outputNodes = graph.nodes.filter((n) => n.type === 'output')
+   387→  if (outputNodes.length !== 1) {
+   388→    throw new PipelineError(`Pipeline must have exactly one output node (found ${outputNodes.length})`)
+   389→  }
+   390→
+   391→  const inDegree = new Map<string, number>()
+   392→  for (const node of graph.nodes) inDegree.set(node.id, 0)
+   393→  for (const edge of graph.edges) inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1)
+   394→
+   395→  for (const node of graph.nodes) {
+   396→    const n = inDegree.get(node.id) ?? 0
+   397→    if (node.type === 'source') {
+   398→      if (n > 0) throw new PipelineError(`source node '${node.id}' must not have incoming edges`)
+   399→    } else if (node.type === 'join' || node.type === 'union') {
+   400→      if (n !== 2) throw new PipelineError(`${node.type} node '${node.id}' requires exactly 2 inputs (found ${n})`)
+   401→    } else if (n !== 1) {
+   402→      throw new PipelineError(`${node.type} node '${node.id}' requires exactly 1 input (found ${n})`)
+   403→    }
+   404→  }
+   405→}
+   406→
+   407→/** Kahn's algorithm; throws on cycles. Returns nodes in execution order. */
+   408→function topoSort(graph: PipelineGraph): GraphNode[] {
+   409→  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+   410→  const inDegree = new Map<string, number>()
+   411→  const adjacency = new Map<string, string[]>()
+   412→  for (const node of graph.nodes) {
+   413→    inDegree.set(node.id, 0)
+   414→    adjacency.set(node.id, [])
+   415→  }
+   416→  for (const edge of graph.edges) {
+   417→    adjacency.get(edge.source)!.push(edge.target)
+   418→    inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1)
+   419→  }
+   420→
+   421→  const queue = graph.nodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id)
+   422→  const order: string[] = []
+   423→  while (queue.length > 0) {
+   424→    const id = queue.shift()!
+   425→    order.push(id)
+   426→    for (const target of adjacency.get(id)!) {
+   427→      const next = (inDegree.get(target) ?? 0) - 1
+   428→      inDegree.set(target, next)
+   429→      if (next === 0) queue.push(target)
+   430→    }
+   431→  }
+   432→  if (order.length !== graph.nodes.length) {
+   433→    const cyclic = graph.nodes.filter((n) => !order.includes(n.id)).map((n) => n.id)
+   434→    throw new PipelineError(`Pipeline graph contains a cycle involving nodes: ${cyclic.join(', ')}`)
+   435→  }
+   436→  return order.map((id) => byId.get(id)!)
+   437→}
+   438→
+   439→// ─── Node dispatch ───────────────────────────────────────────────────
+   440→
+   441→async function execNode(node: GraphNode, inputs: Row[][], ctx: ExecContext): Promise<Row[]> {
+   442→  switch (node.type) {
+   443→    case 'source': return execSource(node, ctx)
+   444→    case 'filter': return execFilter(node, singleInput(node, inputs))
+   445→    case 'derive': return execDerive(node, singleInput(node, inputs), ctx)
+   446→    case 'select': return execSelect(node, singleInput(node, inputs))
+   447→    case 'rename': return execRename(node, singleInput(node, inputs))
+   448→    case 'join': return execJoin(node, inputs)
+   449→    case 'aggregate': return execAggregate(node, singleInput(node, inputs))
+   450→    case 'sort': return execSort(node, singleInput(node, inputs))
+   451→    case 'dedupe': return execDedupe(node, singleInput(node, inputs))
+   452→    case 'union': return execUnion(node, inputs)
+   453→    case 'limit': return execLimit(node, singleInput(node, inputs))
+   454→    case 'output': return execOutput(node, singleInput(node, inputs), ctx)
+   455→    default:
+   456→      throw new PipelineError(`Unknown node type '${node.type}' (node '${node.id}')`)
+   457→  }
+   458→}
+   459→
+   460→function singleInput(node: GraphNode, inputs: Row[][]): Row[] {
+   461→  if (inputs.length !== 1) {
+   462→    throw new PipelineError(`${node.type} node '${node.id}' requires exactly 1 input (found ${inputs.length})`)
+   463→  }
+   464→  return inputs[0]
+   465→}
+   466→
+   467→// ─── Value helpers ───────────────────────────────────────────────────
+   468→
+   469→/** Canonical join/group key so that 10, "10" and 10.0 match. */
+   470→function keyOf(v: unknown): string {
+   471→  const n = toNumber(v)
+   472→  return Number.isNaN(n) ? String(v) : String(n)
+   473→}
+   474→
+   475→function numericEquals(a: unknown, b: unknown): boolean {
+   476→  if (a === b) return true
+   477→  const x = toNumber(a)
+   478→  const y = toNumber(b)
+   479→  if (!Number.isNaN(x) && !Number.isNaN(y)) return x === y
+   480→  return false
+   481→}
+   482→
+   483→function requireString(node: GraphNode, field: string): string {
+   484→  const v = node.data[field]
+   485→  if (typeof v !== 'string' || v.trim() === '') {
+   486→    throw new PipelineError(`${node.type} node '${node.id}' requires a string '${field}'`)
+   487→  }
+   488→  return v
+   489→}
+   490→
+   491→// ─── Node implementations ────────────────────────────────────────────
+   492→
+   493→async function execSource(node: GraphNode, ctx: ExecContext): Promise<Row[]> {
+   494→  const datasetId = requireString(node, 'datasetId')
+   495→  const dataset = await db.dataset.findUnique({
+   496→    where: { id: datasetId },
+   497→    include: { versions: { orderBy: { versionNumber: 'desc' }, take: 1 } },
+   498→  })
+   499→  if (!dataset) throw new PipelineError(`Source dataset '${datasetId}' not found`)
+   500→  const version = dataset.versions[0]
+   501→  if (!version) {
+   502→    ctx.log('warn', `source (${node.id}): dataset '${dataset.name}' has no versions — 0 rows loaded`)
+   503→    return []
+   504→  }
+   505→  const rows = parseJsonSafe<Row[]>(version.dataJson, [])
+   506→  ctx.log('info', `source (${node.id}): loaded dataset '${dataset.name}' v${version.versionNumber} (${rows.length} rows)`)
+   507→  return rows
+   508→}
+   509→
+   510→function execFilter(node: GraphNode, rows: Row[]): Row[] {
+   511→  const column = requireString(node, 'column')
+   512→  const operator = requireString(node, 'operator')
+   513→  const value = node.data.value
+   514→  return rows.filter((row) => matchFilter(row[column], operator, value))
+   515→}
+   516→
+   517→function matchFilter(cell: unknown, operator: string, value: unknown): boolean {
+   518→  switch (operator) {
+   519→    case 'eq': return numericEquals(cell, value)
+   520→    case 'neq': return !numericEquals(cell, value)
+   521→    case 'gt':
+   522→    case 'gte':
+   523→    case 'lt':
+   524→    case 'lte': {
+   525→      const x = toNumber(cell)
+   526→      const y = toNumber(value)
+   527→      const cmp = !Number.isNaN(x) && !Number.isNaN(y)
+   528→        ? x < y ? -1 : x > y ? 1 : 0
+   529→        : compareValues(cell, value)
+   530→      switch (operator) {
+   531→        case 'gt': return cmp > 0
+   532→        case 'gte': return cmp >= 0
+   533→        case 'lt': return cmp < 0
+   534→        case 'lte': return cmp <= 0
+   535→        default: return false
+   536→      }
+   537→    }
+   538→    case 'contains':
+   539→      return String(cell ?? '').toLowerCase().includes(String(value ?? '').toLowerCase())
+   540→    default:
+   541→      throw new PipelineError(
+   542→        `Unknown filter operator '${operator}' (supported: eq, neq, gt, gte, lt, lte, contains)`,
+   543→      )
+   544→  }
+   545→}
+   546→
+   547→function execDerive(node: GraphNode, rows: Row[], ctx: ExecContext): Row[] {
+   548→  const newColumn = requireString(node, 'newColumn')
+   549→  const expression = requireString(node, 'expression')
+   550→
+   551→  let evaluate: (row: Row) => unknown
+   552→  try {
+   553→    // Columns are also exposed as bare identifiers via `with` (e.g. `quantity * unitPrice`),
+   554→    // while `row.<col>` always works too.
+   555→    evaluate = new Function(
+   556→      'row',
+   557→      `with(Object.assign({}, row)) { return (${expression}) }`,
+   558→    ) as (row: Row) => unknown
+   559→  } catch (err) {
+   560→    throw new PipelineError(
+   561→      `derive node '${node.id}': invalid expression — ${err instanceof Error ? err.message : String(err)}`,
+   562→    )
+   563→  }
+   564→
+   565→  let failed = 0
+   566→  const out = rows.map((row) => {
+   567→    try {
+   568→      const value = evaluate(row)
+   569→      return { ...row, [newColumn]: value === undefined ? null : value }
+   570→    } catch {
+   571→      failed += 1
+   572→      return { ...row, [newColumn]: null }
+   573→    }
+   574→  })
+   575→  if (failed > 0) {
+   576→    ctx.log('warn', `derive (${node.id}): ${failed} row(s) failed to evaluate '${expression}' — set to null`)
+   577→  }
+   578→  return out
+   579→}
+   580→
+   581→function execSelect(node: GraphNode, rows: Row[]): Row[] {
+   582→  const columns = node.data.columns
+   583→  if (!Array.isArray(columns) || columns.length === 0 || columns.some((c) => typeof c !== 'string')) {
+   584→    throw new PipelineError(`select node '${node.id}' requires a non-empty string array 'columns'`)
+   585→  }
+   586→  const cols = columns as string[]
+   587→  return rows.map((row) => {
+   588→    const out: Row = {}
+   589→    for (const c of cols) if (c in row) out[c] = row[c]
+   590→    return out
+   591→  })
+   592→}
+   593→
+   594→function execRename(node: GraphNode, rows: Row[]): Row[] {
+   595→  const mapping = node.data.mapping
+   596→  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) {
+   597→    throw new PipelineError(`rename node '${node.id}' requires a 'mapping' object of { oldName: newName }`)
+   598→  }
+   599→  const renames = Object.entries(mapping as Record<string, unknown>).filter(
+   600→    ([, v]) => typeof v === 'string' && v !== '',
+   601→  ) as [string, string][]
+   602→  return rows.map((row) => {
+   603→    const out: Row = {}
+   604→    for (const [key, value] of Object.entries(row)) {
+   605→      const target = renames.find(([old]) => old === key)
+   606→      out[target ? target[1] : key] = value
+   607→    }
+   608→    return out
+   609→  })
+   610→}
+   611→
+   612→function execJoin(node: GraphNode, inputs: Row[][]): Row[] {
+   613→  if (inputs.length !== 2) {
+   614→    throw new PipelineError(`join node '${node.id}' requires exactly 2 inputs (found ${inputs.length})`)
+   615→  }
+   616→  const [left, right] = inputs
+   617→  const how = node.data.how ?? 'inner'
+   618→  if (how !== 'inner' && how !== 'left') {
+   619→    throw new PipelineError(`join node '${node.id}': 'how' must be 'inner' or 'left' (got '${String(how)}')`)
+   620→  }
+   621→  const leftKey = requireString(node, 'leftKey')
+   622→  const rightKey = requireString(node, 'rightKey')
+   623→
+   624→  // Column names of the right side (order-preserving union across right rows)
+   625→  const rightCols: string[] = []
+   626→  const seenRight = new Set<string>()
+   627→  for (const r of right) {
+   628→    for (const k of Object.keys(r)) {
+   629→      if (!seenRight.has(k)) {
+   630→        seenRight.add(k)
+   631→        rightCols.push(k)
+   632→      }
+   633→    }
+   634→  }
+   635→  const mergedKey = (k: string, leftRow: Row) => (k in leftRow ? `right_${k}` : k)
+   636→
+   637→  const index = new Map<string, Row[]>()
+   638→  for (const r of right) {
+   639→    const key = keyOf(r[rightKey])
+   640→    const bucket = index.get(key)
+   641→    if (bucket) bucket.push(r)
+   642→    else index.set(key, [r])
+   643→  }
+   644→
+   645→  const out: Row[] = []
+   646→  for (const l of left) {
+   647→    const matches = index.get(keyOf(l[leftKey])) ?? []
+   648→    if (matches.length === 0) {
+   649→      if (how === 'left') {
+   650→        const row: Row = { ...l }
+   651→        for (const k of rightCols) row[mergedKey(k, l)] = null
+   652→        out.push(row)
+   653→      }
+   654→      continue
+   655→    }
+   656→    for (const r of matches) {
+   657→      const row: Row = { ...l }
+   658→      for (const k of rightCols) row[mergedKey(k, l)] = r[k] ?? null
+   659→      out.push(row)
+   660→    }
+   661→  }
+   662→  return out
+   663→}
+   664→
+   665→function execAggregate(node: GraphNode, rows: Row[]): Row[] {
+   666→  const rawGroupBy = node.data.groupBy
+   667→  if (rawGroupBy !== undefined && !Array.isArray(rawGroupBy)) {
+   668→    throw new PipelineError(`aggregate node '${node.id}': 'groupBy' must be an array of column names`)
+   669→  }
+   670→  const groupBy = (rawGroupBy ?? []) as string[]
+   671→  const ops = node.data.ops
+   672→  if (!Array.isArray(ops) || ops.length === 0) {
+   673→    throw new PipelineError(`aggregate node '${node.id}' requires a non-empty 'ops' array`)
+   674→  }
+   675→
+   676→  const groups = new Map<string, { first: Row; rows: Row[] }>()
+   677→  if (groupBy.length === 0) {
+   678→    groups.set('__all__', { first: rows[0] ?? {}, rows })
+   679→  } else {
+   680→    for (const row of rows) {
+   681→      const key = groupBy.map((c) => keyOf(row[c])).join('\u241F')
+   682→      const bucket = groups.get(key)
+   683→      if (bucket) bucket.rows.push(row)
+   684→      else groups.set(key, { first: row, rows: [row] })
+   685→    }
+   686→  }
+   687→
+   688→  const out: Row[] = []
+   689→  for (const { first, rows: groupRows } of groups.values()) {
+   690→    const row: Row = {}
+   691→    for (const c of groupBy) row[c] = first[c] ?? null
+   692→    for (const opSpec of ops) {
+   693→      const spec = opSpec as { op?: unknown; column?: unknown; alias?: unknown }
+   694→      const kind = typeof spec.op === 'string' ? spec.op : ''
+   695→      if (!['sum', 'avg', 'min', 'max', 'count'].includes(kind)) {
+   696→        throw new PipelineError(
+   697→          `aggregate node '${node.id}': unknown op '${String(spec.op)}' (supported: sum, avg, min, max, count)`,
+   698→        )
+   699→      }
+   700→      const column = typeof spec.column === 'string' ? spec.column : null
+   701→      if (kind !== 'count' && !column) {
+   702→        throw new PipelineError(`aggregate node '${node.id}': op '${kind}' requires a 'column'`)
+   703→      }
+   704→      const alias =
+   705→        typeof spec.alias === 'string' && spec.alias !== ''
+   706→          ? spec.alias
+   707→          : kind === 'count'
+   708→            ? 'count'
+   709→            : `${kind}_${column}`
+   710→
+   711→      if (kind === 'count') {
+   712→        row[alias] = column
+   713→          ? groupRows.filter((r) => r[column] !== null && r[column] !== undefined).length
+   714→          : groupRows.length
+   715→        continue
+   716→      }
+   717→
+   718→      const nums = groupRows
+   719→        .map((r) => toNumber(r[column!]))
+   720→        .filter((n) => !Number.isNaN(n))
+   721→      if (nums.length === 0) {
+   722→        row[alias] = null
+   723→      } else {
+   724→        switch (kind) {
+   725→          case 'sum': row[alias] = roundSmart(nums.reduce((a, b) => a + b, 0)); break
+   726→          case 'avg': row[alias] = roundSmart(nums.reduce((a, b) => a + b, 0) / nums.length); break
+   727→          case 'min': row[alias] = Math.min(...nums); break
+   728→          case 'max': row[alias] = Math.max(...nums); break
+   729→        }
+   730→      }
+   731→    }
+   732→    out.push(row)
+   733→  }
+   734→  return out
+   735→}
+   736→
+   737→/** Keep float noise (0.1+0.2 style) out of aggregates. */
+   738→function roundSmart(n: number): number {
+   739→  if (!Number.isFinite(n)) return n
+   740→  return Math.round(n * 1e9) / 1e9
+   741→}
+   742→
+   743→function execSort(node: GraphNode, rows: Row[]): Row[] {
+   744→  const by = node.data.by
+   745→  if (!Array.isArray(by) || by.length === 0) {
+   746→    throw new PipelineError(`sort node '${node.id}' requires a non-empty 'by' array of { column, dir }`)
+   747→  }
+   748→  const keys = by.map((k) => {
+   749→    const spec = k as { column?: unknown; dir?: unknown }
+   750→    if (typeof spec.column !== 'string') {
+   751→      throw new PipelineError(`sort node '${node.id}': each by entry needs a string 'column'`)
+   752→    }
+   753→    return { column: spec.column, dir: spec.dir === 'desc' ? 'desc' : 'asc' }
+   754→  })
+   755→  return [...rows].sort((a, b) => {
+   756→    for (const { column, dir } of keys) {
+   757→      const cmp = compareValues(a[column], b[column])
+   758→      if (cmp !== 0) return dir === 'desc' ? -cmp : cmp
+   759→    }
+   760→    return 0
+   761→  })
+   762→}
+   763→
+   764→function stableRowKey(row: Row): string {
+   765→  const sortedKeys = Object.keys(row).sort()
+   766→  const normalized: Row = {}
+   767→  for (const k of sortedKeys) normalized[k] = row[k]
+   768→  return JSON.stringify(normalized)
+   769→}
+   770→
+   771→function execDedupe(node: GraphNode, rows: Row[]): Row[] {
+   772→  const rawKeys = node.data.keys
+   773→  if (rawKeys !== undefined && !Array.isArray(rawKeys)) {
+   774→    throw new PipelineError(`dedupe node '${node.id}': 'keys' must be an array of column names`)
+   775→  }
+   776→  const keys = (rawKeys ?? []) as string[]
+   777→  const seen = new Set<string>()
+   778→  const out: Row[] = []
+   779→  for (const row of rows) {
+   780→    const key =
+   781→      keys.length > 0 ? keys.map((k) => keyOf(row[k])).join('\u241F') : stableRowKey(row)
+   782→    if (!seen.has(key)) {
+   783→      seen.add(key)
+   784→      out.push(row)
+   785→    }
+   786→  }
+   787→  return out
+   788→}
+   789→
+   790→function execUnion(node: GraphNode, inputs: Row[][]): Row[] {
+   791→  if (inputs.length !== 2) {
+   792→    throw new PipelineError(`union node '${node.id}' requires exactly 2 inputs (found ${inputs.length})`)
+   793→  }
+   794→  const [a, b] = inputs
+   795→  const columns: string[] = []
+   796→  const seen = new Set<string>()
+   797→  for (const row of [...a, ...b]) {
+   798→    for (const k of Object.keys(row)) {
+   799→      if (!seen.has(k)) {
+   800→        seen.add(k)
+   801→        columns.push(k)
+   802→      }
+   803→    }
+   804→  }
+   805→  return [...a, ...b].map((row) => {
+   806→    const out: Row = {}
+   807→    for (const c of columns) out[c] = c in row ? row[c] : null
+   808→    return out
+   809→  })
+   810→}
+   811→
+   812→function execLimit(node: GraphNode, rows: Row[]): Row[] {
+   813→  const n = node.data.n
+   814→  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) {
+   815→    throw new PipelineError(`limit node '${node.id}' requires a non-negative integer 'n'`)
+   816→  }
+   817→  return rows.slice(0, n)
+   818→}
+   819→
+   820→async function execOutput(node: GraphNode, rows: Row[], ctx: ExecContext): Promise<Row[]> {
+   821→  const name = requireString(node, 'name')
+   822→  const { dataset, version, truncated } = await createDatasetFromRows({
+   823→    name,
+   824→    rows,
+   825→    createdBy: ctx.runId,
+   826→    tags: ['derived'],
+   827→  })
+   828→
+   829→  // Capture lineage: every distinct dataset referenced by a source node (which
+   830→  // includes the upstream datasets of any join/union second input) -> output.
+   831→  for (const fromDatasetId of ctx.sourceDatasetIds) {
+   832→    await db.lineageEdge.upsert({
+   833→      where: {
+   834→        fromDatasetId_toDatasetId_pipelineId: {
+   835→          fromDatasetId,
+   836→          toDatasetId: dataset.id,
+   837→          pipelineId: ctx.pipelineId,
+   838→        },
+   839→      },
+   840→      update: {},
+   841→      create: { fromDatasetId, toDatasetId: dataset.id, pipelineId: ctx.pipelineId },
+   842→    })
+   843→  }
+   844→  if (ctx.sourceDatasetIds.length > 0) {
+   845→    ctx.log('info', `lineage: captured ${ctx.sourceDatasetIds.length} edge(s) into dataset '${name}'`)
+   846→  }
+   847→  if (truncated) {
+   848→    ctx.log('warn', `output (${node.id}): result truncated to 5000 rows`)
+   849→  }
+   850→  ctx.log('info', `output (${node.id}): wrote ${version.rowCount} rows to dataset '${name}' v${version.versionNumber}`)
+   851→
+   852→  ctx.outputResult.value = {
+   853→    outputDatasetId: dataset.id,
+   854→    outputName: name,
+   855→    outputVersionNumber: version.versionNumber,
+   856→    outputRowCount: version.rowCount,
+   857→  }
+   858→  return rows
+   859→}
+   860→

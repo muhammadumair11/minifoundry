@@ -1,0 +1,707 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useMemo, useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useParams } from 'next/navigation'
+     6→import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+     7→import { toast } from 'sonner'
+     8→import { format, formatDistanceToNow, parseISO } from 'date-fns'
+     9→import {
+    10→  Archive,
+    11→  ArrowLeftRight,
+    12→  ChevronLeft,
+    13→  ChevronRight,
+    14→  CircleDot,
+    15→  Database,
+    16→  Download,
+    17→  FolderKanban,
+    18→  GitBranch,
+    19→  History,
+    20→  Loader2,
+    21→  Search,
+    22→  Table2,
+    23→} from 'lucide-react'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Button } from '@/components/ui/button'
+    26→import { Card, CardContent } from '@/components/ui/card'
+    27→import { Input } from '@/components/ui/input'
+    28→import { Skeleton } from '@/components/ui/skeleton'
+    29→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    30→import {
+    31→  Select,
+    32→  SelectContent,
+    33→  SelectItem,
+    34→  SelectTrigger,
+    35→  SelectValue,
+    36→} from '@/components/ui/select'
+    37→import {
+    38→  Table,
+    39→  TableBody,
+    40→  TableCell,
+    41→  TableHead,
+    42→  TableHeader,
+    43→  TableRow,
+    44→} from '@/components/ui/table'
+    45→import { cn } from '@/lib/utils'
+    46→import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+    47→import {
+    48→  MASK_LITERAL,
+    49→  shortId,
+    50→  type DatasetDetailResponse,
+    51→  type LineageGraph,
+    52→  type MarkingsListResponse,
+    53→  type PruneResponse,
+    54→  type ProjectsListResponse,
+    55→  type RowsResponse,
+    56→  type SessionResponse,
+    57→} from '@/lib/foundry-types'
+    58→import { MarkingChip } from '@/components/foundry/governance/marking-colors'
+    59→import { GatedButton } from '@/components/foundry/governance/gated-button'
+    60→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    61→
+    62→const PAGE_SIZE = 50
+    63→
+    64→/** Retention choices (M2): keep newest N versions; 0 = unlimited. */
+    65→const RETENTION_CHOICES = [5, 10, 20, 50, 0] as const
+    66→
+    67→function useDebouncedValue<T>(value: T, delayMs: number): T {
+    68→  const [debounced, setDebounced] = useState(value)
+    69→  useEffect(() => {
+    70→    const t = setTimeout(() => setDebounced(value), delayMs)
+    71→    return () => clearTimeout(t)
+    72→  }, [value, delayMs])
+    73→  return debounced
+    74→}
+    75→
+    76→function renderCellValue(value: unknown, type: string | undefined): React.ReactNode {
+    77→  if (value === null || value === undefined || value === '') {
+    78→    return <span className="text-zinc-700">∅</span>
+    79→  }
+    80→  if (value === MASK_LITERAL) {
+    81→    return <span className="italic text-zinc-600">{MASK_LITERAL}</span>
+    82→  }
+    83→  if (typeof value === 'boolean' || type === 'boolean') {
+    84→    return (
+    85→      <span className={value ? 'text-amber-400' : 'text-zinc-500'}>
+    86→        {String(value)}
+    87→      </span>
+    88→    )
+    89→  }
+    90→  if (typeof value === 'number') {
+    91→    return <span className="tabular-nums">{value.toLocaleString()}</span>
+    92→  }
+    93→  return String(value)
+    94→}
+    95→
+    96→export default function DatasetDetailPage() {
+    97→  const params = useParams<{ id: string }>()
+    98→  const id = params.id
+    99→
+   100→  const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
+   101→  const [page, setPage] = useState(1)
+   102→  const [searchInput, setSearchInput] = useState('')
+   103→  const searchQuery = useDebouncedValue(searchInput, 400)
+   104→
+   105→  const detailQuery = useQuery<DatasetDetailResponse>({
+   106→    queryKey: ['dataset', id],
+   107→    queryFn: async () => {
+   108→      const res = await fetch(`/api/datasets/${id}`)
+   109→      if (!res.ok) throw new Error('Failed to load dataset')
+   110→      return res.json()
+   111→    },
+   112→  })
+   113→
+   114→  // Effective version: falls back to the latest version while nothing is picked.
+   115→  const latestVersion = detailQuery.data?.versions[0]?.versionNumber ?? 1
+   116→  const version = selectedVersion ?? latestVersion
+   117→
+   118→  const rowsQuery = useQuery<RowsResponse>({
+   119→    queryKey: ['dataset-rows', id, version, page, searchQuery],
+   120→    queryFn: async () => {
+   121→      const q = new URLSearchParams({
+   122→        version: String(version),
+   123→        page: String(page),
+   124→        pageSize: String(PAGE_SIZE),
+   125→      })
+   126→      if (searchQuery.trim()) q.set('query', searchQuery.trim())
+   127→      const res = await fetch(`/api/datasets/${id}/rows?${q.toString()}`)
+   128→      if (!res.ok) throw new Error('Failed to load rows')
+   129→      return res.json()
+   130→    },
+   131→    placeholderData: (prev) => prev,
+   132→  })
+   133→
+   134→  const lineageQuery = useQuery<LineageGraph>({
+   135→    queryKey: ['lineage'],
+   136→    queryFn: async () => {
+   137→      const res = await fetch('/api/lineage')
+   138→      if (!res.ok) throw new Error('Failed to load lineage')
+   139→      return res.json()
+   140→    },
+   141→  })
+   142→
+   143→  // Marking name → color (shared ['markings'] cache with the governance page).
+   144→  const markingsQuery = useQuery<MarkingsListResponse>({
+   145→    queryKey: ['markings'],
+   146→    queryFn: () => apiJson<MarkingsListResponse>('/api/markings'),
+   147→  })
+   148→
+   149→  // Role gate for the retention card (M2 prune is editor+).
+   150→  const sessionQuery = useQuery<SessionResponse>({
+   151→    queryKey: ['session'],
+   152→    queryFn: () => apiJson<SessionResponse>('/api/session'),
+   153→    staleTime: 30_000,
+   154→  })
+   155→  const canEdit = sessionQuery.data?.role === 'editor' || sessionQuery.data?.role === 'admin'
+   156→  const markingColorByName = useMemo(() => {
+   157→    const map = new Map<string, string>()
+   158→    for (const m of markingsQuery.data?.markings ?? []) map.set(m.name, m.color)
+   159→    return map
+   160→  }, [markingsQuery.data])
+   161→
+   162→  const lineageSummary = useMemo(() => {
+   163→    const edges = lineageQuery.data?.edges ?? []
+   164→    const upstream = edges.filter((e) => e.to === id).length
+   165→    const downstream = edges.filter((e) => e.from === id).length
+   166→    return { upstream, downstream, hasAny: upstream + downstream > 0 }
+   167→  }, [lineageQuery.data, id])
+   168→
+   169→  const detail = detailQuery.data
+   170→  const columns = rowsQuery.data?.columns ?? detail?.current.schema ?? []
+   171→  const total = rowsQuery.data?.total ?? 0
+   172→  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+   173→  const queryClient = useQueryClient()
+   174→
+   175→  const keepLastN = detail?.dataset.keepLastN
+   176→  const retentionValue =
+   177→    keepLastN !== undefined && !(RETENTION_CHOICES as readonly number[]).includes(keepLastN)
+   178→      ? keepLastN // custom value set outside this UI — shown as an extra option
+   179→      : (keepLastN ?? 20)
+   180→
+   181→  const retentionMutation = useMutation({
+   182→    mutationFn: async (next: number) => {
+   183→      await apiSend(`/api/datasets/${id}`, 'PATCH', { keepLastN: next })
+   184→      return next
+   185→    },
+   186→    onSuccess: (next) => {
+   187→      toast.success('Retention updated', {
+   188→        description: next === 0 ? 'Keeping all versions (unlimited).' : `Keeping the newest ${next} versions.`,
+   189→      })
+   190→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   191→    },
+   192→    onError: (err) => toastApiError(err, 'Could not update retention'),
+   193→  })
+   194→
+   195→  const pruneMutation = useMutation({
+   196→    mutationFn: () =>
+   197→      apiSend<PruneResponse>(`/api/datasets/${id}/prune`, 'POST', {
+   198→        ...(keepLastN !== undefined ? { keepLastN } : {}),
+   199→      }),
+   200→    onSuccess: (res) => {
+   201→      toast.success(`Pruned ${res.pruned} old versions · ${res.remaining} remain`, {
+   202→        description: 'Older versions beyond keepLastN were removed.',
+   203→      })
+   204→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   205→    },
+   206→    onError: (err) => toastApiError(err, 'Prune failed'),
+   207→  })
+   208→
+   209→  // Project assignment (M0): ['projects'] cache is shared with /projects + catalog filter.
+   210→  const projectsQuery = useQuery<ProjectsListResponse>({ 
+   211→    queryKey: ['projects'],
+   212→    queryFn: () => apiJson<ProjectsListResponse>('/api/projects'),
+   213→  })
+   214→  const projectMutation = useMutation({
+   215→    mutationFn: (projectId: string | null) =>
+   216→      apiSend(`/api/datasets/${id}`, 'PATCH', { projectId }),
+   217→    onSuccess: (_res, projectId) => {
+   218→      toast.success(projectId ? 'Dataset assigned to project' : 'Dataset unassigned')
+   219→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   220→      queryClient.invalidateQueries({ queryKey: ['projects'] })
+   221→      queryClient.invalidateQueries({ queryKey: ['datasets'] })
+   222→    },
+   223→    onError: (err) => toastApiError(err, 'Could not assign project'),
+   224→  })
+   225→
+   226→  // CSV export (M10): downloads the currently selected version; the session
+   227→  // route masks marked columns for the acting role (audited dataset.export).
+   228→  const handleExportCsv = () => {
+   229→    const url = `/api/datasets/${id}/export${version ? `?version=${version}` : ''}`
+   230→    const a = document.createElement('a')
+   231→    a.href = url
+   232→    a.rel = 'noopener'
+   233→    document.body.appendChild(a)
+   234→    a.click()
+   235→    a.remove()
+   236→    toast.success('Export started', {
+   237→      description: `v${version} CSV — masked columns respect your role.`,
+   238→    })
+   239→  }
+   240→
+   241→  if (detailQuery.isLoading) {
+   242→    return (
+   243→      <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:py-8">
+   244→        <Skeleton className="h-9 w-64 bg-zinc-800" />
+   245→        <Skeleton className="h-4 w-96 bg-zinc-800" />
+   246→        <Skeleton className="h-[420px] w-full bg-zinc-800/70" />
+   247→      </div>
+   248→    )
+   249→  }
+   250→
+   251→  if (detailQuery.isError || !detail) {
+   252→    return (
+   253→      <div className="mx-auto w-full max-w-6xl px-4 py-16 text-center">
+   254→        <p className="text-sm text-rose-400">
+   255→          {detailQuery.error instanceof Error ? detailQuery.error.message : 'Dataset not found.'}
+   256→        </p>
+   257→        <Button asChild variant="outline" className="mt-4 border-zinc-700 text-zinc-200">
+   258→          <Link href="/datasets">Back to catalog</Link>
+   259→        </Button>
+   260→      </div>
+   261→    )
+   262→  }
+   263→
+   264→  const ds = detail.dataset
+   265→
+   266→  return (
+   267→    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+   268→      {/* Header */}
+   269→      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+   270→        <div className="min-w-0">
+   271→          <div className="flex items-center gap-2 text-xs text-zinc-500">
+   272→            <Link href="/datasets" className="flex items-center gap-1 hover:text-emerald-400">
+   273→              <Database className="h-3 w-3" aria-hidden />
+   274→              Catalog
+   275→            </Link>
+   276→            <span aria-hidden>/</span>
+   277→            <span className="text-zinc-400">{ds.name}</span>
+   278→            <span aria-hidden>/</span>
+   279→            <span className="font-mono text-zinc-600">{shortId(ds.id, 12)}</span>
+   280→          </div>
+   281→          <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
+   282→            {ds.name}
+   283→          </h1>
+   284→          {ds.description && (
+   285→            <p className="mt-1 max-w-2xl text-sm text-zinc-400">{ds.description}</p>
+   286→          )}
+   287→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   288→            {ds.tags.map((tag) => (
+   289→              <Badge
+   290→                key={tag}
+   291→                variant="outline"
+   292→                className="border-zinc-700 bg-zinc-800/60 px-1.5 py-0 text-[10px] font-normal text-zinc-400"
+   293→              >
+   294→                {tag}
+   295→              </Badge>
+   296→            ))}
+   297→            {/* Project assignment chip (M0) — a compact select; viewer sees it read-only. */}
+   298→            <Select
+   299→              value={ds.projectId ?? 'none'}
+   300→              onValueChange={(v) => projectMutation.mutate(v === 'none' ? null : v)}
+   301→              disabled={!canEdit || projectMutation.isPending}
+   302→            >
+   303→              <SelectTrigger
+   304→                aria-label="Assign dataset to project"
+   305→                title={canEdit ? 'Assign this dataset to a project' : 'Viewing as viewer — assignment is read-only'}
+   306→                className="h-6 w-auto gap-1 border-zinc-700 bg-zinc-800/60 px-1.5 py-0 text-[10px] font-normal text-zinc-300 data-[size=default]:h-6 data-[disabled]:opacity-60"
+   307→              >
+   308→                <FolderKanban className="h-3 w-3 text-emerald-400" aria-hidden />
+   309→                <SelectValue />
+   310→              </SelectTrigger>
+   311→              <SelectContent className="border-zinc-800 bg-zinc-900">
+   312→                <SelectItem value="none" className="text-xs text-zinc-400">
+   313→                  Unassigned
+   314→                </SelectItem>
+   315→                {(projectsQuery.data?.projects ?? []).map((p) => (
+   316→                  <SelectItem key={p.id} value={p.id} className="text-xs">
+   317→                    {p.name}
+   318→                  </SelectItem>
+   319→                ))}
+   320→              </SelectContent>
+   321→            </Select>
+   322→            <span className="ml-1 font-mono text-[11px] text-zinc-500">
+   323→              updated {formatDistanceToNow(parseISO(ds.updatedAt), { addSuffix: true })}
+   324→            </span>
+   325→          </div>
+   326→        </div>
+   327→
+   328→        {/* Version selector + CSV export (M10) */}
+   329→        <div className="flex shrink-0 items-center gap-2">
+   330→          <TooltipProvider delayDuration={150}>
+   331→            <Tooltip>
+   332→              <TooltipTrigger asChild>
+   333→                <Button
+   334→                  variant="outline"
+   335→                  size="sm"
+   336→                  onClick={handleExportCsv}
+   337→                  className="h-9 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   338→                  aria-label={`Export version ${version} as CSV`}
+   339→                >
+   340→                  <Download className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+   341→                  Export CSV
+   342→                </Button>
+   343→              </TooltipTrigger>
+   344→              <TooltipContent className="border-zinc-800 bg-zinc-900 font-mono text-[11px] text-zinc-200">
+   345→                Respects column masking for your role
+   346→              </TooltipContent>
+   347→            </Tooltip>
+   348→          </TooltipProvider>
+   349→          <Select
+   350→            value={String(version)}
+   351→            onValueChange={(v) => {
+   352→              setSelectedVersion(Number(v))
+   353→              setPage(1)
+   354→            }}
+   355→          >
+   356→            <SelectTrigger
+   357→              aria-label="Select dataset version"
+   358→              className="w-[240px] border-zinc-700 bg-zinc-900/60 text-sm text-zinc-100"
+   359→            >
+   360→              <SelectValue placeholder="Version" />
+   361→            </SelectTrigger>
+   362→            <SelectContent className="border-zinc-800 bg-zinc-900">
+   363→              {detail.versions.map((v) => (
+   364→                <SelectItem key={v.id} value={String(v.versionNumber)} className="font-mono text-xs">
+   365→                  v{v.versionNumber} · {v.rowCount.toLocaleString()} rows
+   366→                  {v.versionNumber === detail.versions[0]?.versionNumber && (
+   367→                    <span className="ml-1.5 text-[10px] text-emerald-400">latest</span>
+   368→                  )}
+   369→                </SelectItem>
+   370→              ))}
+   371→            </SelectContent>
+   372→          </Select>
+   373→        </div>
+   374→      </div>
+   375→
+   376→      {/* Lineage strip */}
+   377→      <Link
+   378→        href={`/lineage?dataset=${ds.id}`}
+   379→        className={cn(
+   380→          'mb-4 flex items-center justify-between gap-2 rounded-lg border px-3.5 py-2.5 text-xs transition-colors',
+   381→          lineageSummary.hasAny
+   382→            ? 'border-zinc-800 bg-zinc-900/60 hover:border-emerald-500/40'
+   383→            : 'border-zinc-800/60 bg-zinc-900/30',
+   384→        )}
+   385→      >
+   386→        <span className="flex items-center gap-2 text-zinc-400">
+   387→          <GitBranch className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+   388→          Lineage
+   389→        </span>
+   390→        {lineageSummary.hasAny ? (
+   391→          <span className="font-mono text-zinc-300">
+   392→            ← {lineageSummary.upstream} upstream · {lineageSummary.downstream} downstream →
+   393→          </span>
+   394→        ) : (
+   395→          <span className="text-zinc-500">
+   396→            no edges yet — this dataset is not connected to a pipeline
+   397→          </span>
+   398→        )}
+   399→      </Link>
+   400→
+   401→      {/* Tabs */}
+   402→      <Tabs defaultValue="preview">
+   403→        <TabsList className="bg-zinc-900/60">
+   404→          <TabsTrigger value="preview" className="gap-1.5 text-xs data-[state=active]:text-emerald-400">
+   405→            <Table2 className="h-3.5 w-3.5" aria-hidden />
+   406→            Preview
+   407→          </TabsTrigger>
+   408→          <TabsTrigger value="schema" className="gap-1.5 text-xs data-[state=active]:text-emerald-400">
+   409→            <CircleDot className="h-3.5 w-3.5" aria-hidden />
+   410→            Schema
+   411→          </TabsTrigger>
+   412→          <TabsTrigger value="history" className="gap-1.5 text-xs data-[state=active]:text-emerald-400">
+   413→            <History className="h-3.5 w-3.5" aria-hidden />
+   414→            History
+   415→          </TabsTrigger>
+   416→        </TabsList>
+   417→
+   418→        {/* ── Preview ── */}
+   419→        <TabsContent value="preview" className="mt-3">
+   420→          <Card className="border-zinc-800 bg-zinc-900/60">
+   421→            <div className="flex flex-col gap-3 border-b border-zinc-800 p-3 sm:flex-row sm:items-center sm:justify-between">
+   422→              <div className="relative w-full sm:w-72">
+   423→                <Search
+   424→                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+   425→                  aria-hidden
+   426→                />
+   427→                <Input
+   428→                  value={searchInput}
+   429→                  onChange={(e) => {
+   430→                    setSearchInput(e.target.value)
+   431→                    setPage(1)
+   432→                  }}
+   433→                  placeholder="Search rows…"
+   434→                  aria-label="Search rows"
+   435→                  className="h-8 border-zinc-700 bg-zinc-950 pl-8 font-mono text-xs text-zinc-100 placeholder:text-zinc-600"
+   436→                />
+   437→              </div>
+   438→              <p className="shrink-0 font-mono text-[11px] text-zinc-500">
+   439→                v{version} · {PAGE_SIZE} rows/page
+   440→              </p>
+   441→            </div>
+   442→
+   443→            {rowsQuery.isLoading ? (
+   444→              <div className="space-y-2 p-4">
+   445→                {[0, 1, 2, 3, 4, 5].map((i) => (
+   446→                  <Skeleton key={i} className="h-7 w-full bg-zinc-800" />
+   447→                ))}
+   448→              </div>
+   449→            ) : rowsQuery.isError ? (
+   450→              <div className="p-6 text-center text-sm text-rose-400">
+   451→                {rowsQuery.error instanceof Error ? rowsQuery.error.message : 'Failed to load rows'}
+   452→              </div>
+   453→            ) : (rowsQuery.data?.rows.length ?? 0) === 0 ? (
+   454→              <div className="p-10 text-center text-sm text-zinc-500">
+   455→                {searchQuery.trim()
+   456→                  ? `No rows match “${searchQuery}”.`
+   457→                  : 'This version contains no rows.'}
+   458→              </div>
+   459→            ) : (
+   460→              <div className="foundry-scroll max-h-[520px] overflow-auto">
+   461→                <Table>
+   462→                  <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+   463→                    <TableRow className="border-zinc-800 hover:bg-transparent">
+   464→                      {columns.map((col) => (
+   465→                        <TableHead
+   466→                          key={col.name}
+   467→                          className={cn(
+   468→                            'h-8 whitespace-nowrap px-3 font-mono text-[11px] text-zinc-400',
+   469→                            col.type === 'number' && 'text-right',
+   470→                          )}
+   471→                        >
+   472→                          {col.name}
+   473→                          <span className="ml-1 text-zinc-600">
+   474→                            {col.type === 'number' ? '#' : col.type === 'boolean' ? '⌥' : 'A'}
+   475→                          </span>
+   476→                        </TableHead>
+   477→                      ))}
+   478→                    </TableRow>
+   479→                  </TableHeader>
+   480→                  <TableBody>
+   481→                    {rowsQuery.data?.rows.map((row, i) => (
+   482→                      <TableRow key={i} className="border-zinc-800/70 hover:bg-zinc-900/70">
+   483→                        {columns.map((col) => (
+   484→                          <TableCell
+   485→                            key={col.name}
+   486→                            className={cn(
+   487→                              'whitespace-nowrap px-3 py-1.5 font-mono text-xs text-zinc-300',
+   488→                              col.type === 'number' && 'text-right tabular-nums',
+   489→                            )}
+   490→                          >
+   491→                            {renderCellValue(row[col.name], col.type)}
+   492→                          </TableCell>
+   493→                        ))}
+   494→                      </TableRow>
+   495→                    ))}
+   496→                  </TableBody>
+   497→                </Table>
+   498→              </div>
+   499→            )}
+   500→
+   501→            {/* Pagination footer */}
+   502→            <div className="flex items-center justify-between gap-2 border-t border-zinc-800 p-3">
+   503→              <Button
+   504→                variant="outline"
+   505→                size="sm"
+   506→                disabled={page <= 1 || rowsQuery.isFetching}
+   507→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   508→                className="h-8 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-300 hover:bg-zinc-800"
+   509→                aria-label="Previous page"
+   510→              >
+   511→                <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+   512→                Prev
+   513→              </Button>
+   514→              <p className="font-mono text-[11px] text-zinc-500">
+   515→                page {rowsQuery.data?.page ?? page} of {totalPages} · {total.toLocaleString()} rows
+   516→              </p>
+   517→              <Button
+   518→                variant="outline"
+   519→                size="sm"
+   520→                disabled={page >= totalPages || rowsQuery.isFetching}
+   521→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   522→                className="h-8 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-300 hover:bg-zinc-800"
+   523→                aria-label="Next page"
+   524→              >
+   525→                Next
+   526→                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+   527→              </Button>
+   528→            </div>
+   529→          </Card>
+   530→        </TabsContent>
+   531→
+   532→        {/* ── Schema ── */}
+   533→        <TabsContent value="schema" className="mt-3">
+   534→          <Card className="border-zinc-800 bg-zinc-900/60">
+   535→            <CardContent className="p-0">
+   536→              {columns.length === 0 ? (
+   537→                <p className="p-8 text-center text-sm text-zinc-500">No schema recorded.</p>
+   538→              ) : (
+   539→                <ul className="divide-y divide-zinc-800/70">
+   540→                  {columns.map((col) => (
+   541→                    <li key={col.name} className="flex items-center justify-between gap-3 px-4 py-2">
+   542→                      <span className="truncate font-mono text-xs text-zinc-200">{col.name}</span>
+   543→                      <span className="flex shrink-0 items-center gap-1.5">
+   544→                        {col.markedWith && (
+   545→                          <MarkingChip
+   546→                            name={col.markedWith}
+   547→                            color={markingColorByName.get(col.markedWith)}
+   548→                          />
+   549→                        )}
+   550→                        <Badge
+   551→                          variant="outline"
+   552→                          className={cn(
+   553→                            'shrink-0 border font-mono text-[10px]',
+   554→                            col.type === 'number' &&
+   555→                              'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+   556→                            col.type === 'string' &&
+   557→                              'border-zinc-700 bg-zinc-800/60 text-zinc-400',
+   558→                            col.type === 'boolean' &&
+   559→                              'border-amber-500/40 bg-amber-500/10 text-amber-400',
+   560→                          )}
+   561→                        >
+   562→                          {col.type}
+   563→                        </Badge>
+   564→                      </span>
+   565→                    </li>
+   566→                  ))}
+   567→                </ul>
+   568→              )}
+   569→            </CardContent>
+   570→          </Card>
+   571→        </TabsContent>
+   572→
+   573→        {/* ── History ── */}
+   574→        <TabsContent value="history" className="mt-3">
+   575→          {/* Retention (M2): keepLastN select + manual prune */}
+   576→          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+   577→            <div className="flex min-w-0 items-start gap-2.5">
+   578→              <Archive className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+   579→              <div className="min-w-0">
+   580→                <p className="text-xs font-medium text-zinc-200">
+   581→                  Version retention{' '}
+   582→                  <span className="ml-1 font-mono text-[10px] text-zinc-500">
+   583→                    {keepLastN === 0
+   584→                      ? 'unlimited'
+   585→                      : `keep last ${keepLastN ?? 20} of ${detail.dataset.versionsCount}`}
+   586→                  </span>
+   587→                </p>
+   588→                <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">
+   589→                  Applies automatically on every new version (ingest, pipeline, transform,
+   590→                  action). Pruning never touches the current version.
+   591→                </p>
+   592→              </div>
+   593→            </div>
+   594→            <div className="flex shrink-0 items-center gap-2">
+   595→              <Select
+   596→                value={String(retentionValue)}
+   597→                onValueChange={(v) => retentionMutation.mutate(Number(v))}
+   598→              >
+   599→                <SelectTrigger
+   600→                  aria-label="Retention: keep newest N versions"
+   601→                  className="h-8 w-[150px] border-zinc-700 bg-zinc-900/60 font-mono text-xs text-zinc-100"
+   602→                >
+   603→                  <SelectValue />
+   604→                </SelectTrigger>
+   605→                <SelectContent className="border-zinc-800 bg-zinc-900">
+   606→                  {RETENTION_CHOICES.map((n) => (
+   607→                    <SelectItem key={n} value={String(n)} className="font-mono text-xs">
+   608→                      {n === 0 ? 'Unlimited' : `Keep last ${n}`}
+   609→                    </SelectItem>
+   610→                  ))}
+   611→                  {typeof retentionValue === 'number' &&
+   612→                    !(RETENTION_CHOICES as readonly number[]).includes(retentionValue) && (
+   613→                      <SelectItem value={String(retentionValue)} className="font-mono text-xs">
+   614→                        Keep last {retentionValue} (custom)
+   615→                      </SelectItem>
+   616→                    )}
+   617→                </SelectContent>
+   618→              </Select>
+   619→              <GatedButton
+   620→                allowed={canEdit}
+   621→                reason="requires editor role"
+   622→                size="sm"
+   623→                variant="outline"
+   624→                onClick={() => pruneMutation.mutate()}
+   625→                disabled={pruneMutation.isPending || retentionMutation.isPending}
+   626→                className="h-8 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   627→              >
+   628→                {pruneMutation.isPending ? (
+   629→                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   630→                ) : (
+   631→                  <Archive className="h-3.5 w-3.5" aria-hidden />
+   632→                )}
+   633→                Prune now
+   634→              </GatedButton>
+   635→            </div>
+   636→          </div>
+   637→
+   638→          <Card className="border-zinc-800 bg-zinc-900/60">
+   639→            <CardContent className="p-4">
+   640→              <ol className="relative ml-3 space-y-5 border-l border-zinc-800 pl-6">
+   641→                {detail.versions.map((v, idx) => {
+   642→                  const isLatest = idx === 0
+   643→                  const isSelected = v.versionNumber === version
+   644→                  return (
+   645→                    <li key={v.id} className="relative">
+   646→                      <span
+   647→                        aria-hidden
+   648→                        className={cn(
+   649→                          'absolute -left-[31px] top-0.5 h-3 w-3 rounded-full border-2',
+   650→                          isLatest
+   651→                            ? 'border-emerald-500 bg-emerald-500/40'
+   652→                            : 'border-zinc-600 bg-zinc-900',
+   653→                        )}
+   654→                      />
+   655→                      <div
+   656→                        className={cn(
+   657→                          'rounded-md border px-3 py-2 transition-colors',
+   658→                          isSelected
+   659→                            ? 'border-emerald-500/40 bg-emerald-500/5'
+   660→                            : 'border-zinc-800 bg-zinc-950/50',
+   661→                        )}
+   662→                      >
+   663→                        <div className="flex flex-wrap items-center justify-between gap-2">
+   664→                          <button
+   665→                            type="button"
+   666→                            onClick={() => {
+   667→                              setSelectedVersion(v.versionNumber)
+   668→                              setPage(1)
+   669→                            }}
+   670→                            className="font-mono text-sm font-medium text-zinc-100 hover:text-emerald-400"
+   671→                            aria-label={`Show version ${v.versionNumber}`}
+   672→                          >
+   673→                            v{v.versionNumber}
+   674→                          </button>
+   675→                          <span className="font-mono text-xs text-emerald-400">
+   676→                            {v.rowCount.toLocaleString()} rows
+   677→                          </span>
+   678→                        </div>
+   679→                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px] text-zinc-500">
+   680→                          <span title={v.createdBy ?? undefined}>by {shortId(v.createdBy, 10)}</span>
+   681→                          <span title={format(parseISO(v.createdAt), 'MMM d, yyyy HH:mm:ss')}>
+   682→                            {format(parseISO(v.createdAt), 'MMM d, HH:mm:ss')}
+   683→                          </span>
+   684→                          {isLatest && (
+   685→                            <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 text-[10px] text-emerald-400">
+   686→                              latest
+   687→                            </span>
+   688→                          )}
+   689→                          {isSelected && !isLatest && (
+   690→                            <span className="rounded border border-zinc-700 bg-zinc-800/60 px-1 text-[10px] text-zinc-400">
+   691→                              viewing
+   692→                            </span>
+   693→                          )}
+   694→                        </div>
+   695→                      </div>
+   696→                    </li>
+   697→                  )
+   698→                })}
+   699→              </ol>
+   700→            </CardContent>
+   701→          </Card>
+   702→        </TabsContent>
+   703→      </Tabs>
+   704→    </div>
+   705→  )
+   706→}
+   707→

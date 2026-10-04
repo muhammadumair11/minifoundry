@@ -1,0 +1,686 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useParams } from 'next/navigation'
+     6→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     7→import {
+     8→  addEdge,
+     9→  Background,
+    10→  BackgroundVariant,
+    11→  Controls,
+    12→  MiniMap,
+    13→  ReactFlow,
+    14→  ReactFlowProvider,
+    15→  useEdgesState,
+    16→  useNodesState,
+    17→  useReactFlow,
+    18→  type Connection,
+    19→  type Edge,
+    20→  type NodeTypes,
+    21→  type OnSelectionChangeParams,
+    22→} from '@xyflow/react'
+    23→import '@xyflow/react/dist/style.css'
+    24→import { toast } from 'sonner'
+    25→import { ChevronDown, Loader2, Maximize2, NotebookPen, Play, Save } from 'lucide-react'
+    26→import { Button } from '@/components/ui/button'
+    27→import { useFocusMode } from '@/components/foundry/focus-mode'
+    28→import { Input } from '@/components/ui/input'
+    29→import { Skeleton } from '@/components/ui/skeleton'
+    30→import {
+    31→  Dialog,
+    32→  DialogContent,
+    33→  DialogDescription,
+    34→  DialogFooter,
+    35→  DialogHeader,
+    36→  DialogTitle,
+    37→} from '@/components/ui/dialog'
+    38→import {
+    39→  DropdownMenu,
+    40→  DropdownMenuContent,
+    41→  DropdownMenuItem,
+    42→  DropdownMenuTrigger,
+    43→} from '@/components/ui/dropdown-menu'
+    44→import { StatusBadge } from '@/components/foundry/status-badge'
+    45→import { BuilderDatasetsContext } from '@/components/foundry/builder/builder-context'
+    46→import { FlowNode, type AppNode } from '@/components/foundry/builder/flow-node'
+    47→import { NodePalette } from '@/components/foundry/builder/node-palette'
+    48→import { ConfigPanel } from '@/components/foundry/builder/config-panel'
+    49→import { RunPanel } from '@/components/foundry/builder/run-panel'
+    50→import { VersionsControl } from '@/components/foundry/builder/versions-panel'
+    51→import { defaultNodeData, NODE_META } from '@/components/foundry/builder/node-meta'
+    52→import { formatDuration, shortId } from '@/lib/foundry-types'
+    53→import type {
+    54→  DatasetSummary,
+    55→  DatasetsListResponse,
+    56→  GraphNodeData,
+    57→  NodeTypeName,
+    58→  PipelineDetailResponse,
+    59→  PipelineGraph,
+    60→  PipelineVersionsResponse,
+    61→  RunResponse,
+    62→  RunSummary,
+    63→} from '@/lib/foundry-types'
+    64→
+    65→type AppEdge = Edge
+    66→
+    67→const nodeTypes: NodeTypes = {
+    68→  source: FlowNode,
+    69→  filter: FlowNode,
+    70→  derive: FlowNode,
+    71→  select: FlowNode,
+    72→  rename: FlowNode,
+    73→  join: FlowNode,
+    74→  aggregate: FlowNode,
+    75→  sort: FlowNode,
+    76→  dedupe: FlowNode,
+    77→  union: FlowNode,
+    78→  limit: FlowNode,
+    79→  output: FlowNode,
+    80→}
+    81→
+    82→const EDGE_STYLE = { stroke: '#71717a' } // zinc-500
+    83→
+    84→const miniMapColor = (node: AppNode): string => {
+    85→  if (node.type === 'source') return '#34d399'
+    86→  if (node.type === 'output') return '#fb7185'
+    87→  return '#52525b'
+    88→}
+    89→
+    90→async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
+    91→  const res = await fetch(url, init)
+    92→  if (!res.ok) {
+    93→    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    94→    throw new Error(body?.error ?? `Request failed (${res.status})`)
+    95→  }
+    96→  return res.json() as Promise<T>
+    97→}
+    98→
+    99→// Canonical graph body — exactly the shape PUT persists (id/type/data/position,
+   100→// id/source/target). Used both for saving and for M3.1 dirty tracking so a
+   101→// clean canvas never mints a redundant version snapshot.
+   102→function canonicalGraph(nodes: AppNode[], edges: AppEdge[]) {
+   103→  return {
+   104→    nodes: nodes.map((n) => ({ id: n.id, type: n.type, data: n.data, position: n.position })),
+   105→    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+   106→  }
+   107→}
+   108→
+   109→function canonicalGraphFromApi(graph: PipelineGraph | null | undefined) {
+   110→  return {
+   111→    nodes: (graph?.nodes ?? []).map((n) => ({
+   112→      id: n.id,
+   113→      type: n.type,
+   114→      data: n.data ?? {},
+   115→      position: n.position ?? { x: 0, y: 0 },
+   116→    })),
+   117→    edges: (graph?.edges ?? []).map((e) => ({ id: e.id, source: e.source, target: e.target })),
+   118→  }
+   119→}
+   120→
+   121→function Builder() {
+   122→  const params = useParams<{ id: string }>()
+   123→  const id = params.id
+   124→  const queryClient = useQueryClient()
+   125→  const rf = useReactFlow()
+   126→  const [, setFocus] = useFocusMode()
+   127→
+   128→  const pipelineQuery = useQuery<PipelineDetailResponse>({
+   129→    queryKey: ['pipeline', id],
+   130→    queryFn: async () => apiJson(`/api/pipelines/${id}`),
+   131→  })
+   132→
+   133→  const datasetsQuery = useQuery<DatasetsListResponse>({
+   134→    queryKey: ['datasets'],
+   135→    queryFn: async () => apiJson('/api/datasets'),
+   136→  })
+   137→  const datasets: DatasetSummary[] = useMemo(() => datasetsQuery.data?.datasets ?? [], [datasetsQuery])
+   138→  const datasetsById = useMemo(() => new Map(datasets.map((d) => [d.id, d])), [datasets])
+   139→
+   140→  const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([])
+   141→  const [edges, setEdges, onEdgesChange] = useEdgesState<AppEdge>([])
+   142→  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+   143→  const [nameInput, setNameInput] = useState('')
+   144→  const [runPanelOpen, setRunPanelOpen] = useState(false)
+   145→  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+   146→  const [saving, setSaving] = useState(false)
+   147→  const [running, setRunning] = useState(false)
+   148→  const [saveNoteOpen, setSaveNoteOpen] = useState(false)
+   149→  const [versionNote, setVersionNote] = useState('')
+   150→  const initializedRef = useRef(false)
+   151→  const runPanelRef = useRef<HTMLDivElement | null>(null)
+   152→  // M3.1: canonical JSON of the last loaded/saved graph — dirty-tracking ref
+   153→  // so Run/Save only snapshot when the canvas actually differs.
+   154→  const savedGraphRef = useRef<string>('')
+   155→
+   156→  // Seed the flow state from a graph payload; also records it as the saved
+   157→  // baseline. Used by the one-shot init effect AND after restores (which must
+   158→  // re-seed the canvas imperatively — refetches never clobber edits).
+   159→  const applyGraph = useCallback(
+   160→    (graph: PipelineGraph | null | undefined) => {
+   161→      const g = graph ?? { nodes: [], edges: [] }
+   162→      setNodes(
+   163→        g.nodes.map((n) => ({
+   164→          id: n.id,
+   165→          type: n.type,
+   166→          data: (n.data ?? {}) as GraphNodeData,
+   167→          position: n.position ?? { x: 0, y: 0 },
+   168→        })),
+   169→      )
+   170→      setEdges(
+   171→        g.edges.map((e) => ({
+   172→          id: e.id,
+   173→          source: e.source,
+   174→          target: e.target,
+   175→          animated: true,
+   176→          style: { ...EDGE_STYLE },
+   177→        })),
+   178→      )
+   179→      savedGraphRef.current = JSON.stringify(canonicalGraphFromApi(g))
+   180→      if (g.nodes.length > 0) {
+   181→        setTimeout(() => rf.fitView({ padding: 0.2, maxZoom: 1.1, duration: 300 }), 60)
+   182→      }
+   183→    },
+   184→    [setNodes, setEdges, rf],
+   185→  )
+   186→
+   187→  // Load graph from the server exactly once (refetches must not clobber edits).
+   188→  useEffect(() => {
+   189→    const data = pipelineQuery.data
+   190→    if (!data || initializedRef.current) return
+   191→    initializedRef.current = true
+   192→    applyGraph(data.pipeline.graph)
+   193→    setNameInput(data.pipeline.name)
+   194→    setSelectedRunId(data.runs[0]?.id ?? null)
+   195→  }, [pipelineQuery.data, applyGraph])
+   196→
+   197→  const onConnect = useCallback(
+   198→    (connection: Connection) => {
+   199→      setEdges((eds) =>
+   200→        addEdge(
+   201→          {
+   202→            ...connection,
+   203→            id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+   204→            animated: true,
+   205→            style: { ...EDGE_STYLE },
+   206→          },
+   207→          eds,
+   208→        ),
+   209→      )
+   210→    },
+   211→    [setEdges],
+   212→  )
+   213→
+   214→  const onSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
+   215→    setSelectedNodeId(selected[0]?.id ?? null)
+   216→  }, [])
+   217→
+   218→  const onPaneClick = useCallback(() => setSelectedNodeId(null), [])
+   219→
+   220→  const addNode = useCallback(
+   221→    (type: NodeTypeName) => {
+   222→      const newNode: AppNode = {
+   223→        id: `${type}-${Date.now()}`,
+   224→        type,
+   225→        position: { x: 80 + nodes.length * 40, y: 80 + (nodes.length % 5) * 90 },
+   226→        data: defaultNodeData(type),
+   227→      }
+   228→      setNodes((nds) => [...nds, newNode])
+   229→      setSelectedNodeId(newNode.id)
+   230→      toast.info(`${NODE_META[type].label} node added`, {
+   231→        description: NODE_META[type].hint,
+   232→      })
+   233→    },
+   234→    [nodes.length, setNodes],
+   235→  )
+   236→
+   237→  const updateNodeData = useCallback(
+   238→    (nodeId: string, patch: Partial<GraphNodeData>) => {
+   239→      setNodes((nds) =>
+   240→        nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)),
+   241→      )
+   242→    },
+   243→    [setNodes],
+   244→  )
+   245→
+   246→  const deleteNodeById = useCallback(
+   247→    (nodeId: string) => {
+   248→      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+   249→      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
+   250→      setSelectedNodeId((current) => (current === nodeId ? null : current))
+   251→      toast.info('Node removed')
+   252→    },
+   253→    [setNodes, setEdges],
+   254→  )
+   255→
+   256→  const selectedNode = useMemo(
+   257→    () => nodes.find((n) => n.id === selectedNodeId) ?? null,
+   258→    [nodes, selectedNodeId],
+   259→  )
+   260→
+   261→  // M3.1: canvas differs from the last loaded/saved graph?
+   262→  const isDirty = useMemo(() => {
+   263→    if (!initializedRef.current || !savedGraphRef.current) return false
+   264→    return JSON.stringify(canonicalGraph(nodes, edges)) !== savedGraphRef.current
+   265→  }, [nodes, edges])
+   266→
+   267→  const runs: RunSummary[] = pipelineQuery.data?.runs ?? []
+   268→  const selectedRun = runs.find((r) => r.id === selectedRunId) ?? runs[0] ?? null
+   269→  const latestRun = runs[0] ?? null
+   270→
+   271→  const validateGraph = (): boolean => {
+   272→    if (nodes.length === 0) {
+   273→      toast.error('Cannot save an empty graph', {
+   274→        description: 'Add at least a source node and one output node.',
+   275→      })
+   276→      return false
+   277→    }
+   278→    const outputs = nodes.filter((n) => n.type === 'output')
+   279→    if (outputs.length !== 1) {
+   280→      toast.error('Exactly one output node required', {
+   281→        description: `Found ${outputs.length} output node${outputs.length === 1 ? '' : 's'}.`,
+   282→      })
+   283→      return false
+   284→    }
+   285→    return true
+   286→  }
+   287→
+   288→  const savePipeline = useCallback(
+   289→    async (opts?: { silent?: boolean; versionNote?: string }): Promise<boolean> => {
+   290→      if (!validateGraph()) return false
+   291→      setSaving(true)
+   292→      try {
+   293→        await apiJson(`/api/pipelines/${id}`, {
+   294→          method: 'PUT',
+   295→          headers: { 'Content-Type': 'application/json' },
+   296→          body: JSON.stringify({
+   297→            name: nameInput.trim() || 'Untitled pipeline',
+   298→            graph: canonicalGraph(nodes, edges),
+   299→            // M3.1: free-text label stored on the version snapshot this save
+   300→            // creates (name-only saves never snapshot).
+   301→            ...(opts?.versionNote ? { versionNote: opts.versionNote } : {}),
+   302→          }),
+   303→        })
+   304→        savedGraphRef.current = JSON.stringify(canonicalGraph(nodes, edges))
+   305→        await queryClient.invalidateQueries({ queryKey: ['pipeline', id] })
+   306→        await queryClient.invalidateQueries({ queryKey: ['pipelines'] })
+   307→        // Every graph save snapshots a version — refresh the versions panel
+   308→        // (awaited so the toast below can read the new version number).
+   309→        await queryClient.invalidateQueries({ queryKey: ['pipeline-versions', id] })
+   310→        if (!opts?.silent) {
+   311→          const versionsData = queryClient.getQueryData<PipelineVersionsResponse>([
+   312→            'pipeline-versions',
+   313→            id,
+   314→          ])
+   315→          const newVersion = versionsData?.versions[0]?.versionNumber
+   316→          if (newVersion !== undefined) {
+   317→            toast.success(`Pipeline saved as v${newVersion}`, {
+   318→              description: opts?.versionNote || `Graph snapshotted as version v${newVersion}.`,
+   319→            })
+   320→          } else {
+   321→            toast.success('Pipeline saved')
+   322→          }
+   323→        }
+   324→        return true
+   325→      } catch (err) {
+   326→        toast.error('Save failed', {
+   327→          description: err instanceof Error ? err.message : 'Unknown error',
+   328→        })
+   329→        return false
+   330→      } finally {
+   331→        setSaving(false)
+   332→      }
+   333→    },
+   334→    // validateGraph reads current state; including it keeps the callback fresh.
+   335→    [id, nameInput, nodes, edges, queryClient],
+   336→  )
+   337→
+   338→  const handleSaveWithNote = useCallback(async () => {
+   339→    const ok = await savePipeline({ versionNote: versionNote.trim() || undefined })
+   340→    if (ok) {
+   341→      setSaveNoteOpen(false)
+   342→      setVersionNote('')
+   343→    }
+   344→  }, [savePipeline, versionNote])
+   345→
+   346→  // M3.1: re-seed the canvas from the restored graph (the one-shot init effect
+   347→  // stays closed; restore applies the authoritative response graph directly).
+   348→  const handleRestored = useCallback(
+   349→    (graph: PipelineGraph | null) => {
+   350→      applyGraph(graph)
+   351→      toast.info('Canvas reloaded', {
+   352→        description: 'The restored graph replaced the canvas contents.',
+   353→      })
+   354→    },
+   355→    [applyGraph],
+   356→  )
+   357→
+   358→  const handleRename = useCallback(async () => {
+   359→    const current = pipelineQuery.data?.pipeline.name
+   360→    if (!current || nameInput.trim() === current || !nameInput.trim()) return
+   361→    try {
+   362→      await apiJson(`/api/pipelines/${id}`, {
+   363→        method: 'PUT',
+   364→        headers: { 'Content-Type': 'application/json' },
+   365→        body: JSON.stringify({ name: nameInput.trim() }),
+   366→      })
+   367→      toast.success('Renamed', { description: nameInput.trim() })
+   368→      await queryClient.invalidateQueries({ queryKey: ['pipeline', id] })
+   369→      await queryClient.invalidateQueries({ queryKey: ['pipelines'] })
+   370→    } catch (err) {
+   371→      toast.error('Rename failed', {
+   372→        description: err instanceof Error ? err.message : 'Unknown error',
+   373→      })
+   374→    }
+   375→  }, [id, nameInput, pipelineQuery.data, queryClient])
+   376→
+   377→  const handleRun = useCallback(async () => {
+   378→    // M3.1: only persist when the canvas actually differs from the saved
+   379→    // graph — every graph save snapshots a version, and a clean Run should
+   380→    // pin the existing latest version instead of minting a redundant one.
+   381→    if (isDirty) {
+   382→      const saved = await savePipeline({ silent: true })
+   383→      if (!saved) return
+   384→    }
+   385→    setRunning(true)
+   386→    try {
+   387→      const { run } = await apiJson<RunResponse>(`/api/pipelines/${id}/run`, { method: 'POST' })
+   388→      await queryClient.invalidateQueries({ queryKey: ['pipeline', id] })
+   389→      await queryClient.invalidateQueries({ queryKey: ['stats'] })
+   390→      await queryClient.invalidateQueries({ queryKey: ['lineage'] })
+   391→      await queryClient.invalidateQueries({ queryKey: ['datasets'] })
+   392→      await queryClient.invalidateQueries({ queryKey: ['runs'] })
+   393→      await queryClient.invalidateQueries({ queryKey: ['health'] })
+   394→      // The run pinned a version — per-version runCounts changed too.
+   395→      await queryClient.invalidateQueries({ queryKey: ['pipeline-versions', id] })
+   396→      setSelectedRunId(run.id)
+   397→      setRunPanelOpen(true)
+   398→      // Reveal logs without hunting below the fold: open the panel (if collapsed)
+   399→      // and scroll it into view once it has rendered.
+   400→      setTimeout(() => {
+   401→        runPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+   402→      }, 100)
+   403→      if (run.status === 'success') {
+   404→        toast.success('Run succeeded', {
+   405→          description: `Run ${shortId(run.id, 8)} finished — a new dataset version was published.`,
+   406→        })
+   407→      } else {
+   408→        const errLog = (run.logs ?? []).find((l) => l.level === 'error')
+   409→        toast.error('Run failed', {
+   410→          description: errLog?.msg ?? `Run ${shortId(run.id, 8)} failed — check the logs.`,
+   411→        })
+   412→      }
+   413→    } catch (err) {
+   414→      toast.error('Run request failed', {
+   415→        description: err instanceof Error ? err.message : 'Unknown error',
+   416→      })
+   417→    } finally {
+   418→      setRunning(false)
+   419→    }
+   420→  }, [id, queryClient, savePipeline, isDirty])
+   421→
+   422→  if (pipelineQuery.isLoading) {
+   423→    return (
+   424→      <div className="mx-auto w-full max-w-6xl space-y-3 px-4 py-8">
+   425→        <Skeleton className="h-9 w-72 bg-zinc-800" />
+   426→        <Skeleton className="h-[520px] w-full bg-zinc-800/70" />
+   427→      </div>
+   428→    )
+   429→  }
+   430→
+   431→  if (pipelineQuery.isError || !pipelineQuery.data) {
+   432→    return (
+   433→      <div className="px-4 py-16 text-center">
+   434→        <p className="text-sm text-rose-400">
+   435→          {pipelineQuery.error instanceof Error
+   436→            ? pipelineQuery.error.message
+   437→            : 'Pipeline not found.'}
+   438→        </p>
+   439→        <Button asChild variant="outline" className="mt-4 border-zinc-700 text-zinc-200">
+   440→          <Link href="/pipelines">Back to pipelines</Link>
+   441→        </Button>
+   442→      </div>
+   443→    )
+   444→  }
+   445→
+   446→  return (
+   447→    <BuilderDatasetsContext.Provider value={datasets}>
+   448→      <div className="flex min-h-[560px] flex-col lg:h-[calc(100dvh-var(--mf-chrome-h,3.5rem)-var(--mf-footer-h,42px))]">
+   449→        {/* ── Toolbar ── */}
+   450→        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800 bg-zinc-950/80 px-3">
+   451→          <Input
+   452→            value={nameInput}
+   453→            onChange={(e) => setNameInput(e.target.value)}
+   454→            onBlur={() => void handleRename()}
+   455→            aria-label="Pipeline name"
+   456→            className="h-8 min-w-0 max-w-[240px] border-transparent bg-transparent px-2 text-sm font-semibold text-zinc-100 hover:border-zinc-700 focus-visible:border-zinc-700"
+   457→          />
+   458→          {latestRun && (
+   459→            <div className="hidden items-center gap-2 sm:flex" title="Latest run">
+   460→              <StatusBadge status={latestRun.status} />
+   461→              <span className="font-mono text-[10px] text-zinc-500">
+   462→                {formatDuration(latestRun.startedAt, latestRun.finishedAt)}
+   463→              </span>
+   464→            </div>
+   465→          )}
+   466→          <div className="ml-auto flex items-center gap-2">
+   467→            <button
+   468→              type="button"
+   469→              onClick={() => setFocus(true)}
+   470→              aria-label="Focus mode — hide app chrome (Esc exits)"
+   471→              title="Focus mode (Esc exits)"
+   472→              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-emerald-400"
+   473→            >
+   474→              <Maximize2 className="h-4 w-4" aria-hidden />
+   475→            </button>
+   476→            <VersionsControl
+   477→              pipelineId={id}
+   478→              versionCount={pipelineQuery.data.pipeline.versionCount}
+   479→              onRestored={handleRestored}
+   480→            />
+   481→            <Button
+   482→              variant="outline"
+   483→              size="sm"
+   484→              onClick={() => void savePipeline()}
+   485→              disabled={saving || running}
+   486→              className="h-8 gap-1.5 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   487→              aria-label="Save pipeline"
+   488→            >
+   489→              {saving ? (
+   490→                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   491→              ) : (
+   492→                <Save className="h-3.5 w-3.5" aria-hidden />
+   493→              )}
+   494→              Save
+   495→            </Button>
+   496→            <DropdownMenu>
+   497→              <DropdownMenuTrigger asChild>
+   498→                <Button
+   499→                  variant="outline"
+   500→                  size="sm"
+   501→                  disabled={saving || running}
+   502→                  className="h-8 w-6 border-zinc-700 bg-zinc-900/60 px-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+   503→                  aria-label="More save options"
+   504→                >
+   505→                  <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+   506→                </Button>
+   507→              </DropdownMenuTrigger>
+   508→              <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+   509→                <DropdownMenuItem
+   510→                  onClick={() => void savePipeline()}
+   511→                  className="gap-1.5 text-xs text-zinc-200"
+   512→                >
+   513→                  <Save className="h-3.5 w-3.5" aria-hidden />
+   514→                  Save
+   515→                </DropdownMenuItem>
+   516→                <DropdownMenuItem
+   517→                  onClick={() => setSaveNoteOpen(true)}
+   518→                  className="gap-1.5 text-xs text-zinc-200"
+   519→                >
+   520→                  <NotebookPen className="h-3.5 w-3.5" aria-hidden />
+   521→                  Save with note…
+   522→                </DropdownMenuItem>
+   523→              </DropdownMenuContent>
+   524→            </DropdownMenu>
+   525→            <Button
+   526→              size="sm"
+   527→              onClick={() => void handleRun()}
+   528→              disabled={saving || running}
+   529→              className="relative h-8 gap-1.5 bg-emerald-500 text-xs text-zinc-950 hover:bg-emerald-400"
+   530→              aria-label="Run pipeline"
+   531→            >
+   532→              {running ? (
+   533→                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   534→              ) : (
+   535→                <Play className="h-3.5 w-3.5" aria-hidden />
+   536→              )}
+   537→              Run
+   538→              {running && (
+   539→                <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5" aria-hidden>
+   540→                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+   541→                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-zinc-950 bg-emerald-400" />
+   542→                </span>
+   543→              )}
+   544→            </Button>
+   545→          </div>
+   546→        </div>
+   547→
+   548→        {/* Mobile palette chips */}
+   549→        <div className="px-3 pt-2 lg:hidden">
+   550→          <NodePalette compact onAdd={addNode} />
+   551→        </div>
+   552→
+   553→        {/* ── Main area ── */}
+   554→        <div className="flex min-h-0 flex-1">
+   555→          <NodePalette onAdd={addNode} className="hidden lg:flex" />
+   556→
+   557→          <div className="relative min-h-[420px] flex-1 lg:min-h-[520px]">
+   558→            <ReactFlow
+   559→              nodes={nodes}
+   560→              edges={edges}
+   561→              onNodesChange={onNodesChange}
+   562→              onEdgesChange={onEdgesChange}
+   563→              onConnect={onConnect}
+   564→              onSelectionChange={onSelectionChange}
+   565→              onPaneClick={onPaneClick}
+   566→              nodeTypes={nodeTypes}
+   567→              colorMode="dark"
+   568→              fitView
+   569→              fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
+   570→              minZoom={0.2}
+   571→              deleteKeyCode={['Backspace', 'Delete']}
+   572→              className="bg-zinc-950"
+   573→            >
+   574→              <Background
+   575→                variant={BackgroundVariant.Dots}
+   576→                gap={22}
+   577→                size={1.4}
+   578→                color="#3f3f46"
+   579→              />
+   580→              <Controls showInteractive={false} position="bottom-left" />
+   581→              <MiniMap
+   582→                pannable
+   583→                zoomable
+   584→                nodeColor={miniMapColor}
+   585→                maskColor="rgb(9, 9, 11, 0.7)"
+   586→                position="bottom-right"
+   587→                className="hidden sm:block"
+   588→              />
+   589→            </ReactFlow>
+   590→          </div>
+   591→
+   592→          {/* Desktop config panel */}
+   593→          <aside className="hidden w-80 shrink-0 border-l border-zinc-800 bg-zinc-900/40 lg:block">
+   594→            <ConfigPanel
+   595→              node={selectedNode}
+   596→              datasets={datasets}
+   597→              onPatchData={updateNodeData}
+   598→              onDelete={deleteNodeById}
+   599→              nodeCount={nodes.length}
+   600→              edgeCount={edges.length}
+   601→            />
+   602→          </aside>
+   603→        </div>
+   604→
+   605→        {/* Mobile config panel */}
+   606→        {selectedNode && (
+   607→          <div className="max-h-[45vh] overflow-y-auto border-t border-zinc-800 bg-zinc-900/40 foundry-scroll lg:hidden">
+   608→            <ConfigPanel
+   609→              node={selectedNode}
+   610→              datasets={datasets}
+   611→              onPatchData={updateNodeData}
+   612→              onDelete={deleteNodeById}
+   613→              nodeCount={nodes.length}
+   614→              edgeCount={edges.length}
+   615→            />
+   616→          </div>
+   617→        )}
+   618→
+   619→        {/* ── Run panel ── */}
+   620→        <div ref={runPanelRef}>
+   621→          {runPanelOpen && (
+   622→            <RunPanel
+   623→              runs={runs}
+   624→              selectedRun={selectedRun}
+   625→              onSelectRun={setSelectedRunId}
+   626→              onClose={() => setRunPanelOpen(false)}
+   627→            />
+   628→          )}
+   629→        </div>
+   630→
+   631→        {/* Save with a version note (M3.1) — snapshots the graph as the next
+   632→            immutable version and stores the note on it. */}
+   633→        <Dialog open={saveNoteOpen} onOpenChange={setSaveNoteOpen}>
+   634→          <DialogContent className="max-w-sm border-zinc-800 bg-zinc-900">
+   635→            <DialogHeader>
+   636→              <DialogTitle className="text-base text-zinc-100">Save pipeline</DialogTitle>
+   637→              <DialogDescription className="text-sm text-zinc-400">
+   638→                Snapshots the current graph as the next immutable version. Runs will pin it.
+   639→              </DialogDescription>
+   640→            </DialogHeader>
+   641→            <Input
+   642→              value={versionNote}
+   643→              onChange={(e) => setVersionNote(e.target.value)}
+   644→              placeholder="Version note — what changed? (optional)"
+   645→              aria-label="Version note"
+   646→              className="border-zinc-700 bg-zinc-950/60 text-sm text-zinc-100 placeholder:text-zinc-600"
+   647→              onKeyDown={(e) => {
+   648→                if (e.key === 'Enter') void handleSaveWithNote()
+   649→              }}
+   650→            />
+   651→            <DialogFooter>
+   652→              <Button
+   653→                variant="outline"
+   654→                onClick={() => setSaveNoteOpen(false)}
+   655→                className="border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800"
+   656→              >
+   657→                Cancel
+   658→              </Button>
+   659→              <Button
+   660→                onClick={() => void handleSaveWithNote()}
+   661→                disabled={saving}
+   662→                className="gap-1.5 bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+   663→              >
+   664→                {saving ? (
+   665→                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+   666→                ) : (
+   667→                  <Save className="h-4 w-4" aria-hidden />
+   668→                )}
+   669→                Save version
+   670→              </Button>
+   671→            </DialogFooter>
+   672→          </DialogContent>
+   673→        </Dialog>
+   674→      </div>
+   675→    </BuilderDatasetsContext.Provider>
+   676→  )
+   677→}
+   678→
+   679→export default function PipelineBuilderPage() {
+   680→  return (
+   681→    <ReactFlowProvider>
+   682→      <Builder />
+   683→    </ReactFlowProvider>
+   684→  )
+   685→}
+   686→

@@ -1,0 +1,659 @@
+     1→'use client'
+     2→
+     3→import { useMemo, useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useRouter } from 'next/navigation'
+     6→import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+     7→import { toast } from 'sonner'
+     8→import {
+     9→  ArrowRight,
+    10→  Circle,
+    11→  ExternalLink,
+    12→  Link2,
+    13→  MoreHorizontal,
+    14→  Network,
+    15→  Sparkles,
+    16→  Trash2,
+    17→  Zap,
+    18→} from 'lucide-react'
+    19→import {
+    20→  AlertDialog,
+    21→  AlertDialogAction,
+    22→  AlertDialogCancel,
+    23→  AlertDialogContent,
+    24→  AlertDialogDescription,
+    25→  AlertDialogFooter,
+    26→  AlertDialogHeader,
+    27→  AlertDialogTitle,
+    28→} from '@/components/ui/alert-dialog'
+    29→import { Badge } from '@/components/ui/badge'
+    30→import { Button } from '@/components/ui/button'
+    31→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    32→import {
+    33→  DropdownMenu,
+    34→  DropdownMenuContent,
+    35→  DropdownMenuItem,
+    36→  DropdownMenuSeparator,
+    37→  DropdownMenuTrigger,
+    38→} from '@/components/ui/dropdown-menu'
+    39→import { Skeleton } from '@/components/ui/skeleton'
+    40→import {
+    41→  Table,
+    42→  TableBody,
+    43→  TableCell,
+    44→  TableHead,
+    45→  TableHeader,
+    46→  TableRow,
+    47→} from '@/components/ui/table'
+    48→import { cn } from '@/lib/utils'
+    49→import { apiJson } from '@/lib/foundry-api'
+    50→import { formatRelative } from '@/lib/foundry-types'
+    51→import type {
+    52→  ActionLogsResponse,
+    53→  ActionSummary,
+    54→  ActionsListResponse,
+    55→  OntologyObjectType,
+    56→  OntologyListResponse,
+    57→  OutgoingLinkSummary,
+    58→  SeedOntologyResponse,
+    59→} from '@/lib/foundry-types'
+    60→import { NewObjectTypeDialog } from '@/components/foundry/ontology/new-object-type-dialog'
+    61→import {
+    62→  getCardinalityClasses,
+    63→  getCardinalityLabel,
+    64→  getObjectColorClasses,
+    65→  getOperationClasses,
+    66→  OntologyIcon,
+    67→} from '@/components/foundry/ontology/icon-map'
+    68→
+    69→// ─── Object type card ─────────────────────────────────────────────────
+    70→
+    71→function TypeCard({
+    72→  type,
+    73→  onRequestDelete,
+    74→}: {
+    75→  type: OntologyObjectType
+    76→  onRequestDelete: (t: OntologyObjectType) => void
+    77→}) {
+    78→  const router = useRouter()
+    79→  const color = getObjectColorClasses(type.color)
+    80→
+    81→  const titleProp = type.properties.find((p) => p.isTitle)
+    82→  const previewProps = [titleProp, ...type.properties.filter((p) => !p.isTitle)]
+    83→    .filter((p): p is NonNullable<typeof p> => !!p)
+    84→    .slice(0, 3)
+    85→
+    86→  const open = () => router.push(`/objects?type=${encodeURIComponent(type.apiName)}`)
+    87→
+    88→  return (
+    89→    <div
+    90→      role="link"
+    91→      tabIndex={0}
+    92→      aria-label={`Open ${type.displayName} objects`}
+    93→      onClick={open}
+    94→      onKeyDown={(e) => {
+    95→        if (e.key === 'Enter' || e.key === ' ') {
+    96→          e.preventDefault()
+    97→          open()
+    98→        }
+    99→      }}
+   100→      className="group relative flex cursor-pointer flex-col rounded-lg border border-zinc-800 bg-zinc-900/60 p-4 outline-none transition-colors hover:border-zinc-700 hover:bg-zinc-900 focus-visible:border-emerald-500/60"
+   101→    >
+   102→      {/* Icon + names + menu */}
+   103→      <div className="flex items-start gap-3">
+   104→        <span
+   105→          className={cn(
+   106→            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border',
+   107→            color.border,
+   108→            color.bg,
+   109→          )}
+   110→        >
+   111→          <OntologyIcon name={type.icon} className={cn('h-5 w-5', color.text)} />
+   112→        </span>
+   113→        <div className="min-w-0 flex-1">
+   114→          <p className="truncate text-sm font-semibold text-zinc-100">{type.displayName}</p>
+   115→          <p className="truncate font-mono text-[11px] text-zinc-500">{type.apiName}</p>
+   116→        </div>
+   117→        <span
+   118→          className="shrink-0"
+   119→          onClick={(e) => e.stopPropagation()}
+   120→          onKeyDown={(e) => e.stopPropagation()}
+   121→          role="presentation"
+   122→        >
+   123→          <DropdownMenu>
+   124→            <DropdownMenuTrigger asChild>
+   125→              <Button
+   126→                variant="ghost"
+   127→                size="sm"
+   128→                className="h-7 w-7 p-0 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+   129→                aria-label={`Options for ${type.displayName}`}
+   130→              >
+   131→                <MoreHorizontal className="h-4 w-4" aria-hidden />
+   132→              </Button>
+   133→            </DropdownMenuTrigger>
+   134→            <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+   135→              <DropdownMenuItem
+   136→                onSelect={() => open()}
+   137→                className="text-xs text-zinc-200 hover:!bg-zinc-800 hover:!text-zinc-100"
+   138→              >
+   139→                <ExternalLink className="mr-2 h-3.5 w-3.5" aria-hidden />
+   140→                Open objects
+   141→              </DropdownMenuItem>
+   142→              <DropdownMenuSeparator className="bg-zinc-800" />
+   143→              <DropdownMenuItem
+   144→                onSelect={() => onRequestDelete(type)}
+   145→                className="text-xs text-rose-400 hover:!bg-rose-500/10 hover:!text-rose-300"
+   146→              >
+   147→                <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden />
+   148→                Delete type…
+   149→              </DropdownMenuItem>
+   150→            </DropdownMenuContent>
+   151→          </DropdownMenu>
+   152→        </span>
+   153→      </div>
+   154→
+   155→      {/* Counts + backing dataset */}
+   156→      <div className="mt-3 flex items-baseline justify-between gap-2">
+   157→        <p className="font-mono text-xs text-zinc-300">
+   158→          {type.objectCount ?? '—'} <span className="text-zinc-500">objects</span>
+   159→        </p>
+   160→        {type.sourceDatasetId ? (
+   161→          <Link
+   162→            href={`/datasets/${type.sourceDatasetId}`}
+   163→            onClick={(e) => e.stopPropagation()}
+   164→            className="truncate font-mono text-[11px] text-emerald-400/90 hover:text-emerald-300"
+   165→            title={`Backing dataset — ${type.sourceDatasetName ?? 'dataset'}`}
+   166→          >
+   167→            {type.sourceDatasetName ?? 'dataset'}
+   168→          </Link>
+   169→        ) : (
+   170→          <span className="font-mono text-[11px] text-zinc-600">no dataset</span>
+   171→        )}
+   172→      </div>
+   173→
+   174→      {/* Property / action chips */}
+   175→      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   176→        <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+   177→          {type.properties.length} props
+   178→        </span>
+   179→        <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+   180→          {type.actions.length} actions
+   181→        </span>
+   182→        {type.linksOut.length + type.linksIn.length > 0 && (
+   183→          <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+   184→            {type.linksOut.length + type.linksIn.length} links
+   185→          </span>
+   186→        )}
+   187→      </div>
+   188→
+   189→      {/* Preview properties */}
+   190→      <ul className="mt-3 space-y-1 border-t border-zinc-800/70 pt-2.5">
+   191→        {previewProps.map((p) => (
+   192→          <li key={p.apiName} className="truncate font-mono text-[11px]">
+   193→            <span className={cn(p.isTitle ? 'font-semibold text-emerald-400' : 'text-zinc-500')}>
+   194→              {p.displayName}
+   195→            </span>
+   196→            <span className="ml-1.5 text-zinc-700">{p.dataType}</span>
+   197→          </li>
+   198→        ))}
+   199→      </ul>
+   200→
+   201→      {/* Links summary */}
+   202→      <p className="mt-2.5 font-mono text-[10px] text-zinc-600">
+   203→        {type.linksOut.length + type.linksIn.length > 0 ? (
+   204→          <>
+   205→            <span className="text-zinc-500">→ {type.linksOut.length} outgoing</span>
+   206→            {' · '}
+   207→            <span className="text-zinc-500">{type.linksIn.length} incoming</span>
+   208→          </>
+   209→        ) : (
+   210→          'no links'
+   211→        )}
+   212→      </p>
+   213→    </div>
+   214→  )
+   215→}
+   216→
+   217→// ─── Page ─────────────────────────────────────────────────────────────
+   218→
+   219→export default function OntologyPage() {
+   220→  const queryClient = useQueryClient()
+   221→  const [deleting, setDeleting] = useState<OntologyObjectType | null>(null)
+   222→
+   223→  const ontologyQuery = useQuery<OntologyListResponse>({
+   224→    queryKey: ['ontology'],
+   225→    queryFn: () => apiJson<OntologyListResponse>('/api/ontology'),
+   226→  })
+   227→  const types = useMemo(() => ontologyQuery.data?.objectTypes ?? [], [ontologyQuery.data])
+   228→
+   229→  const actionsQuery = useQuery<ActionsListResponse>({
+   230→    queryKey: ['actions'],
+   231→    queryFn: () => apiJson<ActionsListResponse>('/api/actions'),
+   232→  })
+   233→  const actions = useMemo(() => actionsQuery.data?.actions ?? [], [actionsQuery.data])
+   234→
+   235→  const logsQuery = useQuery<ActionLogsResponse>({
+   236→    queryKey: ['action-logs'],
+   237→    queryFn: () => apiJson<ActionLogsResponse>('/api/actions/logs?limit=10'),
+   238→    refetchInterval: 15_000,
+   239→  })
+   240→  const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data])
+   241→
+   242→  // All links across types (deduped — linksIn mirror other types' linksOut).
+   243→  const allLinks = useMemo(() => {
+   244→    const rows: { id: string; from: OntologyObjectType; link: OutgoingLinkSummary }[] = []
+   245→    const seen = new Set<string>()
+   246→    for (const t of types) {
+   247→      for (const l of t.linksOut) {
+   248→        if (seen.has(l.id)) continue
+   249→        seen.add(l.id)
+   250→        rows.push({ id: l.id, from: t, link: l })
+   251→      }
+   252→    }
+   253→    return rows
+   254→  }, [types])
+   255→
+   256→  const seedMutation = useMutation({
+   257→    mutationFn: () => apiJson<SeedOntologyResponse>('/api/ontology/seed-demo', { method: 'POST' }),
+   258→    onSuccess: (res) => {
+   259→      if (res.seeded) {
+   260→        toast.success('Demo ontology seeded', {
+   261→          description: `Created ${res.created.length} object types: ${res.created.join(', ')}`,
+   262→        })
+   263→      } else {
+   264→        toast.info('Demo ontology already present', { description: 'Nothing new to seed.' })
+   265→      }
+   266→      void queryClient.invalidateQueries({ queryKey: ['ontology'] })
+   267→      void queryClient.invalidateQueries({ queryKey: ['stats'] })
+   268→    },
+   269→    onError: (err: Error) => toast.error('Seeding failed', { description: err.message }),
+   270→  })
+   271→
+   272→  const deleteMutation = useMutation({
+   273→    mutationFn: (t: OntologyObjectType) =>
+   274→      apiJson<void>(`/api/ontology/${t.id}`, { method: 'DELETE' }),
+   275→    onSuccess: (_res, t) => {
+   276→      toast.success('Object type deleted', {
+   277→        description: `${t.displayName} removed from the ontology (links + actions cascaded).`,
+   278→      })
+   279→      void queryClient.invalidateQueries({ queryKey: ['ontology'] })
+   280→      void queryClient.invalidateQueries({ queryKey: ['actions'] })
+   281→      void queryClient.invalidateQueries({ queryKey: ['action-logs'] })
+   282→      void queryClient.invalidateQueries({ queryKey: ['stats'] })
+   283→      setDeleting(null)
+   284→    },
+   285→    onError: (err: Error) =>
+   286→      toast.error('Could not delete object type', { description: err.message }),
+   287→  })
+   288→
+   289→  const loading = ontologyQuery.isLoading
+   290→
+   291→  return (
+   292→    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+   293→      {/* a) Header */}
+   294→      <header className="mb-5">
+   295→        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+   296→          <div>
+   297→            <div className="flex items-center gap-2">
+   298→              <Network className="h-5 w-5 text-emerald-400" aria-hidden />
+   299→              <h1 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
+   300→                Ontology
+   301→              </h1>
+   302→            </div>
+   303→            <p className="mt-1 max-w-2xl text-sm text-zinc-400">
+   304→              The semantic layer. Object types turn datasets into business concepts. Links connect
+   305→              them. Actions write back — every apply creates a new dataset version.
+   306→            </p>
+   307→          </div>
+   308→          <div className="flex shrink-0 flex-wrap items-center gap-2">
+   309→            <Button
+   310→              size="sm"
+   311→              variant="outline"
+   312→              disabled={types.length >= 3 || seedMutation.isPending}
+   313→              onClick={() => seedMutation.mutate()}
+   314→              className="h-8 gap-1.5 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800 hover:text-zinc-100"
+   315→              title={
+   316→                types.length >= 3 ? 'Demo ontology already seeded' : 'Create the supply-chain demo ontology'
+   317→              }
+   318→            >
+   319→              <Sparkles
+   320→                className={cn('h-3.5 w-3.5', seedMutation.isPending && 'animate-pulse')}
+   321→                aria-hidden
+   322→              />
+   323→              Seed demo ontology
+   324→            </Button>
+   325→            <NewObjectTypeDialog />
+   326→          </div>
+   327→        </div>
+   328→        {types.length > 0 && (
+   329→          <p className="mt-2 font-mono text-[11px] text-zinc-600">
+   330→            {types.length} object types · {allLinks.length} links · {actions.length} actions
+   331→          </p>
+   332→        )}
+   333→      </header>
+   334→
+   335→      {/* b) Object type cards */}
+   336→      {loading ? (
+   337→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   338→          {[0, 1, 2].map((i) => (
+   339→            <Skeleton key={i} className="h-56 w-full bg-zinc-800" />
+   340→          ))}
+   341→        </div>
+   342→      ) : ontologyQuery.isError ? (
+   343→        <Card className="border-zinc-800 bg-zinc-900/60">
+   344→          <CardContent className="p-6 text-center text-sm text-rose-400">
+   345→            {ontologyQuery.error instanceof Error
+   346→              ? ontologyQuery.error.message
+   347→              : 'Failed to load the ontology.'}
+   348→          </CardContent>
+   349→        </Card>
+   350→      ) : types.length === 0 ? (
+   351→        <Card className="border-emerald-500/30 bg-emerald-500/5">
+   352→          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+   353→            <Network className="h-8 w-8 text-emerald-400" aria-hidden />
+   354→            <div>
+   355→              <p className="text-base font-semibold text-zinc-100">No object types yet</p>
+   356→              <p className="mx-auto mt-1 max-w-md text-sm text-zinc-400">
+   357→                Seed the supply-chain demo (shipment, supplier, warehouse with links + actions) or
+   358→                map your own dataset into an object type.
+   359→              </p>
+   360→            </div>
+   361→          </CardContent>
+   362→        </Card>
+   363→      ) : (
+   364→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   365→          {types.map((t) => (
+   366→            <TypeCard key={t.id} type={t} onRequestDelete={setDeleting} />
+   367→          ))}
+   368→        </div>
+   369→      )}
+   370→
+   371→      {/* c) Links across types */}
+   372→      <Card className="mt-4 border-zinc-800 bg-zinc-900/60">
+   373→        <CardHeader className="flex-row items-center justify-between gap-2 border-b border-zinc-800 p-4">
+   374→          <div className="flex items-center gap-2">
+   375→            <Link2 className="h-4 w-4 text-emerald-400" aria-hidden />
+   376→            <CardTitle className="text-sm font-semibold text-zinc-200">Links</CardTitle>
+   377→            {!loading && (
+   378→              <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+   379→                {allLinks.length}
+   380→              </span>
+   381→            )}
+   382→          </div>
+   383→        </CardHeader>
+   384→        <CardContent className="p-0">
+   385→          {loading ? (
+   386→            <div className="space-y-2 p-4">
+   387→              {[0, 1].map((i) => (
+   388→                <Skeleton key={i} className="h-10 w-full bg-zinc-800" />
+   389→              ))}
+   390→            </div>
+   391→          ) : allLinks.length === 0 ? (
+   392→            <div className="p-6 text-center text-sm text-zinc-500">
+   393→              No links yet — links connect object types (e.g. supplier → shipment via a foreign
+   394→              key) and are created in the ontology backend.
+   395→            </div>
+   396→          ) : (
+   397→            <div className="foundry-scroll max-h-96 overflow-auto">
+   398→              <Table>
+   399→                <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+   400→                  <TableRow className="border-zinc-800 hover:bg-transparent">
+   401→                    <TableHead className="h-9 px-4 text-xs text-zinc-500">From → To</TableHead>
+   402→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Cardinality</TableHead>
+   403→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Link</TableHead>
+   404→                  </TableRow>
+   405→                </TableHeader>
+   406→                <TableBody>
+   407→                  {allLinks.map(({ id, from, link }) => (
+   408→                    <TableRow key={id} className="border-zinc-800/70">
+   409→                      <TableCell className="px-4 py-2">
+   410→                        <span className="flex flex-wrap items-center gap-1.5 text-sm">
+   411→                          <span className="font-medium text-zinc-200">{from.displayName}</span>
+   412→                          <ArrowRight className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+   413→                          <span className="font-medium text-zinc-200">{link.toTypeDisplayName}</span>
+   414→                        </span>
+   415→                      </TableCell>
+   416→                      <TableCell className="px-3 py-2">
+   417→                        <Badge
+   418→                          variant="outline"
+   419→                          className={cn('font-mono text-[10px]', getCardinalityClasses(link.cardinality))}
+   420→                        >
+   421→                          {getCardinalityLabel(link.cardinality)}
+   422→                        </Badge>
+   423→                      </TableCell>
+   424→                      <TableCell className="px-3 py-2 font-mono text-xs text-zinc-400">
+   425→                        {link.apiName}
+   426→                      </TableCell>
+   427→                    </TableRow>
+   428→                  ))}
+   429→                </TableBody>
+   430→              </Table>
+   431→            </div>
+   432→          )}
+   433→        </CardContent>
+   434→      </Card>
+   435→
+   436→      {/* d) Actions */}
+   437→      <Card className="mt-4 border-zinc-800 bg-zinc-900/60">
+   438→        <CardHeader className="flex-row items-center justify-between gap-2 border-b border-zinc-800 p-4">
+   439→          <div className="flex items-center gap-2">
+   440→            <Zap className="h-4 w-4 text-emerald-400" aria-hidden />
+   441→            <CardTitle className="text-sm font-semibold text-zinc-200">Actions</CardTitle>
+   442→            {!actionsQuery.isLoading && (
+   443→              <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+   444→                {actions.length}
+   445→              </span>
+   446→            )}
+   447→          </div>
+   448→        </CardHeader>
+   449→        <CardContent className="p-0">
+   450→          {actionsQuery.isLoading ? (
+   451→            <div className="space-y-2 p-4">
+   452→              {[0, 1].map((i) => (
+   453→                <Skeleton key={i} className="h-10 w-full bg-zinc-800" />
+   454→              ))}
+   455→            </div>
+   456→          ) : actionsQuery.isError ? (
+   457→            <p className="p-6 text-center text-sm text-rose-400">
+   458→              {actionsQuery.error instanceof Error
+   459→                ? actionsQuery.error.message
+   460→                : 'Failed to load actions.'}
+   461→            </p>
+   462→          ) : actions.length === 0 ? (
+   463→            <div className="p-6 text-center text-sm text-zinc-500">
+   464→              No actions yet — actions are the write-back layer (create / update / delete objects
+   465→              as new dataset versions).
+   466→            </div>
+   467→          ) : (
+   468→            <div className="foundry-scroll max-h-96 overflow-auto">
+   469→              <Table>
+   470→                <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+   471→                  <TableRow className="border-zinc-800 hover:bg-transparent">
+   472→                    <TableHead className="h-9 px-4 text-xs text-zinc-500">Action</TableHead>
+   473→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Operation</TableHead>
+   474→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Target</TableHead>
+   475→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Params</TableHead>
+   476→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Enabled</TableHead>
+   477→                    <TableHead className="h-9 px-3 text-right text-xs text-zinc-500">
+   478→                      <span className="sr-only">Open</span>
+   479→                    </TableHead>
+   480→                  </TableRow>
+   481→                </TableHeader>
+   482→                <TableBody>
+   483→                  {actions.map((a: ActionSummary) => {
+   484→                    const op = getOperationClasses(a.operation)
+   485→                    return (
+   486→                      <TableRow key={a.id} className="border-zinc-800/70">
+   487→                        <TableCell className="max-w-[260px] px-4 py-2">
+   488→                          <p className="truncate text-sm font-medium text-zinc-200">
+   489→                            {a.displayName}
+   490→                          </p>
+   491→                          <p className="truncate font-mono text-[11px] text-zinc-500">{a.apiName}</p>
+   492→                        </TableCell>
+   493→                        <TableCell className="px-3 py-2">
+   494→                          <Badge variant="outline" className={cn('text-[10px]', op.badge)}>
+   495→                            {a.operation}
+   496→                          </Badge>
+   497→                        </TableCell>
+   498→                        <TableCell className="px-3 py-2">
+   499→                          <Link
+   500→                            href={`/objects?type=${encodeURIComponent(a.objectTypeApiName)}`}
+   501→                            className="text-sm text-zinc-300 hover:text-emerald-400"
+   502→                          >
+   503→                            {a.objectTypeDisplayName}
+   504→                          </Link>
+   505→                        </TableCell>
+   506→                        <TableCell className="px-3 py-2 font-mono text-xs text-zinc-300">
+   507→                          {a.paramCount}
+   508→                        </TableCell>
+   509→                        <TableCell className="px-3 py-2">
+   510→                          <Badge
+   511→                            variant="outline"
+   512→                            className={cn(
+   513→                              'text-[10px]',
+   514→                              a.enabled
+   515→                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+   516→                                : 'border-zinc-700 bg-zinc-800/60 text-zinc-400',
+   517→                            )}
+   518→                          >
+   519→                            {a.enabled ? 'enabled' : 'disabled'}
+   520→                          </Badge>
+   521→                        </TableCell>
+   522→                        <TableCell className="px-3 py-2 text-right">
+   523→                          <Link
+   524→                            href={`/objects?type=${encodeURIComponent(a.objectTypeApiName)}&action=${encodeURIComponent(a.apiName)}`}
+   525→                            className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+   526→                          >
+   527→                            View <ArrowRight className="h-3 w-3" aria-hidden />
+   528→                          </Link>
+   529→                        </TableCell>
+   530→                      </TableRow>
+   531→                    )
+   532→                  })}
+   533→                </TableBody>
+   534→              </Table>
+   535→            </div>
+   536→          )}
+   537→        </CardContent>
+   538→      </Card>
+   539→
+   540→      {/* d) Action log — recent write-backs */}
+   541→      <Card className="mt-4 border-zinc-800 bg-zinc-900/60">
+   542→        <CardHeader className="flex-row items-center justify-between gap-2 border-b border-zinc-800 p-4">
+   543→          <div className="flex items-center gap-2">
+   544→            <Circle className="h-4 w-4 text-emerald-400" aria-hidden />
+   545→            <CardTitle className="text-sm font-semibold text-zinc-200">
+   546→              Recent write-backs
+   547→            </CardTitle>
+   548→          </div>
+   549→          <span className="font-mono text-[10px] text-zinc-600">last 10 · refresh 15s</span>
+   550→        </CardHeader>
+   551→        <CardContent className="p-0">
+   552→          {logsQuery.isLoading ? (
+   553→            <div className="space-y-2 p-4">
+   554→              {[0, 1].map((i) => (
+   555→                <Skeleton key={i} className="h-8 w-full bg-zinc-800" />
+   556→              ))}
+   557→            </div>
+   558→          ) : logs.length === 0 ? (
+   559→            <div className="p-6 text-center text-sm text-zinc-500">
+   560→              No write-backs yet — run an action from an object type to see it here.
+   561→            </div>
+   562→          ) : (
+   563→            <div className="foundry-scroll max-h-96 overflow-auto">
+   564→              <Table>
+   565→                <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+   566→                  <TableRow className="border-zinc-800 hover:bg-transparent">
+   567→                    <TableHead className="h-9 px-4 text-xs text-zinc-500">Result</TableHead>
+   568→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Action</TableHead>
+   569→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Object</TableHead>
+   570→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Message</TableHead>
+   571→                    <TableHead className="h-9 px-3 text-xs text-zinc-500">Version</TableHead>
+   572→                    <TableHead className="h-9 px-4 text-right text-xs text-zinc-500">When</TableHead>
+   573→                  </TableRow>
+   574→                </TableHeader>
+   575→                <TableBody>
+   576→                  {logs.map((log) => (
+   577→                    <TableRow key={log.id} className="border-zinc-800/70">
+   578→                      <TableCell className="px-4 py-2">
+   579→                        <span
+   580→                          className={cn(
+   581→                            'inline-block h-2 w-2 rounded-full',
+   582→                            log.result === 'success' ? 'bg-emerald-400' : 'bg-rose-400',
+   583→                          )}
+   584→                          aria-label={log.result}
+   585→                        />
+   586→                      </TableCell>
+   587→                      <TableCell className="px-3 py-2">
+   588→                        <p className="truncate text-sm text-zinc-200">{log.actionDisplayName}</p>
+   589→                        <p className="truncate font-mono text-[10px] text-zinc-600">
+   590→                          {log.objectTypeDisplayName}
+   591→                        </p>
+   592→                      </TableCell>
+   593→                      <TableCell className="max-w-[140px] truncate px-3 py-2 font-mono text-xs text-zinc-400">
+   594→                        {log.objectPk ?? '—'}
+   595→                      </TableCell>
+   596→                      <TableCell
+   597→                        className="max-w-[280px] truncate px-3 py-2 text-xs text-zinc-500"
+   598→                        title={log.message}
+   599→                      >
+   600→                        {log.message}
+   601→                      </TableCell>
+   602→                      <TableCell className="px-3 py-2">
+   603→                        {log.versionNumber != null ? (
+   604→                          <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300">
+   605→                            v{log.versionNumber}
+   606→                          </span>
+   607→                        ) : (
+   608→                          <span className="font-mono text-[10px] text-zinc-700">—</span>
+   609→                        )}
+   610→                      </TableCell>
+   611→                      <TableCell
+   612→                        className="px-4 py-2 text-right font-mono text-xs text-zinc-500"
+   613→                        title={log.createdAt}
+   614→                      >
+   615→                        {formatRelative(log.createdAt)}
+   616→                      </TableCell>
+   617→                    </TableRow>
+   618→                  ))}
+   619→                </TableBody>
+   620→              </Table>
+   621→            </div>
+   622→          )}
+   623→        </CardContent>
+   624→      </Card>
+   625→
+   626→      {/* Delete-type confirmation (shared, opened from card menus) */}
+   627→      <AlertDialog
+   628→        open={deleting !== null}
+   629→        onOpenChange={(next) => {
+   630→          if (!next) setDeleting(null)
+   631→        }}
+   632→      >
+   633→        <AlertDialogContent className="border-zinc-800 bg-zinc-900 sm:max-w-sm">
+   634→          <AlertDialogHeader>
+   635→            <AlertDialogTitle className="text-zinc-100">Delete object type?</AlertDialogTitle>
+   636→            <AlertDialogDescription className="text-zinc-400">
+   637→              <span className="font-medium text-zinc-200">{deleting?.displayName}</span> (
+   638→              <span className="font-mono">{deleting?.apiName}</span>) will be removed together with
+   639→              its links and actions. The backing dataset is untouched. This cannot be undone.
+   640→            </AlertDialogDescription>
+   641→          </AlertDialogHeader>
+   642→          <AlertDialogFooter>
+   643→            <AlertDialogCancel className="border-zinc-700 bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800 hover:text-zinc-100">
+   644→              Cancel
+   645→            </AlertDialogCancel>
+   646→            <AlertDialogAction
+   647→              onClick={() => deleting && deleteMutation.mutate(deleting)}
+   648→              disabled={deleteMutation.isPending}
+   649→              className="bg-rose-500 text-zinc-950 hover:bg-rose-400"
+   650→            >
+   651→              {deleteMutation.isPending ? 'Deleting…' : 'Delete type'}
+   652→            </AlertDialogAction>
+   653→          </AlertDialogFooter>
+   654→        </AlertDialogContent>
+   655→      </AlertDialog>
+   656→    </div>
+   657→  )
+   658→}
+   659→

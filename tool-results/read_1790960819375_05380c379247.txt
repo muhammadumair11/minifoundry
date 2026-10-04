@@ -1,0 +1,700 @@
+     1→'use client'
+     2→
+     3→import { Suspense, useEffect, useMemo, useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useParams, useSearchParams } from 'next/navigation'
+     6→import { useQuery } from '@tanstack/react-query'
+     7→import { toast } from 'sonner'
+     8→import {
+     9→  ArrowDown,
+    10→  ArrowUp,
+    11→  ChevronLeft,
+    12→  ChevronRight,
+    13→  Compass,
+    14→  Database,
+    15→  Play,
+    16→  Search,
+    17→  X,
+    18→  Zap,
+    19→} from 'lucide-react'
+    20→import { Button } from '@/components/ui/button'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import {
+    23→  DropdownMenu,
+    24→  DropdownMenuContent,
+    25→  DropdownMenuItem,
+    26→  DropdownMenuTrigger,
+    27→} from '@/components/ui/dropdown-menu'
+    28→import { Input } from '@/components/ui/input'
+    29→import { Skeleton } from '@/components/ui/skeleton'
+    30→import {
+    31→  Table,
+    32→  TableBody,
+    33→  TableCell,
+    34→  TableHead,
+    35→  TableHeader,
+    36→  TableRow,
+    37→} from '@/components/ui/table'
+    38→import { cn } from '@/lib/utils'
+    39→import { apiJson } from '@/lib/foundry-api'
+    40→import type {
+    41→  ActionResponse,
+    42→  ObjectDetailResponse,
+    43→  ObjectsListResponse,
+    44→  OntologyObjectType,
+    45→  OntologyListResponse,
+    46→} from '@/lib/foundry-types'
+    47→import { ActionDialog } from '@/components/foundry/ontology/action-dialog'
+    48→import { getObjectColorClasses, OntologyIcon } from '@/components/foundry/ontology/icon-map'
+    49→
+    50→const PAGE_SIZE = 50
+    51→const LINK_TARGET_CAP = 10
+    52→
+    53→function useDebouncedValue<T>(value: T, delayMs: number): T {
+    54→  const [debounced, setDebounced] = useState(value)
+    55→  useEffect(() => {
+    56→    const t = setTimeout(() => setDebounced(value), delayMs)
+    57→    return () => clearTimeout(t)
+    58→  }, [value, delayMs])
+    59→  return debounced
+    60→}
+    61→
+    62→/** Compact value renderer for object cells / property rows. */
+    63→function renderValue(value: unknown): React.ReactNode {
+    64→  if (value === null || value === undefined || value === '') {
+    65→    return <span className="text-zinc-700">∅</span>
+    66→  }
+    67→  if (typeof value === 'boolean') {
+    68→    return <span className={value ? 'text-amber-400' : 'text-zinc-500'}>{String(value)}</span>
+    69→  }
+    70→  if (typeof value === 'number') {
+    71→    return <span className="tabular-nums">{value.toLocaleString()}</span>
+    72→  }
+    73→  return String(value)
+    74→}
+    75→
+    76→// ─── Action dialog host (fetches ActionDetail for the chosen apiName) ─
+    77→
+    78→function ActiveActionDialog({
+    79→  actionApiName,
+    80→  prefillPk,
+    81→  onClose,
+    82→}: {
+    83→  actionApiName: string
+    84→  prefillPk: string | null
+    85→  onClose: () => void
+    86→}) {
+    87→  const actionQuery = useQuery<ActionResponse>({
+    88→    queryKey: ['action', actionApiName],
+    89→    queryFn: () => apiJson<ActionResponse>(`/api/actions/${encodeURIComponent(actionApiName)}`),
+    90→    enabled: actionApiName !== '',
+    91→  })
+    92→
+    93→  useEffect(() => {
+    94→    if (actionQuery.isError) {
+    95→      toast.error('Could not load action', {
+    96→        description:
+    97→          actionQuery.error instanceof Error ? actionQuery.error.message : 'Unknown error.',
+    98→      })
+    99→      onClose()
+   100→    }
+   101→  }, [actionQuery.isError, actionQuery.error, onClose])
+   102→
+   103→  if (!actionQuery.data) return null
+   104→
+   105→  return (
+   106→    <ActionDialog
+   107→      action={actionQuery.data.action}
+   108→      open
+   109→      onOpenChange={(next) => {
+   110→        if (!next) onClose()
+   111→      }}
+   112→      prefillPk={prefillPk}
+   113→    />
+   114→  )
+   115→}
+   116→
+   117→// ─── Right panel: selected object detail ──────────────────────────────
+   118→
+   119→function ObjectDetailPanel({
+   120→  typeApiName,
+   121→  selectedPk,
+   122→  columns,
+   123→  titleProperty,
+   124→  onClear,
+   125→}: {
+   126→  typeApiName: string
+   127→  selectedPk: string
+   128→  columns: ObjectsListResponse['columns']
+   129→  titleProperty: string | null
+   130→  onClear: () => void
+   131→}) {
+   132→  const detailQuery = useQuery<ObjectDetailResponse>({
+   133→    queryKey: ['object', typeApiName, selectedPk],
+   134→    queryFn: () =>
+   135→      apiJson<ObjectDetailResponse>(
+   136→        `/api/objects/${encodeURIComponent(typeApiName)}/${encodeURIComponent(selectedPk)}`,
+   137→      ),
+   138→  })
+   139→
+   140→  if (detailQuery.isLoading) {
+   141→    return (
+   142→      <div className="space-y-3 p-4">
+   143→        <Skeleton className="h-6 w-3/4 bg-zinc-800" />
+   144→        <Skeleton className="h-4 w-1/3 bg-zinc-800" />
+   145→        <div className="space-y-2 pt-2">
+   146→          {[0, 1, 2, 3, 4].map((i) => (
+   147→            <Skeleton key={i} className="h-8 w-full bg-zinc-800" />
+   148→          ))}
+   149→        </div>
+   150→      </div>
+   151→    )
+   152→  }
+   153→
+   154→  if (detailQuery.isError || !detailQuery.data) {
+   155→    return (
+   156→      <div className="flex flex-col items-start gap-3 p-4">
+   157→        <p className="text-sm text-rose-400">
+   158→          {detailQuery.error instanceof Error
+   159→            ? detailQuery.error.message
+   160→            : 'Failed to load object detail.'}
+   161→        </p>
+   162→        <Button
+   163→          size="sm"
+   164→          variant="outline"
+   165→          onClick={onClear}
+   166→          className="border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   167→        >
+   168→          <X className="h-3.5 w-3.5" aria-hidden />
+   169→          Clear selection
+   170→        </Button>
+   171→      </div>
+   172→    )
+   173→  }
+   174→
+   175→  const { object, links } = detailQuery.data
+   176→  const detailColumns =
+   177→    columns.length > 0
+   178→      ? columns
+   179→      : Object.keys(object.values).map((k) => ({
+   180→          apiName: k,
+   181→          displayName: k,
+   182→          dataType: 'string',
+   183→          isTitle: false,
+   184→          hideInTable: false,
+   185→        }))
+   186→
+   187→  return (
+   188→    <div className="p-4">
+   189→      {/* Title + pk */}
+   190→      <div className="flex items-start justify-between gap-2">
+   191→        <div className="min-w-0">
+   192→          <p className="truncate text-lg font-semibold tracking-tight text-zinc-100">
+   193→            {titleProperty ? renderValue(object.values[titleProperty]) : object.pk}
+   194→          </p>
+   195→          <p className="mt-1 inline-block rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[11px] text-zinc-400">
+   196→            {object.pk}
+   197→          </p>
+   198→        </div>
+   199→        <Button
+   200→          variant="ghost"
+   201→          size="sm"
+   202→          onClick={onClear}
+   203→          className="h-7 w-7 shrink-0 p-0 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+   204→          aria-label="Clear selection"
+   205→        >
+   206→          <X className="h-4 w-4" aria-hidden />
+   207→        </Button>
+   208→      </div>
+   209→
+   210→      {/* Properties (hideInTable included here) */}
+   211→      <div className="mt-4">
+   212→        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+   213→          Properties
+   214→        </p>
+   215→        <ul className="mt-1.5">
+   216→          {detailColumns.map((c) => (
+   217→            <li
+   218→              key={c.apiName}
+   219→              className="flex items-baseline justify-between gap-3 border-b border-zinc-800/50 py-1.5"
+   220→            >
+   221→              <span className="shrink-0 text-xs text-zinc-500">
+   222→                {c.displayName}
+   223→                {!c.hideInTable ? '' : <span className="ml-1 text-[9px] text-zinc-700">hidden</span>}
+   224→              </span>
+   225→              <span
+   226→                className={cn(
+   227→                  'truncate text-right font-mono text-xs',
+   228→                  c.isTitle ? 'font-semibold text-emerald-400' : 'text-zinc-200',
+   229→                )}
+   230→              >
+   231→                {renderValue(object.values[c.apiName])}
+   232→              </span>
+   233→            </li>
+   234→          ))}
+   235→        </ul>
+   236→      </div>
+   237→
+   238→      {/* Links — both directions */}
+   239→      <div className="mt-5 border-t border-zinc-800 pt-4">
+   240→        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Links</p>
+   241→        {links.length === 0 ? (
+   242→          <p className="mt-2 text-xs text-zinc-600">No linked objects.</p>
+   243→        ) : (
+   244→          links.map((link) => {
+   245→            const incoming = link.direction === 'incoming'
+   246→            const targetColor = getObjectColorClasses(link.toTypeColor)
+   247→            const shown = link.targets.slice(0, LINK_TARGET_CAP)
+   248→            const hiddenCount = Math.max(0, link.targets.length - LINK_TARGET_CAP)
+   249→            return (
+   250→              <div key={link.id} className="mt-3">
+   251→                <p className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+   252→                  {incoming ? (
+   253→                    <ArrowUp className="h-3 w-3 text-zinc-500" aria-hidden />
+   254→                  ) : (
+   255→                    <ArrowDown className="h-3 w-3 text-zinc-500" aria-hidden />
+   256→                  )}
+   257→                  <span className="truncate">
+   258→                    {link.toTypeDisplayName}
+   259→                    {link.targets.length > 0 ? (
+   260→                      <span className="ml-1 text-zinc-600">({link.targets.length})</span>
+   261→                    ) : null}
+   262→                    <span className="ml-1.5 font-mono text-[10px] text-zinc-600">
+   263→                      {link.displayName}
+   264→                    </span>
+   265→                  </span>
+   266→                </p>
+   267→                {shown.length === 0 ? (
+   268→                  <p className="mt-1 pl-4 text-xs text-zinc-600">no linked objects found</p>
+   269→                ) : (
+   270→                  <ul className="mt-1 space-y-0.5">
+   271→                    {shown.map((target) => (
+   272→                      <li key={target.pk}>
+   273→                        <Link
+   274→                          href={`/objects/${encodeURIComponent(link.toTypeApiName)}?pk=${encodeURIComponent(target.pk)}`}
+   275→                          className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-zinc-800/60"
+   276→                          title={`Open ${link.toTypeDisplayName} ${target.pk}`}
+   277→                        >
+   278→                          <span
+   279→                            className={cn(
+   280→                              'flex h-6 w-6 shrink-0 items-center justify-center rounded border',
+   281→                              targetColor.border,
+   282→                              targetColor.bg,
+   283→                            )}
+   284→                          >
+   285→                            <OntologyIcon
+   286→                              name={link.toTypeIcon}
+   287→                              className={cn('h-3 w-3', targetColor.text)}
+   288→                            />
+   289→                          </span>
+   290→                          <span className="truncate text-xs text-zinc-200">{target._title}</span>
+   291→                          <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">
+   292→                            {target.pk}
+   293→                          </span>
+   294→                        </Link>
+   295→                      </li>
+   296→                    ))}
+   297→                  </ul>
+   298→                )}
+   299→                {hiddenCount > 0 && (
+   300→                  <p className="mt-1 pl-2 font-mono text-[10px] text-zinc-600">
+   301→                    + {hiddenCount} more…
+   302→                  </p>
+   303→                )}
+   304→              </div>
+   305→            )
+   306→          })
+   307→        )}
+   308→      </div>
+   309→    </div>
+   310→  )
+   311→}
+   312→
+   313→// ─── Workshop view ────────────────────────────────────────────────────
+   314→
+   315→function WorkshopView() {
+   316→  const routeParams = useParams<{ type: string }>()
+   317→  const typeApiName = routeParams?.type ?? ''
+   318→  const searchParams = useSearchParams()
+   319→  const actionParam = searchParams.get('action')
+   320→  const pkParam = searchParams.get('pk')
+   321→
+   322→  const [searchInput, setSearchInput] = useState('')
+   323→  const [page, setPage] = useState(1)
+   324→  const [selectedPk, setSelectedPk] = useState<string | null>(null)
+   325→  const [activeActionApiName, setActiveActionApiName] = useState<string | null>(null)
+   326→
+   327→  const debouncedSearch = useDebouncedValue(searchInput, 400)
+   328→
+   329→  // ?pk= → preselect (and type change → reset) by syncing during render.
+   330→  const [pkSync, setPkSync] = useState('')
+   331→  const pkSignal = `${typeApiName}\u0000${pkParam ?? ''}`
+   332→  if (pkSync !== pkSignal) {
+   333→    setPkSync(pkSignal)
+   334→    setSelectedPk(pkParam)
+   335→  }
+   336→
+   337→  // ?action= → auto-open the action dialog once per param value (closing it
+   338→  // does not re-open while the URL keeps the same ?action=).
+   339→  const [consumedActionParam, setConsumedActionParam] = useState<string | null>(null)
+   340→  if (actionParam && actionParam !== consumedActionParam) {
+   341→    setConsumedActionParam(actionParam)
+   342→    setActiveActionApiName(actionParam)
+   343→  }
+   344→
+   345→  // Ontology list — type meta + enabled actions.
+   346→  const ontologyQuery = useQuery<OntologyListResponse>({
+   347→    queryKey: ['ontology'],
+   348→    queryFn: () => apiJson<OntologyListResponse>('/api/ontology'),
+   349→  })
+   350→  const typeInfo = useMemo(
+   351→    () => ontologyQuery.data?.objectTypes.find((t) => t.apiName === typeApiName) ?? null,
+   352→    [ontologyQuery.data, typeApiName],
+   353→  )
+   354→  const enabledActions = useMemo(
+   355→    () => (typeInfo?.actions ?? []).filter((a) => a.enabled),
+   356→    [typeInfo],
+   357→  )
+   358→
+   359→  // Object table.
+   360→  const objectsQuery = useQuery<ObjectsListResponse>({
+   361→    queryKey: ['objects', typeApiName, debouncedSearch, page],
+   362→    queryFn: () =>
+   363→      apiJson<ObjectsListResponse>(
+   364→        `/api/objects?type=${encodeURIComponent(typeApiName)}&query=${encodeURIComponent(debouncedSearch)}&page=${page}&pageSize=${PAGE_SIZE}`,
+   365→      ),
+   366→    enabled: typeApiName !== '',
+   367→    placeholderData: (prev) => prev,
+   368→  })
+   369→  const rows = objectsQuery.data?.rows ?? []
+   370→  const allColumns = objectsQuery.data?.columns ?? []
+   371→  const pkColumn = objectsQuery.data?.objectType.primaryKey ?? null
+   372→  // The table already renders a dedicated pk column — drop the property that mirrors it.
+   373→  const tableColumns = useMemo(
+   374→    () => allColumns.filter((c) => !c.hideInTable && c.apiName !== pkColumn),
+   375→    [allColumns, pkColumn],
+   376→  )
+   377→  const total = objectsQuery.data?.total ?? 0
+   378→  const totalPages = Math.max(1, Math.ceil(total / (objectsQuery.data?.pageSize ?? PAGE_SIZE)))
+   379→  const titleProperty = objectsQuery.data?.objectType.titleProperty ?? null
+   380→
+   381→  const unknownType = !ontologyQuery.isLoading && !!ontologyQuery.data && !typeInfo
+   382→
+   383→  return (
+   384→    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+   385→      {/* a) Type header */}
+   386→      <header className="mb-5">
+   387→        {ontologyQuery.isLoading ? (
+   388→          <div className="flex items-center gap-3">
+   389→            <Skeleton className="h-10 w-10 bg-zinc-800" />
+   390→            <div className="space-y-1.5">
+   391→              <Skeleton className="h-6 w-40 bg-zinc-800" />
+   392→              <Skeleton className="h-3.5 w-56 bg-zinc-800" />
+   393→            </div>
+   394→          </div>
+   395→        ) : typeInfo ? (
+   396→          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+   397→            <div className="flex items-start gap-3">
+   398→              <TypeIconBadge type={typeInfo} />
+   399→              <div>
+   400→                <div className="flex flex-wrap items-baseline gap-2">
+   401→                  <h1 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
+   402→                    {typeInfo.displayName}
+   403→                  </h1>
+   404→                  <span className="font-mono text-xs text-zinc-500">{typeInfo.apiName}</span>
+   405→                </div>
+   406→                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-zinc-500">
+   407→                  <span>
+   408→                    {typeInfo.objectCount ?? '—'} <span className="text-zinc-600">objects</span>
+   409→                  </span>
+   410→                  {typeInfo.sourceDatasetId && (
+   411→                    <Link
+   412→                      href={`/datasets/${typeInfo.sourceDatasetId}`}
+   413→                      className="inline-flex items-center gap-1 text-emerald-400/90 hover:text-emerald-300"
+   414→                    >
+   415→                      <Database className="h-3 w-3" aria-hidden />
+   416→                      {typeInfo.sourceDatasetName ?? 'dataset'}
+   417→                    </Link>
+   418→                  )}
+   419→                </p>
+   420→                {typeInfo.description && (
+   421→                  <p className="mt-1.5 max-w-2xl text-sm text-zinc-400">{typeInfo.description}</p>
+   422→                )}
+   423→              </div>
+   424→            </div>
+   425→            {/* Actions menu */}
+   426→            <DropdownMenu>
+   427→              <DropdownMenuTrigger asChild>
+   428→                <Button
+   429→                  size="sm"
+   430→                  variant="outline"
+   431→                  className="h-8 gap-1.5 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800 hover:text-zinc-100"
+   432→                  disabled={enabledActions.length === 0}
+   433→                  title={enabledActions.length === 0 ? 'No actions defined for this type' : undefined}
+   434→                >
+   435→                  <Zap className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+   436→                  Actions
+   437→                  {enabledActions.length > 0 && (
+   438→                    <span className="rounded border border-zinc-800 bg-zinc-950/60 px-1 font-mono text-[10px] text-zinc-400">
+   439→                      {enabledActions.length}
+   440→                    </span>
+   441→                  )}
+   442→                </Button>
+   443→              </DropdownMenuTrigger>
+   444→              <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+   445→                {enabledActions.map((a) => (
+   446→                  <DropdownMenuItem
+   447→                    key={a.id}
+   448→                    onSelect={() => setActiveActionApiName(a.apiName)}
+   449→                    className="text-xs text-zinc-200 hover:!bg-zinc-800 hover:!text-zinc-100"
+   450→                  >
+   451→                    <Play className="mr-2 h-3.5 w-3.5 text-emerald-400" aria-hidden />
+   452→                    {a.displayName}
+   453→                  </DropdownMenuItem>
+   454→                ))}
+   455→              </DropdownMenuContent>
+   456→            </DropdownMenu>
+   457→          </div>
+   458→        ) : (
+   459→          <div className="flex items-center gap-2">
+   460→            <Compass className="h-5 w-5 text-amber-400" aria-hidden />
+   461→            <h1 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
+   462→              {ontologyQuery.isError ? 'Ontology unavailable' : 'Unknown object type'}
+   463→            </h1>
+   464→          </div>
+   465→        )}
+   466→      </header>
+   467→
+   468→      {unknownType ? (
+   469→        <Card className="border-zinc-800 bg-zinc-900/60">
+   470→          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+   471→            <p className="text-sm text-zinc-400">
+   472→              No object type with apiName{' '}
+   473→              <span className="font-mono text-amber-400">{typeApiName}</span>.
+   474→            </p>
+   475→            <Link
+   476→              href="/objects"
+   477→              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-emerald-500 px-4 text-sm font-medium text-zinc-950 transition-colors hover:bg-emerald-400"
+   478→            >
+   479→              <Compass className="h-4 w-4" aria-hidden />
+   480→              Pick another type
+   481→            </Link>
+   482→          </CardContent>
+   483→        </Card>
+   484→      ) : ontologyQuery.isError && !objectsQuery.data ? (
+   485→        <Card className="border-zinc-800 bg-zinc-900/60">
+   486→          <CardContent className="p-6 text-center text-sm text-rose-400">
+   487→            {ontologyQuery.error instanceof Error
+   488→              ? `Could not load the ontology: ${ontologyQuery.error.message}`
+   489→              : 'Could not load the ontology.'}
+   490→          </CardContent>
+   491→        </Card>
+   492→      ) : (
+   493→        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start">
+   494→          {/* b) LEFT: object table */}
+   495→          <Card className="min-w-0 flex-1 border-zinc-800 bg-zinc-900/60">
+   496→            <CardHeader className="gap-3 border-b border-zinc-800 p-4">
+   497→              <div className="flex flex-wrap items-center justify-between gap-2">
+   498→                <CardTitle className="text-sm font-semibold text-zinc-200">
+   499→                  Objects
+   500→                  {!objectsQuery.isLoading && (
+   501→                    <span className="ml-2 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-0.5 font-mono text-[10px] font-normal text-zinc-500">
+   502→                      {total}
+   503→                    </span>
+   504→                  )}
+   505→                </CardTitle>
+   506→                <div className="relative w-full sm:w-64">
+   507→                  <Search
+   508→                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+   509→                    aria-hidden
+   510→                  />
+   511→                  <Input
+   512→                    value={searchInput}
+   513→                    onChange={(e) => {
+   514→                      setSearchInput(e.target.value)
+   515→                      setPage(1)
+   516→                    }}
+   517→                    placeholder="Search objects…"
+   518→                    aria-label="Search objects"
+   519→                    className="h-8 border-zinc-800 bg-zinc-950/60 pl-8 text-xs"
+   520→                  />
+   521→                </div>
+   522→              </div>
+   523→            </CardHeader>
+   524→            <CardContent className="p-0">
+   525→              {objectsQuery.isLoading ? (
+   526→                <div className="space-y-2 p-4">
+   527→                  {[0, 1, 2, 3, 4].map((i) => (
+   528→                    <Skeleton key={i} className="h-9 w-full bg-zinc-800" />
+   529→                  ))}
+   530→                </div>
+   531→              ) : objectsQuery.isError ? (
+   532→                <p className="p-6 text-center text-sm text-rose-400">
+   533→                  {objectsQuery.error instanceof Error
+   534→                    ? objectsQuery.error.message
+   535→                    : 'Failed to load objects.'}
+   536→                </p>
+   537→              ) : rows.length === 0 ? (
+   538→                <div className="p-6 text-center text-sm text-zinc-500">
+   539→                  {debouncedSearch
+   540→                    ? `No objects match “${debouncedSearch}”.`
+   541→                    : 'No objects in the backing dataset yet.'}
+   542→                </div>
+   543→              ) : (
+   544→                <div className="foundry-scroll max-h-[520px] overflow-auto">
+   545→                  <Table>
+   546→                    <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+   547→                      <TableRow className="border-zinc-800 hover:bg-transparent">
+   548→                        <TableHead className="h-8 px-4 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+   549→                          {objectsQuery.data?.objectType.primaryKey ?? 'pk'}
+   550→                        </TableHead>
+   551→                        {tableColumns.map((c) => (
+   552→                          <TableHead
+   553→                            key={c.apiName}
+   554→                            className="h-8 whitespace-nowrap px-3 font-mono text-[10px] uppercase tracking-wider text-zinc-500"
+   555→                          >
+   556→                            {c.displayName}
+   557→                          </TableHead>
+   558→                        ))}
+   559→                      </TableRow>
+   560→                    </TableHeader>
+   561→                    <TableBody>
+   562→                      {rows.map((row) => {
+   563→                        const selected = row.pk === selectedPk
+   564→                        return (
+   565→                          <TableRow
+   566→                            key={row.pk}
+   567→                            aria-selected={selected}
+   568→                            onClick={() => setSelectedPk(row.pk)}
+   569→                            className={cn(
+   570→                              'cursor-pointer border-zinc-800/70',
+   571→                              selected
+   572→                                ? 'border-l-2 border-l-emerald-400 bg-zinc-800/40 hover:bg-zinc-800/40'
+   573→                                : 'hover:bg-zinc-800/30',
+   574→                            )}
+   575→                          >
+   576→                            <TableCell className="px-4 py-2 font-mono text-xs text-zinc-500">
+   577→                              {row.pk}
+   578→                            </TableCell>
+   579→                            {tableColumns.map((c) => (
+   580→                              <TableCell key={c.apiName} className="max-w-[220px] px-3 py-2">
+   581→                                {c.isTitle ? (
+   582→                                  <button
+   583→                                    type="button"
+   584→                                    onClick={(e) => {
+   585→                                      e.stopPropagation()
+   586→                                      setSelectedPk(row.pk)
+   587→                                    }}
+   588→                                    className="max-w-full truncate text-left text-xs font-semibold text-emerald-400 hover:underline"
+   589→                                    title={`Select ${row.pk}`}
+   590→                                  >
+   591→                                    {renderValue(row.values[c.apiName])}
+   592→                                  </button>
+   593→                                ) : (
+   594→                                  <span className="block max-w-[220px] truncate font-mono text-xs text-zinc-300">
+   595→                                    {renderValue(row.values[c.apiName])}
+   596→                                  </span>
+   597→                                )}
+   598→                              </TableCell>
+   599→                            ))}
+   600→                          </TableRow>
+   601→                        )
+   602→                      })}
+   603→                    </TableBody>
+   604→                  </Table>
+   605→                </div>
+   606→              )}
+   607→
+   608→              {/* Pagination footer */}
+   609→              {!objectsQuery.isLoading && rows.length > 0 && (
+   610→                <div className="flex items-center justify-between gap-2 border-t border-zinc-800 px-4 py-2.5">
+   611→                  <p className="font-mono text-[11px] text-zinc-500">
+   612→                    {total} objects · page {page} / {totalPages}
+   613→                  </p>
+   614→                  <div className="flex items-center gap-1.5">
+   615→                    <Button
+   616→                      size="sm"
+   617→                      variant="outline"
+   618→                      className="h-7 border-zinc-800 bg-zinc-950/60 px-2 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+   619→                      disabled={page <= 1}
+   620→                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+   621→                      aria-label="Previous page"
+   622→                    >
+   623→                      <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+   624→                    </Button>
+   625→                    <Button
+   626→                      size="sm"
+   627→                      variant="outline"
+   628→                      className="h-7 border-zinc-800 bg-zinc-950/60 px-2 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+   629→                      disabled={page >= totalPages}
+   630→                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   631→                      aria-label="Next page"
+   632→                    >
+   633→                      <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+   634→                    </Button>
+   635→                  </div>
+   636→                </div>
+   637→              )}
+   638→            </CardContent>
+   639→          </Card>
+   640→
+   641→          {/* c) RIGHT: detail panel */}
+   642→          <div className="w-full shrink-0 lg:sticky lg:top-[72px] lg:w-96">
+   643→            <Card className="border-zinc-800 bg-zinc-900/60">
+   644→              {selectedPk ? (
+   645→                <ObjectDetailPanel
+   646→                  typeApiName={typeApiName}
+   647→                  selectedPk={selectedPk}
+   648→                  columns={allColumns}
+   649→                  titleProperty={titleProperty}
+   650→                  onClear={() => setSelectedPk(null)}
+   651→                />
+   652→              ) : (
+   653→                <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
+   654→                  <Compass className="h-7 w-7 text-zinc-600" aria-hidden />
+   655→                  <p className="text-sm font-medium text-zinc-400">No object selected</p>
+   656→                  <p className="text-xs text-zinc-600">
+   657→                    Click a row to inspect its properties and links.
+   658→                  </p>
+   659→                </CardContent>
+   660→              )}
+   661→            </Card>
+   662→          </div>
+   663→        </div>
+   664→      )}
+   665→
+   666→      {/* d) Action dialog (dropdown picks + ?action= deep link) */}
+   667→      {activeActionApiName && (
+   668→        <ActiveActionDialog
+   669→          actionApiName={activeActionApiName}
+   670→          prefillPk={selectedPk}
+   671→          onClose={() => setActiveActionApiName(null)}
+   672→        />
+   673→      )}
+   674→    </div>
+   675→  )
+   676→}
+   677→
+   678→function TypeIconBadge({ type }: { type: OntologyObjectType }) {
+   679→  const color = getObjectColorClasses(type.color)
+   680→  return (
+   681→    <span
+   682→      className={cn(
+   683→        'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border',
+   684→        color.border,
+   685→        color.bg,
+   686→      )}
+   687→    >
+   688→      <OntologyIcon name={type.icon} className={cn('h-5 w-5', color.text)} />
+   689→    </span>
+   690→  )
+   691→}
+   692→
+   693→export default function ObjectTypePage() {
+   694→  return (
+   695→    <Suspense fallback={null}>
+   696→      <WorkshopView />
+   697→    </Suspense>
+   698→  )
+   699→}
+   700→

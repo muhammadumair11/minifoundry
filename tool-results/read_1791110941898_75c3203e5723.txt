@@ -1,0 +1,826 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useMemo, useState } from 'react'
+     4→import Link from 'next/link'
+     5→import { useParams, useSearchParams } from 'next/navigation'
+     6→import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+     7→import { toast } from 'sonner'
+     8→import { format, formatDistanceToNow, parseISO } from 'date-fns'
+     9→import {
+    10→  Archive,
+    11→  ArrowLeftRight,
+    12→  ChevronLeft,
+    13→  ChevronRight,
+    14→  CircleDot,
+    15→  Database,
+    16→  Download,
+    17→  FolderKanban,
+    18→  GitBranch,
+    19→  History,
+    20→  Loader2,
+    21→  MessageSquare,
+    22→  Search,
+    23→  ShieldCheck,
+    24→  Table2,
+    25→} from 'lucide-react'
+    26→import { Badge } from '@/components/ui/badge'
+    27→import { Button } from '@/components/ui/button'
+    28→import { Card, CardContent } from '@/components/ui/card'
+    29→import { Input } from '@/components/ui/input'
+    30→import { Skeleton } from '@/components/ui/skeleton'
+    31→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    32→import {
+    33→  Select,
+    34→  SelectContent,
+    35→  SelectItem,
+    36→  SelectTrigger,
+    37→  SelectValue,
+    38→} from '@/components/ui/select'
+    39→import {
+    40→  Table,
+    41→  TableBody,
+    42→  TableCell,
+    43→  TableHead,
+    44→  TableHeader,
+    45→  TableRow,
+    46→} from '@/components/ui/table'
+    47→import { cn } from '@/lib/utils'
+    48→import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+    49→import {
+    50→  MASK_LITERAL,
+    51→  shortId,
+    52→  type DatasetDetailResponse,
+    53→  type LineageGraph,
+    54→  type MarkingsListResponse,
+    55→  type PruneResponse,
+    56→  type ProjectsListResponse,
+    57→  type RowsResponse,
+    58→  type SessionResponse,
+    59→} from '@/lib/foundry-types'
+    60→import { MarkingChip } from '@/components/foundry/governance/marking-colors'
+    61→import { GatedButton } from '@/components/foundry/governance/gated-button'
+    62→import DatasetBranchBar from '@/components/foundry/dataset-branch-bar'
+    63→import DatasetQualityPanel from '@/components/foundry/dataset-quality-panel'
+    64→import DatasetDiffPanel from '@/components/foundry/dataset-diff-panel'
+    65→import DatasetPublicationBanner from '@/components/foundry/dataset-publication-banner'
+    66→import DatasetAclButton from '@/components/foundry/dataset-acl-button'
+    67→import DatasetWatchButton from '@/components/foundry/dataset-watch-button'
+    68→import DatasetDiscussion from '@/components/foundry/dataset-discussion'
+    69→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    70→
+    71→const PAGE_SIZE = 50
+    72→
+    73→/** Retention choices (M2): keep newest N versions; 0 = unlimited. */
+    74→const RETENTION_CHOICES = [5, 10, 20, 50, 0] as const
+    75→
+    76→function useDebouncedValue<T>(value: T, delayMs: number): T {
+    77→  const [debounced, setDebounced] = useState(value)
+    78→  useEffect(() => {
+    79→    const t = setTimeout(() => setDebounced(value), delayMs)
+    80→    return () => clearTimeout(t)
+    81→  }, [value, delayMs])
+    82→  return debounced
+    83→}
+    84→
+    85→function renderCellValue(value: unknown, type: string | undefined): React.ReactNode {
+    86→  if (value === null || value === undefined || value === '') {
+    87→    return <span className="text-muted-foreground/60">∅</span>
+    88→  }
+    89→  if (value === MASK_LITERAL) {
+    90→    return <span className="italic text-muted-foreground/80">{MASK_LITERAL}</span>
+    91→  }
+    92→  if (typeof value === 'boolean' || type === 'boolean') {
+    93→    return (
+    94→      <span className={value ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+    95→        {String(value)}
+    96→      </span>
+    97→    )
+    98→  }
+    99→  if (typeof value === 'number') {
+   100→    return <span className="tabular-nums">{value.toLocaleString()}</span>
+   101→  }
+   102→  return String(value)
+   103→}
+   104→
+   105→export default function DatasetDetailPage() {
+   106→  const params = useParams<{ id: string }>()
+   107→  const id = params.id
+   108→
+   109→  const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
+   110→  const [page, setPage] = useState(1)
+   111→  const [searchInput, setSearchInput] = useState('')
+   112→  const searchQuery = useDebouncedValue(searchInput, 400)
+   113→
+   114→  // R14 branches: checked-out branch ('main' or a branch name), mirrored in
+   115→  // the ?branch= query param via shallow history.replaceState (no navigation).
+   116→  // URL param is the source of truth on first render; switches set a local
+   117→  // override so no effect/extra render pass is needed.
+   118→  const searchParams = useSearchParams()
+   119→  const urlBranch = searchParams.get('branch')
+   120→  const [branchOverride, setBranchOverride] = useState<string | null>(null)
+   121→  const branch = branchOverride ?? urlBranch ?? 'main'
+   122→  const setBranch = (next: string) => {
+   123→    setBranchOverride(next === (urlBranch ?? 'main') ? null : next)
+   124→    setSelectedVersion(null)
+   125→    setPage(1)
+   126→    try {
+   127→      const url = new URL(window.location.href)
+   128→      if (next === 'main') url.searchParams.delete('branch')
+   129→      else url.searchParams.set('branch', next)
+   130→      window.history.replaceState(null, '', url.toString())
+   131→    } catch {
+   132→      /* ignore */
+   133→    }
+   134→  }
+   135→
+   136→  const detailQuery = useQuery<DatasetDetailResponse>({
+   137→    queryKey: ['dataset', id, branch],
+   138→    queryFn: async () => {
+   139→      const qs = branch !== 'main' ? `?branch=${encodeURIComponent(branch)}` : ''
+   140→      const res = await fetch(`/api/datasets/${id}${qs}`)
+   141→      if (!res.ok) throw new Error('Failed to load dataset')
+   142→      return res.json()
+   143→    },
+   144→  })
+   145→
+   146→  // Effective version: falls back to the branch head (`current`) while nothing
+   147→  // is picked — `current` resolves to the checked-out branch's head version.
+   148→  const fallbackVersion =
+   149→    detailQuery.data?.current?.versionNumber ?? detailQuery.data?.versions[0]?.versionNumber ?? 1
+   150→  const version = selectedVersion ?? fallbackVersion
+   151→
+   152→  const rowsQuery = useQuery<RowsResponse>({
+   153→    queryKey: ['dataset-rows', id, version, page, searchQuery, branch],
+   154→    queryFn: async () => {
+   155→      const q = new URLSearchParams({
+   156→        version: String(version),
+   157→        page: String(page),
+   158→        pageSize: String(PAGE_SIZE),
+   159→      })
+   160→      if (searchQuery.trim()) q.set('query', searchQuery.trim())
+   161→      if (branch !== 'main') q.set('branch', branch)
+   162→      const res = await fetch(`/api/datasets/${id}/rows?${q.toString()}`)
+   163→      if (!res.ok) throw new Error('Failed to load rows')
+   164→      return res.json()
+   165→    },
+   166→    placeholderData: (prev) => prev,
+   167→  })
+   168→
+   169→  const lineageQuery = useQuery<LineageGraph>({
+   170→    queryKey: ['lineage'],
+   171→    queryFn: async () => {
+   172→      const res = await fetch('/api/lineage')
+   173→      if (!res.ok) throw new Error('Failed to load lineage')
+   174→      return res.json()
+   175→    },
+   176→  })
+   177→
+   178→  // Marking name → color (shared ['markings'] cache with the governance page).
+   179→  const markingsQuery = useQuery<MarkingsListResponse>({
+   180→    queryKey: ['markings'],
+   181→    queryFn: () => apiJson<MarkingsListResponse>('/api/markings'),
+   182→  })
+   183→
+   184→  // Role gate for the retention card (M2 prune is editor+).
+   185→  const sessionQuery = useQuery<SessionResponse>({
+   186→    queryKey: ['session'],
+   187→    queryFn: () => apiJson<SessionResponse>('/api/session'),
+   188→    staleTime: 30_000,
+   189→  })
+   190→  const canEdit = sessionQuery.data?.role === 'editor' || sessionQuery.data?.role === 'admin'
+   191→
+   192→  // P4 collaboration: live comment count for the Discussion tab badge. Shares
+   193→  // the ['dataset-comments', id] cache with the discussion panel (one fetch).
+   194→  const commentCountQuery = useQuery({
+   195→    queryKey: ['dataset-comments', id],
+   196→    queryFn: () => apiJson<{ comments: unknown[] }>(`/api/datasets/${id}/comments`),
+   197→    select: (d) => d.comments.length,
+   198→    staleTime: 30_000,
+   199→  })
+   200→  const markingColorByName = useMemo(() => {
+   201→    const map = new Map<string, string>()
+   202→    for (const m of markingsQuery.data?.markings ?? []) map.set(m.name, m.color)
+   203→    return map
+   204→  }, [markingsQuery.data])
+   205→
+   206→  const lineageSummary = useMemo(() => {
+   207→    const edges = lineageQuery.data?.edges ?? []
+   208→    const upstream = edges.filter((e) => e.to === id).length
+   209→    const downstream = edges.filter((e) => e.from === id).length
+   210→    return { upstream, downstream, hasAny: upstream + downstream > 0 }
+   211→  }, [lineageQuery.data, id])
+   212→
+   213→  const detail = detailQuery.data
+   214→  const columns = rowsQuery.data?.columns ?? detail?.current.schema ?? []
+   215→  const total = rowsQuery.data?.total ?? 0
+   216→  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+   217→  const queryClient = useQueryClient()
+   218→
+   219→  const keepLastN = detail?.dataset.keepLastN
+   220→  const retentionValue =
+   221→    keepLastN !== undefined && !(RETENTION_CHOICES as readonly number[]).includes(keepLastN)
+   222→      ? keepLastN // custom value set outside this UI — shown as an extra option
+   223→      : (keepLastN ?? 20)
+   224→
+   225→  const retentionMutation = useMutation({
+   226→    mutationFn: async (next: number) => {
+   227→      await apiSend(`/api/datasets/${id}`, 'PATCH', { keepLastN: next })
+   228→      return next
+   229→    },
+   230→    onSuccess: (next) => {
+   231→      toast.success('Retention updated', {
+   232→        description: next === 0 ? 'Keeping all versions (unlimited).' : `Keeping the newest ${next} versions.`,
+   233→      })
+   234→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   235→    },
+   236→    onError: (err) => toastApiError(err, 'Could not update retention'),
+   237→  })
+   238→
+   239→  const pruneMutation = useMutation({
+   240→    mutationFn: () =>
+   241→      apiSend<PruneResponse>(`/api/datasets/${id}/prune`, 'POST', {
+   242→        ...(keepLastN !== undefined ? { keepLastN } : {}),
+   243→      }),
+   244→    onSuccess: (res) => {
+   245→      toast.success(`Pruned ${res.pruned} old versions · ${res.remaining} remain`, {
+   246→        description: 'Older versions beyond keepLastN were removed.',
+   247→      })
+   248→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   249→    },
+   250→    onError: (err) => toastApiError(err, 'Prune failed'),
+   251→  })
+   252→
+   253→  // Project assignment (M0): ['projects'] cache is shared with /projects + catalog filter.
+   254→  const projectsQuery = useQuery<ProjectsListResponse>({ 
+   255→    queryKey: ['projects'],
+   256→    queryFn: () => apiJson<ProjectsListResponse>('/api/projects'),
+   257→  })
+   258→  const projectMutation = useMutation({
+   259→    mutationFn: (projectId: string | null) =>
+   260→      apiSend(`/api/datasets/${id}`, 'PATCH', { projectId }),
+   261→    onSuccess: (_res, projectId) => {
+   262→      toast.success(projectId ? 'Dataset assigned to project' : 'Dataset unassigned')
+   263→      queryClient.invalidateQueries({ queryKey: ['dataset', id] })
+   264→      queryClient.invalidateQueries({ queryKey: ['projects'] })
+   265→      queryClient.invalidateQueries({ queryKey: ['datasets'] })
+   266→    },
+   267→    onError: (err) => toastApiError(err, 'Could not assign project'),
+   268→  })
+   269→
+   270→  // CSV export (M10): downloads the currently selected version; the session
+   271→  // route masks marked columns for the acting role (audited dataset.export).
+   272→  const handleExportCsv = () => {
+   273→    const url = `/api/datasets/${id}/export${version ? `?version=${version}` : ''}`
+   274→    const a = document.createElement('a')
+   275→    a.href = url
+   276→    a.rel = 'noopener'
+   277→    document.body.appendChild(a)
+   278→    a.click()
+   279→    a.remove()
+   280→    toast.success('Export started', {
+   281→      description: `v${version} CSV — masked columns respect your role.`,
+   282→    })
+   283→  }
+   284→
+   285→  if (detailQuery.isLoading) {
+   286→    return (
+   287→      <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6 sm:py-8">
+   288→        <Skeleton className="h-9 w-64" />
+   289→        <Skeleton className="h-4 w-96" />
+   290→        <Skeleton className="h-[420px] w-full" />
+   291→      </div>
+   292→    )
+   293→  }
+   294→
+   295→  if (detailQuery.isError || !detail) {
+   296→    return (
+   297→      <div className="mx-auto w-full max-w-6xl px-4 py-16 text-center">
+   298→        <p className="text-sm text-rose-600 dark:text-rose-400">
+   299→          {detailQuery.error instanceof Error ? detailQuery.error.message : 'Dataset not found.'}
+   300→        </p>
+   301→        <Button asChild variant="outline" className="mt-4">
+   302→          <Link href="/datasets">Back to catalog</Link>
+   303→        </Button>
+   304→      </div>
+   305→    )
+   306→  }
+   307→
+   308→  const ds = detail.dataset
+   309→
+   310→  return (
+   311→    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
+   312→      {/* Header (compact Foundry pattern) */}
+   313→      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+   314→        <div className="min-w-0">
+   315→          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   316→            <Link href="/datasets" className="flex items-center gap-1 hover:text-foreground hover:underline underline-offset-2">
+   317→              <Database className="h-3 w-3" aria-hidden />
+   318→              Catalog
+   319→            </Link>
+   320→            <span aria-hidden>/</span>
+   321→            <span className="text-foreground">{ds.name}</span>
+   322→            <span aria-hidden>/</span>
+   323→            <span className="font-mono text-muted-foreground/80">{shortId(ds.id, 12)}</span>
+   324→          </div>
+   325→          <h1 className="mt-1 truncate text-sm font-medium tracking-tight text-foreground">
+   326→            {ds.name}
+   327→          </h1>
+   328→          {ds.description && (
+   329→            <p className="mt-0.5 max-w-2xl truncate text-xs text-muted-foreground">{ds.description}</p>
+   330→          )}
+   331→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   332→            {ds.tags.map((tag) => (
+   333→              <Badge
+   334→                key={tag}
+   335→                variant="outline"
+   336→                className="bg-muted px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+   337→              >
+   338→                {tag}
+   339→              </Badge>
+   340→            ))}
+   341→            {/* Project assignment chip (M0) — a compact select; viewer sees it read-only. */}
+   342→            <Select
+   343→              value={ds.projectId ?? 'none'}
+   344→              onValueChange={(v) => projectMutation.mutate(v === 'none' ? null : v)}
+   345→              disabled={!canEdit || projectMutation.isPending}
+   346→            >
+   347→              <SelectTrigger
+   348→                aria-label="Assign dataset to project"
+   349→                title={canEdit ? 'Assign this dataset to a project' : 'Viewing as viewer — assignment is read-only'}
+   350→                className="h-6 w-auto gap-1 border-border bg-muted px-1.5 py-0 text-[10px] font-normal text-muted-foreground data-[size=default]:h-6 data-[disabled]:opacity-60"
+   351→              >
+   352→                <FolderKanban className="h-3 w-3 text-muted-foreground" aria-hidden />
+   353→                <SelectValue />
+   354→              </SelectTrigger>
+   355→              <SelectContent>
+   356→                <SelectItem value="none" className="text-xs text-muted-foreground">
+   357→                  Unassigned
+   358→                </SelectItem>
+   359→                {(projectsQuery.data?.projects ?? []).map((p) => (
+   360→                  <SelectItem key={p.id} value={p.id} className="text-xs">
+   361→                    {p.name}
+   362→                  </SelectItem>
+   363→                ))}
+   364→              </SelectContent>
+   365→            </Select>
+   366→            <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+   367→              updated {formatDistanceToNow(parseISO(ds.updatedAt), { addSuffix: true })}
+   368→            </span>
+   369→          </div>
+   370→        </div>
+   371→
+   372→        {/* Branch control + Access + CSV export + version selector (R14/M10) */}
+   373→        <div className="flex shrink-0 flex-wrap items-center gap-2">
+   374→          <DatasetBranchBar datasetId={id} branch={branch} onBranchChange={setBranch} canEdit={canEdit} />
+   375→          <DatasetAclButton datasetId={id} canManage={sessionQuery.data?.role === 'admin'} />
+   376→          <DatasetWatchButton datasetId={id} />
+   377→          <TooltipProvider delayDuration={150}>
+   378→            <Tooltip>
+   379→              <TooltipTrigger asChild>
+   380→                <Button
+   381→                  variant="outline"
+   382→                  size="sm"
+   383→                  onClick={handleExportCsv}
+   384→                  className="h-9 text-xs"
+   385→                  aria-label={`Export version ${version} as CSV`}
+   386→                >
+   387→                  <Download className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+   388→                  Export CSV
+   389→                </Button>
+   390→              </TooltipTrigger>
+   391→              <TooltipContent className="font-mono text-[11px]">
+   392→                Respects column masking for your role
+   393→              </TooltipContent>
+   394→            </Tooltip>
+   395→          </TooltipProvider>
+   396→          <Select
+   397→            value={String(version)}
+   398→            onValueChange={(v) => {
+   399→              setSelectedVersion(Number(v))
+   400→              setPage(1)
+   401→            }}
+   402→          >
+   403→            <SelectTrigger
+   404→              aria-label="Select dataset version"
+   405→              className="w-[240px] text-sm"
+   406→            >
+   407→              <SelectValue placeholder="Version" />
+   408→            </SelectTrigger>
+   409→            <SelectContent>
+   410→              {detail.versions.map((v) => (
+   411→                <SelectItem key={v.id} value={String(v.versionNumber)} className="font-mono text-xs">
+   412→                  v{v.versionNumber} · {v.rowCount.toLocaleString()} rows
+   413→                  {v.versionNumber === detail.versions[0]?.versionNumber && (
+   414→                    <span className="ml-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">latest</span>
+   415→                  )}
+   416→                </SelectItem>
+   417→              ))}
+   418→            </SelectContent>
+   419→          </Select>
+   420→        </div>
+   421→      </div>
+   422→
+   423→      {/* P2: publication banner (only when the gate is on and drafts exist) */}
+   424→      <div className="mb-4">
+   425→        <DatasetPublicationBanner datasetId={id} detail={detail} canEdit={canEdit} />
+   426→      </div>
+   427→
+   428→      {/* Lineage strip */}
+   429→      <Link
+   430→        href={`/lineage?dataset=${ds.id}`}
+   431→        className={cn(
+   432→          'mb-4 flex items-center justify-between gap-2 rounded-lg border px-3.5 py-2.5 text-xs transition-colors',
+   433→          lineageSummary.hasAny
+   434→            ? 'border-border bg-card hover:border-foreground/25'
+   435→            : 'border-border/60 bg-muted/30',
+   436→        )}
+   437→      >
+   438→        <span className="flex items-center gap-2 text-muted-foreground">
+   439→          <GitBranch className="h-3.5 w-3.5" aria-hidden />
+   440→          Lineage
+   441→        </span>
+   442→        {lineageSummary.hasAny ? (
+   443→          <span className="font-mono text-foreground">
+   444→            ← {lineageSummary.upstream} upstream · {lineageSummary.downstream} downstream →
+   445→          </span>
+   446→        ) : (
+   447→          <span className="text-muted-foreground">
+   448→            no edges yet — this dataset is not connected to a pipeline
+   449→          </span>
+   450→        )}
+   451→      </Link>
+   452→
+   453→      {/* Tabs */}
+   454→      <Tabs defaultValue="preview">
+   455→        {/* P4: five tabs now — keep the list scrollable on narrow screens */}
+   456→        <div className="foundry-scroll mb-3 max-w-full overflow-x-auto pb-1">
+   457→          <TabsList className="min-w-max">
+   458→            <TabsTrigger value="preview" className="gap-1.5 text-xs">
+   459→              <Table2 className="h-3.5 w-3.5" aria-hidden />
+   460→            Preview
+   461→          </TabsTrigger>
+   462→          <TabsTrigger value="schema" className="gap-1.5 text-xs">
+   463→            <CircleDot className="h-3.5 w-3.5" aria-hidden />
+   464→            Schema
+   465→          </TabsTrigger>
+   466→          <TabsTrigger value="history" className="gap-1.5 text-xs">
+   467→            <History className="h-3.5 w-3.5" aria-hidden />
+   468→            History
+   469→          </TabsTrigger>
+   470→          <TabsTrigger value="quality" className="gap-1.5 text-xs">
+   471→            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+   472→            Quality
+   473→          </TabsTrigger>
+   474→          <TabsTrigger value="discussion" className="gap-1.5 text-xs">
+   475→            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+   476→            Discussion
+   477→            {(commentCountQuery.data ?? 0) > 0 && (
+   478→              <Badge variant="outline" className="ml-0.5 px-1 py-0 text-[10px] tabular-nums text-muted-foreground">
+   479→                {commentCountQuery.data}
+   480→              </Badge>
+   481→            )}
+   482→          </TabsTrigger>
+   483→        </TabsList>
+   484→        </div>
+   485→
+   486→        {/* ── Preview ── */}
+   487→        <TabsContent value="preview" className="mt-3">
+   488→          <Card>
+   489→            <div className="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+   490→              <div className="relative w-full sm:w-72">
+   491→                <Search
+   492→                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+   493→                  aria-hidden
+   494→                />
+   495→                <Input
+   496→                  value={searchInput}
+   497→                  onChange={(e) => {
+   498→                    setSearchInput(e.target.value)
+   499→                    setPage(1)
+   500→                  }}
+   501→                  placeholder="Search rows…"
+   502→                  aria-label="Search rows"
+   503→                  className="h-8 pl-8 font-mono text-xs"
+   504→                />
+   505→              </div>
+   506→              <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
+   507→                v{version} · {PAGE_SIZE} rows/page
+   508→              </p>
+   509→            </div>
+   510→
+   511→            {rowsQuery.isLoading ? (
+   512→              <div className="space-y-2 p-4">
+   513→                {[0, 1, 2, 3, 4, 5].map((i) => (
+   514→                  <Skeleton key={i} className="h-7 w-full" />
+   515→                ))}
+   516→              </div>
+   517→            ) : rowsQuery.isError ? (
+   518→              <div className="p-6 text-center text-sm text-rose-600 dark:text-rose-400">
+   519→                {rowsQuery.error instanceof Error ? rowsQuery.error.message : 'Failed to load rows'}
+   520→              </div>
+   521→            ) : (rowsQuery.data?.rows.length ?? 0) === 0 ? (
+   522→              <div className="p-8 text-center text-sm text-muted-foreground">
+   523→                {searchQuery.trim()
+   524→                  ? `No rows match “${searchQuery}”.`
+   525→                  : 'This version contains no rows.'}
+   526→              </div>
+   527→            ) : (
+   528→              <div className="foundry-scroll max-h-[520px] overflow-auto">
+   529→                <Table>
+   530→                  <TableHeader className="sticky top-0 z-10 bg-card">
+   531→                    <TableRow className="border-border hover:bg-transparent">
+   532→                      {columns.map((col) => (
+   533→                        <TableHead
+   534→                          key={col.name}
+   535→                          className={cn(
+   536→                            'h-8 whitespace-nowrap px-3 font-mono text-[11px] text-muted-foreground',
+   537→                            col.type === 'number' && 'text-right',
+   538→                          )}
+   539→                        >
+   540→                          {col.name}
+   541→                          <span className="ml-1 text-muted-foreground/70">
+   542→                            {col.type === 'number' ? '#' : col.type === 'boolean' ? '⌥' : 'A'}
+   543→                          </span>
+   544→                        </TableHead>
+   545→                      ))}
+   546→                    </TableRow>
+   547→                  </TableHeader>
+   548→                  <TableBody>
+   549→                    {rowsQuery.data?.rows.map((row, i) => (
+   550→                      <TableRow key={i} className="border-border hover:bg-accent/50">
+   551→                        {columns.map((col) => (
+   552→                          <TableCell
+   553→                            key={col.name}
+   554→                            className={cn(
+   555→                              'whitespace-nowrap px-3 py-1.5 font-mono text-xs text-foreground',
+   556→                              col.type === 'number' && 'text-right tabular-nums',
+   557→                            )}
+   558→                          >
+   559→                            {renderCellValue(row[col.name], col.type)}
+   560→                          </TableCell>
+   561→                        ))}
+   562→                      </TableRow>
+   563→                    ))}
+   564→                  </TableBody>
+   565→                </Table>
+   566→              </div>
+   567→            )}
+   568→
+   569→            {/* Pagination footer */}
+   570→            <div className="flex items-center justify-between gap-2 border-t border-border p-3">
+   571→              <Button
+   572→                variant="outline"
+   573→                size="sm"
+   574→                disabled={page <= 1 || rowsQuery.isFetching}
+   575→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   576→                className="h-8 text-xs"
+   577→                aria-label="Previous page"
+   578→              >
+   579→                <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+   580→                Prev
+   581→              </Button>
+   582→              <p className="font-mono text-[11px] text-muted-foreground">
+   583→                page {rowsQuery.data?.page ?? page} of {totalPages} · {total.toLocaleString()} rows
+   584→              </p>
+   585→              <Button
+   586→                variant="outline"
+   587→                size="sm"
+   588→                disabled={page >= totalPages || rowsQuery.isFetching}
+   589→                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+   590→                className="h-8 text-xs"
+   591→                aria-label="Next page"
+   592→              >
+   593→                Next
+   594→                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+   595→              </Button>
+   596→            </div>
+   597→          </Card>
+   598→        </TabsContent>
+   599→
+   600→        {/* ── Schema ── */}
+   601→        <TabsContent value="schema" className="mt-3">
+   602→          <Card>
+   603→            <CardContent className="p-0">
+   604→              {columns.length === 0 ? (
+   605→                <p className="p-6 text-center text-sm text-muted-foreground">No schema recorded.</p>
+   606→              ) : (
+   607→                <ul className="divide-y divide-border">
+   608→                  {columns.map((col) => (
+   609→                    <li key={col.name} className="flex items-center justify-between gap-3 px-4 py-2">
+   610→                      <span className="truncate font-mono text-xs text-foreground">{col.name}</span>
+   611→                      <span className="flex shrink-0 items-center gap-1.5">
+   612→                        {col.markedWith && (
+   613→                          <MarkingChip
+   614→                            name={col.markedWith}
+   615→                            color={markingColorByName.get(col.markedWith)}
+   616→                          />
+   617→                        )}
+   618→                        <Badge
+   619→                          variant="outline"
+   620→                          className="shrink-0 border-border bg-muted font-mono text-[10px] text-muted-foreground"
+   621→                        >
+   622→                          {col.type}
+   623→                        </Badge>
+   624→                      </span>
+   625→                    </li>
+   626→                  ))}
+   627→                </ul>
+   628→              )}
+   629→            </CardContent>
+   630→          </Card>
+   631→        </TabsContent>
+   632→
+   633→        {/* ── History ── */}
+   634→        <TabsContent value="history" className="mt-3">
+   635→          {/* R14: version compare (schema + row diff) */}
+   636→          <div className="mb-4">
+   637→            <DatasetDiffPanel
+   638→              datasetId={id}
+   639→              versions={detail.versions.map((v) => ({ versionNumber: v.versionNumber, rowCount: v.rowCount }))}
+   640→            />
+   641→          </div>
+   642→
+   643→          {/* Retention (M2): keepLastN select + manual prune */}
+   644→          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+   645→            <div className="flex min-w-0 items-start gap-2.5">
+   646→              <Archive className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+   647→              <div className="min-w-0">
+   648→                <p className="text-xs font-medium text-foreground">
+   649→                  Version retention{' '}
+   650→                  <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+   651→                    {keepLastN === 0
+   652→                      ? 'unlimited'
+   653→                      : `keep last ${keepLastN ?? 20} of ${detail.dataset.versionsCount}`}
+   654→                  </span>
+   655→                </p>
+   656→                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+   657→                  Applies automatically on every new version (ingest, pipeline, transform,
+   658→                  action). Pruning never touches the current version.
+   659→                </p>
+   660→              </div>
+   661→            </div>
+   662→            <div className="flex shrink-0 items-center gap-2">
+   663→              <Select
+   664→                value={String(retentionValue)}
+   665→                onValueChange={(v) => retentionMutation.mutate(Number(v))}
+   666→              >
+   667→                <SelectTrigger
+   668→                  aria-label="Retention: keep newest N versions"
+   669→                  className="h-8 w-[150px] font-mono text-xs"
+   670→                >
+   671→                  <SelectValue />
+   672→                </SelectTrigger>
+   673→                <SelectContent>
+   674→                  {RETENTION_CHOICES.map((n) => (
+   675→                    <SelectItem key={n} value={String(n)} className="font-mono text-xs">
+   676→                      {n === 0 ? 'Unlimited' : `Keep last ${n}`}
+   677→                    </SelectItem>
+   678→                  ))}
+   679→                  {typeof retentionValue === 'number' &&
+   680→                    !(RETENTION_CHOICES as readonly number[]).includes(retentionValue) && (
+   681→                      <SelectItem value={String(retentionValue)} className="font-mono text-xs">
+   682→                        Keep last {retentionValue} (custom)
+   683→                      </SelectItem>
+   684→                    )}
+   685→                </SelectContent>
+   686→              </Select>
+   687→              <GatedButton
+   688→                allowed={canEdit}
+   689→                reason="requires editor role"
+   690→                size="sm"
+   691→                variant="outline"
+   692→                onClick={() => pruneMutation.mutate()}
+   693→                disabled={pruneMutation.isPending || retentionMutation.isPending}
+   694→                className="h-8 text-xs"
+   695→              >
+   696→                {pruneMutation.isPending ? (
+   697→                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   698→                ) : (
+   699→                  <Archive className="h-3.5 w-3.5" aria-hidden />
+   700→                )}
+   701→                Prune now
+   702→              </GatedButton>
+   703→            </div>
+   704→          </div>
+   705→
+   706→          <Card>
+   707→            <CardContent className="p-4">
+   708→              <ol className="relative ml-3 space-y-4 border-l border-border pl-6">
+   709→                {detail.versions.map((v, idx) => {
+   710→                  const isLatest = idx === 0
+   711→                  const isSelected = v.versionNumber === version
+   712→                  return (
+   713→                    <li key={v.id} className="relative">
+   714→                      <span
+   715→                        aria-hidden
+   716→                        className={cn(
+   717→                          'absolute -left-[31px] top-0.5 h-3 w-3 rounded-full border-2',
+   718→                          isLatest
+   719→                            ? 'border-emerald-500 bg-emerald-500/40'
+   720→                            : 'border-border bg-muted',
+   721→                        )}
+   722→                      />
+   723→                      <div
+   724→                        className={cn(
+   725→                          'rounded-md border px-3 py-2 transition-colors',
+   726→                          isSelected
+   727→                            ? 'border-foreground/25 bg-accent/40'
+   728→                            : 'border-border bg-background',
+   729→                        )}
+   730→                      >
+   731→                        <div className="flex flex-wrap items-center justify-between gap-2">
+   732→                          <button
+   733→                            type="button"
+   734→                            onClick={() => {
+   735→                              setSelectedVersion(v.versionNumber)
+   736→                              setPage(1)
+   737→                            }}
+   738→                            className="font-mono text-sm font-medium text-foreground hover:underline underline-offset-2"
+   739→                            aria-label={`Show version ${v.versionNumber}`}
+   740→                          >
+   741→                            v{v.versionNumber}
+   742→                          </button>
+   743→                          <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
+   744→                            {v.rowCount.toLocaleString()} rows
+   745→                          </span>
+   746→                        </div>
+   747→                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
+   748→                          <span title={v.createdBy ?? undefined}>by {shortId(v.createdBy, 10)}</span>
+   749→                          <span title={format(parseISO(v.createdAt), 'MMM d, yyyy HH:mm:ss')}>
+   750→                            {format(parseISO(v.createdAt), 'MMM d, HH:mm:ss')}
+   751→                          </span>
+   752→                          {isLatest && (
+   753→                            <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+   754→                              latest
+   755→                            </span>
+   756→                          )}
+   757→                          {/* P2: publication lifecycle + quality state chips */}
+   758→                          {v.lifecycle === 'draft' && (
+   759→                            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1 text-[10px] text-amber-600 dark:text-amber-400">
+   760→                              draft
+   761→                            </span>
+   762→                          )}
+   763→                          {v.versionNumber === detail.dataset.publishedVersion && v.lifecycle !== 'draft' && (
+   764→                            <span className="rounded border border-border bg-muted px-1 text-[10px] text-foreground/70">
+   765→                              published
+   766→                            </span>
+   767→                          )}
+   768→                          {v.qualityState && v.qualityState !== 'not_evaluated' && (
+   769→                            <span
+   770→                              className={cn(
+   771→                                'rounded border px-1 text-[10px]',
+   772→                                v.qualityState === 'passed'
+   773→                                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+   774→                                  : v.qualityState === 'warned'
+   775→                                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+   776→                                    : 'border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+   777→                              )}
+   778→                              title={`quality ${v.qualityState}`}
+   779→                            >
+   780→                              ● {v.qualityState}
+   781→                            </span>
+   782→                          )}
+   783→                          {(v as { branch?: string }).branch && (v as { branch?: string }).branch !== 'main' && (
+   784→                            <span className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
+   785→                              ⎇ {(v as { branch?: string }).branch}
+   786→                            </span>
+   787→                          )}
+   788→                          {isSelected && !isLatest && (
+   789→                            <span className="rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground">
+   790→                              viewing
+   791→                            </span>
+   792→                          )}
+   793→                        </div>
+   794→                      </div>
+   795→                    </li>
+   796→                  )
+   797→                })}
+   798→              </ol>
+   799→            </CardContent>
+   800→          </Card>
+   801→        </TabsContent>
+   802→
+   803→        {/* ── Quality (R14) ── */}
+   804→        <TabsContent value="quality" className="mt-3">
+   805→          <DatasetQualityPanel
+   806→            datasetId={id}
+   807→            canEdit={canEdit}
+   808→            columns={detail.current?.schema ?? []}
+   809→            qualityGate={detail.dataset.qualityGate ?? false}
+   810→            publishedVersion={detail.dataset.publishedVersion ?? null}
+   811→          />
+   812→        </TabsContent>
+   813→
+   814→        {/* ── Discussion (P4 collaboration) ── */}
+   815→        <TabsContent value="discussion" className="mt-3">
+   816→          <DatasetDiscussion
+   817→            datasetId={id}
+   818→            currentVersion={version}
+   819→            versions={detail.versions.map((v) => v.versionNumber)}
+   820→          />
+   821→        </TabsContent>
+   822→      </Tabs>
+   823→    </div>
+   824→  )
+   825→}
+   826→

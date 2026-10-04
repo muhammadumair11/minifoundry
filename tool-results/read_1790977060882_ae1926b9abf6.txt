@@ -1,0 +1,1162 @@
+     1→// MiniFoundry — shared frontend types for the backend API contract (Task 1-a).
+     2→// Shapes mirror the REST responses under src/app/api/** exactly.
+     3→
+     4→import { formatDistanceToNowStrict } from 'date-fns'
+     5→
+     6→// ─── Platform stats ──────────────────────────────────────────────────
+     7→
+     8→export interface ApiStats {
+     9→  projects: number
+    10→  datasets: number
+    11→  pipelines: number
+    12→  runs: number
+    13→  successRuns: number
+    14→  failedRuns: number
+    15→  totalRows: number
+    16→  recentRuns: {
+    17→    id: string
+    18→    pipelineName: string
+    19→    status: string
+    20→    startedAt: string
+    21→    finishedAt: string | null
+    22→  }[]
+    23→  recentDatasets: {
+    24→    id: string
+    25→    name: string
+    26→    rowCount: number
+    27→    updatedAt: string
+    28→  }[]
+    29→}
+    30→
+    31→// ─── Datasets ────────────────────────────────────────────────────────
+    32→
+    33→export type ColumnType = 'string' | 'number' | 'boolean'
+    34→
+    35→export interface ColumnDef {
+    36→  name: string
+    37→  type: ColumnType
+    38→  /** M9 additive: name of the marking gating this column, null when unmarked. */
+    39→  markedWith?: string | null
+    40→}
+    41→
+    42→export interface DatasetCurrentVersion {
+    43→  versionNumber: number
+    44→  rowCount: number
+    45→  columnCount: number
+    46→}
+    47→
+    48→export interface DatasetSummary {
+    49→  id: string
+    50→  name: string
+    51→  description: string | null
+    52→  projectId: string | null
+    53→  tags: string[]
+    54→  createdAt?: string
+    55→  updatedAt: string
+    56→  currentVersion: DatasetCurrentVersion | null
+    57→  versionsCount: number
+    58→}
+    59→
+    60→export interface DatasetsListResponse {
+    61→  datasets: DatasetSummary[]
+    62→}
+    63→
+    64→export interface DatasetVersionSummary {
+    65→  id: string
+    66→  versionNumber: number
+    67→  rowCount: number
+    68→  createdBy: string | null
+    69→  createdAt: string
+    70→}
+    71→
+    72→export interface DatasetDetail {
+    73→  id: string
+    74→  name: string
+    75→  description: string | null
+    76→  projectId: string | null
+    77→  sourceConnectorId: string | null
+    78→  tags: string[]
+    79→  createdAt: string
+    80→  updatedAt: string
+    81→  versionsCount: number
+    82→  /** M4 additive: retention window (keep newest N versions, 0 = unlimited). */
+    83→  keepLastN?: number
+    84→}
+    85→
+    86→export interface DatasetDetailResponse {
+    87→  dataset: DatasetDetail
+    88→  versions: DatasetVersionSummary[]
+    89→  current: {
+    90→    id: string
+    91→    versionNumber: number
+    92→    schema: ColumnDef[]
+    93→    rowCount: number
+    94→  }
+    95→}
+    96→
+    97→export interface RowsResponse {
+    98→  rows: Record<string, unknown>[]
+    99→  total: number
+   100→  page: number
+   101→  pageSize: number
+   102→  columns: ColumnDef[]
+   103→  /** M9 additive: columns whose cell values are masked for the current role. */
+   104→  maskedColumns?: string[]
+   105→}
+   106→
+   107→// ─── Pipeline graph (nodes/edges JSON) ───────────────────────────────
+   108→
+   109→export type NodeTypeName =
+   110→  | 'source'
+   111→  | 'filter'
+   112→  | 'derive'
+   113→  | 'select'
+   114→  | 'rename'
+   115→  | 'join'
+   116→  | 'aggregate'
+   117→  | 'sort'
+   118→  | 'dedupe'
+   119→  | 'union'
+   120→  | 'limit'
+   121→  | 'output'
+   122→
+   123→export type FilterOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains'
+   124→export type AggregateOp = 'sum' | 'avg' | 'min' | 'max' | 'count'
+   125→
+   126→export interface AggregateOpSpec {
+   127→  op: AggregateOp
+   128→  column?: string
+   129→  alias?: string
+   130→}
+   131→
+   132→export interface SortSpec {
+   133→  column: string
+   134→  dir: 'asc' | 'desc'
+   135→}
+   136→
+   137→/** Loosely-typed node payload; specific node data interfaces below. */
+   138→export interface GraphNodeData {
+   139→  datasetId?: string
+   140→  column?: string
+   141→  operator?: FilterOperator
+   142→  value?: string
+   143→  newColumn?: string
+   144→  expression?: string
+   145→  columns?: string[]
+   146→  mapping?: Record<string, string>
+   147→  how?: 'inner' | 'left'
+   148→  leftKey?: string
+   149→  rightKey?: string
+   150→  groupBy?: string[]
+   151→  ops?: AggregateOpSpec[]
+   152→  by?: SortSpec[]
+   153→  keys?: string[]
+   154→  n?: number
+   155→  name?: string
+   156→  [key: string]: unknown
+   157→}
+   158→
+   159→export interface GraphNode {
+   160→  id: string
+   161→  type: string
+   162→  data: GraphNodeData
+   163→  position: { x: number; y: number }
+   164→}
+   165→
+   166→export interface GraphEdge {
+   167→  id: string
+   168→  source: string
+   169→  target: string
+   170→}
+   171→
+   172→export interface PipelineGraph {
+   173→  nodes: GraphNode[]
+   174→  edges: GraphEdge[]
+   175→}
+   176→
+   177→// ─── Pipelines & runs ────────────────────────────────────────────────
+   178→
+   179→export interface RunLog {
+   180→  ts: string
+   181→  level: 'info' | 'warn' | 'error' | 'success'
+   182→  msg: string
+   183→}
+   184→
+   185→export interface RunSummary {
+   186→  id: string
+   187→  pipelineId?: string
+   188→  status: string
+   189→  /** M3.1 (additive): pipeline version this run executed; null for pre-versioning runs. */
+   190→  versionNumber?: number | null
+   191→  startedAt: string
+   192→  finishedAt: string | null
+   193→  logs?: RunLog[]
+   194→}
+   195→
+   196→export interface PipelineSummary {
+   197→  id: string
+   198→  name: string
+   199→  description: string | null
+   200→  graph: PipelineGraph
+   201→  createdAt: string
+   202→  updatedAt: string
+   203→  runsCount: number
+   204→  lastRun: {
+   205→    id: string
+   206→    status: string
+   207→    startedAt: string
+   208→    finishedAt: string | null
+   209→  } | null
+   210→}
+   211→
+   212→export interface PipelinesListResponse {
+   213→  pipelines: PipelineSummary[]
+   214→}
+   215→
+   216→export interface PipelineDetail {
+   217→  id: string
+   218→  name: string
+   219→  description: string | null
+   220→  graph: PipelineGraph
+   221→  createdAt: string
+   222→  updatedAt: string
+   223→  /** M3.1 (additive): latest snapshot version number; null when no versions yet. */
+   224→  latestVersionNumber?: number | null
+   225→  /** M3.1 (additive): total snapshots retained for this pipeline. */
+   226→  versionCount?: number
+   227→}
+   228→
+   229→export interface PipelineDetailResponse {
+   230→  pipeline: PipelineDetail
+   231→  runs: RunSummary[]
+   232→}
+   233→
+   234→export interface RunResponse {
+   235→  run: RunSummary
+   236→}
+   237→
+   238→// ─── Lineage ─────────────────────────────────────────────────────────
+   239→
+   240→export interface LineageNode {
+   241→  id: string
+   242→  name: string
+   243→  kind: 'source' | 'derived'
+   244→  rowCount: number
+   245→  updatedAt: string
+   246→}
+   247→
+   248→export interface LineageEdgeDto {
+   249→  id: string
+   250→  from: string
+   251→  to: string
+   252→  pipelineId?: string | null
+   253→}
+   254→
+   255→export interface LineageGraph {
+   256→  nodes: LineageNode[]
+   257→  edges: LineageEdgeDto[]
+   258→}
+   259→
+   260→// ─── Ingestion ───────────────────────────────────────────────────────
+   261→
+   262→export interface IngestionSummary {
+   263→  id: string
+   264→  connectorName: string | null
+   265→  datasetName: string | null
+   266→  status: string
+   267→  message: string | null
+   268→  rowsIngested: number
+   269→  startedAt: string
+   270→  finishedAt: string | null
+   271→}
+   272→
+   273→export interface IngestionsListResponse {
+   274→  ingestions: IngestionSummary[]
+   275→}
+   276→
+   277→export interface IngestResponse {
+   278→  ingestion: IngestionSummary
+   279→  dataset: DatasetSummary
+   280→}
+   281→
+   282→// ─── M5 Orchestration (Task 2-a/2-b contract) ────────────────────────
+   283→
+   284→export interface Schedule {
+   285→  id: string
+   286→  pipelineId: string
+   287→  pipelineName: string
+   288→  name: string
+   289→  enabled: boolean
+   290→  intervalMinutes: number
+   291→  lastRunAt: string | null
+   292→  nextRunAt: string | null
+   293→}
+   294→
+   295→export interface ScheduleListResponse {
+   296→  schedules: Schedule[]
+   297→}
+   298→
+   299→export interface ScheduleResponse {
+   300→  schedule: Schedule
+   301→}
+   302→
+   303→export interface OrchestrationRun {
+   304→  id: string
+   305→  pipelineId: string
+   306→  pipelineName: string
+   307→  status: string
+   308→  /** M3.1 (additive): pipeline version this run executed; null for pre-versioning runs. */
+   309→  versionNumber?: number | null
+   310→  startedAt: string
+   311→  finishedAt: string | null
+   312→  /** finishedAt - startedAt; null while the run is still in flight. */
+   313→  durationMs: number | null
+   314→}
+   315→
+   316→export interface RunsListResponse {
+   317→  runs: OrchestrationRun[]
+   318→}
+   319→
+   320→export interface HealthDataset {
+   321→  id: string
+   322→  name: string
+   323→  rowCount: number
+   324→  updatedAt: string
+   325→  freshnessMinutes: number
+   326→}
+   327→
+   328→export interface FailingPipeline {
+   329→  id: string
+   330→  name: string
+   331→  failedCount: number
+   332→  lastFailureAt: string
+   333→}
+   334→
+   335→export interface HealthResponse {
+   336→  /** All-time success / (success + failed); 100 when no finished runs. */
+   337→  successRatePct: number
+   338→  /** Mean duration over finished runs; null when none. */
+   339→  avgDurationMs: number | null
+   340→  runs7d: number
+   341→  failed7d: number
+   342→  datasets: HealthDataset[]
+   343→  /** Top 5 pipelines with failedCount > 0. */
+   344→  failingPipelines: FailingPipeline[]
+   345→}
+   346→
+   347→// ─── M7 Ontology & M8 Workshop-lite (Task 3-a/3-b contract) ──────────
+   348→
+   349→export type OntologyColorKey = 'emerald' | 'teal' | 'amber' | 'rose' | 'orange' | 'zinc'
+   350→export type LinkCardinality = 'one-to-many' | 'many-to-many'
+   351→export type LinkDirection = 'outgoing' | 'incoming'
+   352→export type ActionOperation = 'create' | 'update' | 'delete'
+   353→
+   354→export interface OntologyProperty {
+   355→  apiName: string
+   356→  displayName: string
+   357→  dataType: string
+   358→  isTitle: boolean
+   359→  hideInTable: boolean
+   360→}
+   361→
+   362→export interface LinkSummary {
+   363→  id: string
+   364→  apiName: string
+   365→  displayName: string
+   366→  cardinality: LinkCardinality
+   367→}
+   368→
+   369→/** Outgoing link: `toType*` describes the target side. */
+   370→export interface OutgoingLinkSummary extends LinkSummary {
+   371→  toTypeId: string
+   372→  toTypeApiName: string
+   373→  toTypeDisplayName: string
+   374→}
+   375→
+   376→/** Incoming link: `fromType*` describes the other side (the link's source). */
+   377→export interface IncomingLinkSummary extends LinkSummary {
+   378→  fromTypeId: string
+   379→  fromTypeApiName: string
+   380→  fromTypeDisplayName: string
+   381→}
+   382→
+   383→export interface OntologyActionSummary {
+   384→  id: string
+   385→  apiName: string
+   386→  displayName: string
+   387→  operation: ActionOperation
+   388→  enabled: boolean
+   389→}
+   390→
+   391→export interface OntologyObjectType {
+   392→  id: string
+   393→  apiName: string
+   394→  displayName: string
+   395→  description: string | null
+   396→  primaryKey: string
+   397→  icon: string | null
+   398→  color: string | null
+   399→  sourceDatasetId: string | null
+   400→  sourceDatasetName: string | null
+   401→  /** Latest backing-dataset version rowCount; null when no dataset/versions. */
+   402→  objectCount: number | null
+   403→  properties: OntologyProperty[]
+   404→  linksOut: OutgoingLinkSummary[]
+   405→  linksIn: IncomingLinkSummary[]
+   406→  actions: OntologyActionSummary[]
+   407→  createdAt: string
+   408→}
+   409→
+   410→export interface OntologyListResponse {
+   411→  objectTypes: OntologyObjectType[]
+   412→}
+   413→
+   414→export interface ObjectTypeResponse {
+   415→  objectType: OntologyObjectType
+   416→}
+   417→
+   418→export interface SeedOntologyResponse {
+   419→  seeded: boolean
+   420→  created: string[]
+   421→}
+   422→
+   423→export interface CreateObjectTypeResponse {
+   424→  objectType: OntologyObjectType
+   425→}
+   426→
+   427→/** Minimal type meta used by objects endpoints. */
+   428→export interface ObjectsTypeMeta {
+   429→  id: string
+   430→  apiName: string
+   431→  displayName: string
+   432→  primaryKey: string
+   433→  icon: string | null
+   434→  color: string | null
+   435→  titleProperty: string | null
+   436→}
+   437→
+   438→export interface ObjectRow {
+   439→  pk: string
+   440→  values: Record<string, unknown>
+   441→  _title: string
+   442→  /** M9 additive: apiNames whose values were masked for the current role. */
+   443→  _masked?: string[]
+   444→}
+   445→
+   446→export interface ObjectsListResponse {
+   447→  objectType: ObjectsTypeMeta
+   448→  columns: OntologyProperty[]
+   449→  rows: ObjectRow[]
+   450→  total: number
+   451→  page: number
+   452→  pageSize: number
+   453→}
+   454→
+   455→export interface LinkTarget {
+   456→  pk: string
+   457→  _title: string
+   458→}
+   459→
+   460→export interface ObjectLink {
+   461→  id: string
+   462→  apiName: string
+   463→  displayName: string
+   464→  direction: LinkDirection
+   465→  cardinality: LinkCardinality
+   466→  toTypeId: string
+   467→  toTypeApiName: string
+   468→  toTypeDisplayName: string
+   469→  toTypeIcon: string | null
+   470→  toTypeColor: string | null
+   471→  targets: LinkTarget[]
+   472→}
+   473→
+   474→export interface ObjectDetailResponse {
+   475→  objectType: ObjectsTypeMeta
+   476→  object: {
+   477→    pk: string
+   478→    values: Record<string, unknown>
+   479→    /** M9 additive: apiNames whose values were masked for the current role. */
+   480→    _masked?: string[]
+   481→  }
+   482→  links: ObjectLink[]
+   483→}
+   484→
+   485→export interface ActionSummary {
+   486→  id: string
+   487→  apiName: string
+   488→  displayName: string
+   489→  description: string | null
+   490→  operation: ActionOperation
+   491→  enabled: boolean
+   492→  objectTypeId: string
+   493→  objectTypeApiName: string
+   494→  objectTypeDisplayName: string
+   495→  paramCount: number
+   496→}
+   497→
+   498→export interface ActionsListResponse {
+   499→  actions: ActionSummary[]
+   500→}
+   501→
+   502→export interface ActionLogEntry {
+   503→  id: string
+   504→  actionApiName: string
+   505→  actionDisplayName: string
+   506→  objectTypeDisplayName: string
+   507→  result: 'success' | 'failed'
+   508→  message: string
+   509→  objectPk: string | null
+   510→  versionNumber: number | null
+   511→  /** Coerced applied params — additive beyond the 3-a contract. */
+   512→  params: Record<string, unknown> | null
+   513→  createdAt: string
+   514→}
+   515→
+   516→export interface ActionLogsResponse {
+   517→  logs: ActionLogEntry[]
+   518→}
+   519→
+   520→export interface ActionParam {
+   521→  apiName: string
+   522→  displayName: string
+   523→  dataType: string
+   524→  required: boolean
+   525→  mapsTo: string
+   526→  isPk?: boolean
+   527→  oneOf?: string[]
+   528→}
+   529→
+   530→export interface ActionDetail {
+   531→  id: string
+   532→  apiName: string
+   533→  displayName: string
+   534→  description: string | null
+   535→  operation: ActionOperation
+   536→  enabled: boolean
+   537→  parameters: ActionParam[]
+   538→  objectType: ObjectsTypeMeta
+   539→}
+   540→
+   541→export interface ActionResponse {
+   542→  action: ActionDetail
+   543→}
+   544→
+   545→export interface ApplyActionResponse {
+   546→  ok: boolean
+   547→  versionNumber: number
+   548→  rowCount: number
+   549→  objectPk: string | null
+   550→}
+   551→
+   552→// ─── M9 Governance (Task 4-c contract) ───────────────────────────────
+   553→
+   554→export type FoundryRole = 'viewer' | 'editor' | 'admin'
+   555→export type MarkingColor = 'rose' | 'amber' | 'teal' | 'zinc'
+   556→
+   557→export interface SessionResponse {
+   558→  role: FoundryRole
+   559→  /** M9 (additive): real-auth identity when a valid `foundry-session` cookie is present; null in simulator/anonymous mode. */
+   560→  session?: SessionUserInfo | null
+   561→}
+   562→
+   563→export interface MarkedColumn {
+   564→  datasetId: string
+   565→  datasetName: string
+   566→  columnName: string
+   567→}
+   568→
+   569→export interface Marking {
+   570→  id: string
+   571→  name: string
+   572→  description: string | null
+   573→  color: MarkingColor
+   574→  minRole: FoundryRole
+   575→  createdAt: string
+   576→  columns: MarkedColumn[]
+   577→}
+   578→
+   579→export interface MarkingsListResponse {
+   580→  markings: Marking[]
+   581→}
+   582→
+   583→export interface MarkingResponse {
+   584→  marking: Marking
+   585→}
+   586→
+   587→export interface MarkedCountResponse {
+   588→  marked: number
+   589→}
+   590→
+   591→export interface UnmarkedCountResponse {
+   592→  unmarked: number
+   593→}
+   594→
+   595→export type ApprovalKind = 'publish_dataset' | 'publish_pipeline'
+   596→export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+   597→
+   598→export interface ApprovalRequest {
+   599→  id: string
+   600→  kind: ApprovalKind
+   601→  targetId: string
+   602→  targetName: string
+   603→  requestedBy: string
+   604→  note: string | null
+   605→  status: ApprovalStatus
+   606→  decidedBy: string | null
+   607→  decidedAt: string | null
+   608→  decisionNote: string | null
+   609→  createdAt: string
+   610→}
+   611→
+   612→export interface ApprovalsListResponse {
+   613→  approvals: ApprovalRequest[]
+   614→}
+   615→
+   616→export interface ApprovalResponse {
+   617→  approval: ApprovalRequest
+   618→}
+   619→
+   620→export type AuditActorRole = 'system' | FoundryRole
+   621→export type AuditResourceType =
+   622→  | 'dataset'
+   623→  | 'pipeline'
+   624→  | 'connector'
+   625→  | 'marking'
+   626→  | 'approval'
+   627→  | 'ontology'
+   628→  | 'schedule'
+   629→  | 'transform'
+   630→  | 'project'
+   631→  | 'apiToken'
+   632→  | 'user'
+   633→
+   634→export interface AuditEntry {
+   635→  id: string
+   636→  actorRole: AuditActorRole
+   637→  /** M9 (additive): user email when the actor was a real (session) user; null for simulator/machine actors. */
+   638→  actorEmail?: string | null
+   639→  action: string
+   640→  resourceType: string
+   641→  resourceId: string | null
+   642→  resourceName: string | null
+   643→  detail: string | null
+   644→  createdAt: string
+   645→}
+   646→
+   647→export interface AuditListResponse {
+   648→  entries: AuditEntry[]
+   649→}
+   650→
+   651→/** Server-side masked-cell literal (6 dashes, mono-friendly). */
+   652→export const MASK_LITERAL = '------'
+   653→
+   654→// ─── M4 Code transforms (Task 5-a contract) ──────────────────────────
+   655→
+   656→export type TransformLanguage = 'sql' | 'javascript'
+   657→export type TransformRunStatus = 'running' | 'success' | 'failed'
+   658→
+   659→/** One configured input: dataset id + resolved name (null when the dataset was deleted). */
+   660→export interface TransformInputRef {
+   661→  datasetId: string
+   662→  datasetName: string | null
+   663→}
+   664→
+   665→export interface TransformRunSummary {
+   666→  id: string
+   667→  transformId: string
+   668→  status: TransformRunStatus
+   669→  logs: RunLog[]
+   670→  durationMs: number | null
+   671→  rowCount: number | null
+   672→  outputDatasetId: string | null
+   673→  outputVersionNumber: number | null
+   674→  error: string | null
+   675→  startedAt: string
+   676→  finishedAt: string | null
+   677→}
+   678→
+   679→export interface TransformSummary {
+   680→  id: string
+   681→  name: string
+   682→  description: string | null
+   683→  language: TransformLanguage
+   684→  sourceCode: string
+   685→  inputs: TransformInputRef[]
+   686→  outputDatasetName: string
+   687→  createdAt: string
+   688→  updatedAt: string
+   689→  runsCount: number
+   690→  latestRun: {
+   691→    id: string
+   692→    status: string
+   693→    rowCount: number | null
+   694→    durationMs: number | null
+   695→    finishedAt: string | null
+   696→    error: string | null
+   697→  } | null
+   698→}
+   699→
+   700→export interface TransformsListResponse {
+   701→  transforms: TransformSummary[]
+   702→}
+   703→
+   704→export interface TransformResponse {
+   705→  transform: TransformSummary
+   706→}
+   707→
+   708→export interface TransformDetailResponse {
+   709→  transform: TransformSummary
+   710→  /** Last 10 runs, latest first. */
+   711→  runs: TransformRunSummary[]
+   712→}
+   713→
+   714→/**
+   715→ * POST /api/transforms/[id]/run — ALWAYS 200, even when the run failed
+   716→ * (UI renders run.logs / run.error). preview = first 20 published output
+   717→ * rows ([] on failure); schema = output dataset version columns.
+   718→ */
+   719→export interface TransformRunResponse {
+   720→  run: TransformRunSummary
+   721→  preview: Record<string, unknown>[]
+   722→  schema: ColumnDef[]
+   723→}
+   724→
+   725→export interface TransformRunsListResponse {
+   726→  /** Latest first (GET /api/transforms/[id]/runs?limit=20). */
+   727→  runs: TransformRunSummary[]
+   728→}
+   729→
+   730→export interface SeedTransformsResponse {
+   731→  seeded: boolean
+   732→  created: string[]
+   733→  skipped: string[]
+   734→}
+   735→
+   736→/** POST /api/datasets/[id]/prune response. */
+   737→export interface PruneResponse {
+   738→  pruned: number
+   739→  remaining: number
+   740→}
+   741→
+   742→/** Project as returned by GET /api/projects (counts resolved server-side). */
+   743→export interface FoundryProject {
+   744→  id: string
+   745→  name: string
+   746→  description: string | null
+   747→  datasetsCount: number
+   748→  pipelinesCount: number
+   749→  createdAt: string
+   750→  updatedAt: string
+   751→}
+   752→
+   753→export interface ProjectsListResponse {
+   754→  projects: FoundryProject[]
+   755→}
+   756→
+   757→/** POST /api/projects response (no counts yet). */
+   758→export interface CreateProjectResponse {
+   759→  project: {
+   760→    id: string
+   761→    name: string
+   762→    description: string | null
+   763→    createdAt: string
+   764→    updatedAt: string
+   765→  }
+   766→}
+   767→
+   768→/** PATCH /api/projects/[id] response (project without timestamps). */
+   769→export interface ProjectMutationResponse {
+   770→  project: {
+   771→    id: string
+   772→    name: string
+   773→    description: string | null
+   774→    datasetsCount: number
+   775→    pipelinesCount: number
+   776→  }
+   777→}
+   778→
+   779→// ─── M10 Platform API (Task 6-b contract) ────────────────────────────
+   780→
+   781→export const V1_API_VERSION = 'v1'
+   782→export const V1_RATE_LIMIT_PER_MINUTE = 60
+   783→
+   784→/** API token as listed by GET /api/tokens — NEVER carries the hash or secret. */
+   785→export interface ApiTokenInfo {
+   786→  id: string
+   787→  name: string
+   788→  /** First 12 chars of the secret (mf_live_XXX) — safe to display. */
+   789→  prefix: string
+   790→  requestCount: number
+   791→  lastUsedAt: string | null
+   792→  revokedAt: string | null
+   793→  createdAt: string
+   794→}
+   795→
+   796→export interface TokensListResponse {
+   797→  tokens: ApiTokenInfo[]
+   798→}
+   799→
+   800→export interface CreateTokenResponse {
+   801→  token: {
+   802→    id: string
+   803→    name: string
+   804→    prefix: string
+   805→    createdAt: string
+   806→  }
+   807→  /** Plaintext `mf_live_...` secret — shown EXACTLY ONCE, never stored. */
+   808→  secret: string
+   809→}
+   810→
+   811→export interface V1WhoamiResponse {
+   812→  token: {
+   813→    name: string
+   814→    prefix: string
+   815→    createdAt: string
+   816→    lastUsedAt: string | null
+   817→    requestCount: number
+   818→  }
+   819→  api: { version: 'v1'; rateLimitPerMinute: number }
+   820→}
+   821→
+   822→/** 1-based pagination block used by every v1 list envelope. */
+   823→export interface V1Pagination {
+   824→  page: number
+   825→  pageSize: number
+   826→  total: number
+   827→  totalPages: number
+   828→}
+   829→
+   830→export interface V1DatasetSummary {
+   831→  id: string
+   832→  name: string
+   833→  description: string | null
+   834→  tags: string[]
+   835→  projectId: string | null
+   836→  latestVersion: { versionNumber: number; rowCount: number; createdAt: string } | null
+   837→  updatedAt: string
+   838→}
+   839→
+   840→export interface V1DatasetsResponse {
+   841→  data: V1DatasetSummary[]
+   842→  pagination: V1Pagination
+   843→}
+   844→
+   845→export interface V1DatasetDetailResponse {
+   846→  dataset: {
+   847→    id: string
+   848→    name: string
+   849→    description: string | null
+   850→    tags: string[]
+   851→    projectId: string | null
+   852→    keepLastN: number
+   853→    version: {
+   854→      versionNumber: number
+   855→      /** Columns carry additive markedWith (marking name | null). */
+   856→      schema: ColumnDef[]
+   857→      rowCount: number
+   858→      createdAt: string
+   859→    }
+   860→  }
+   861→  versions: { versionNumber: number; rowCount: number; createdAt: string }[]
+   862→}
+   863→
+   864→export interface V1RowsResponse {
+   865→  data: Record<string, unknown>[]
+   866→  pagination: V1Pagination
+   867→  version: { versionNumber: number; rowCount: number }
+   868→  /** Columns masked for API tokens (viewer role). */
+   869→  maskedColumns: string[]
+   870→}
+   871→
+   872→/** Same serialized object types as the session-authed /api/ontology. */
+   873→export interface V1OntologyResponse {
+   874→  objectTypes: OntologyObjectType[]
+   875→  /** Every action flattened across types, tagged with its owner type. */
+   876→  actions: Array<
+   877→    OntologyActionSummary & {
+   878→      objectType: { id: string; apiName: string; displayName: string }
+   879→    }
+   880→  >
+   881→}
+   882→
+   883→/** Object row as served by v1 (same fields as the session objects endpoint). */
+   884→export interface V1ObjectRow {
+   885→  pk: unknown
+   886→  values: Record<string, unknown>
+   887→  _title: unknown
+   888→  _masked: string[]
+   889→}
+   890→
+   891→export interface V1ObjectsResponse {
+   892→  data: V1ObjectRow[]
+   893→  pagination: V1Pagination
+   894→  objectType: ObjectsTypeMeta
+   895→  columns: OntologyProperty[]
+   896→}
+   897→
+   898→export interface V1ObjectResponse {
+   899→  object: {
+   900→    pk: unknown
+   901→    values: Record<string, unknown>
+   902→    _masked: string[]
+   903→  }
+   904→}
+   905→
+   906→export interface V1PipelineSummary {
+   907→  id: string
+   908→  name: string
+   909→  description: string | null
+   910→  nodeCount: number
+   911→  lastRun: { status: string; startedAt: string } | null
+   912→  updatedAt: string
+   913→}
+   914→
+   915→export interface V1PipelinesResponse {
+   916→  data: V1PipelineSummary[]
+   917→  pagination: V1Pagination
+   918→}
+   919→
+   920→export interface V1PipelineResponse {
+   921→  pipeline: {
+   922→    id: string
+   923→    name: string
+   924→    description: string | null
+   925→    /** Graph nodes array (graph.nodes). */
+   926→    nodes: GraphNode[]
+   927→    /** Full graph for convenience (nodes + edges). */
+   928→    graph: PipelineGraph
+   929→    /** 5 latest run summaries, latest first (no logs). */
+   930→    lastRuns: Array<{
+   931→      id: string
+   932→      status: string
+   933→      startedAt: string
+   934→      finishedAt: string | null
+   935→    }>
+   936→  }
+   937→}
+   938→
+   939→// ─── M9 Real users & auth (Task 7-b contract) ────────────────────────
+   940→
+   941→/** Login/me identity shape — passwordHash NEVER leaves the server. */
+   942→export interface AuthUser {
+   943→  id: string
+   944→  email: string
+   945→  name: string
+   946→  role: FoundryRole
+   947→  lastLoginAt: string | null
+   948→}
+   949→
+   950→/** Real-auth identity inside GET /api/session (additive `session` field). */
+   951→export interface SessionUserInfo {
+   952→  email: string
+   953→  name: string
+   954→  /** The user's TRUE role (never the impersonated one). */
+   955→  role: FoundryRole
+   956→  /** M9 impersonation (additive): EFFECTIVE role — differs from `role` only while an admin impersonates. */
+   957→  effectiveRole?: FoundryRole
+   958→  /** M9 impersonation (additive): true while the session carries a role override. */
+   959→  impersonating?: boolean
+   960→}
+   961→
+   962→export interface LoginResponse {
+   963→  user: AuthUser
+   964→}
+   965→
+   966→export interface MeResponse {
+   967→  authenticated: boolean
+   968→  user?: AuthUser
+   969→}
+   970→
+   971→/** Admin view of a user (GET /api/users, PATCH /api/users/[id]). */
+   972→export interface AdminUser {
+   973→  id: string
+   974→  email: string
+   975→  name: string
+   976→  role: FoundryRole
+   977→  isActive: boolean
+   978→  lastLoginAt: string | null
+   979→  createdAt: string
+   980→}
+   981→
+   982→export interface UsersListResponse {
+   983→  users: AdminUser[]
+   984→}
+   985→
+   986→export interface UserMutationResponse {
+   987→  user: AdminUser
+   988→}
+   989→
+   990→/** POST /api/session/role — same contract as before (M9 may add 403 for session non-admins). */
+   991→export interface RoleSwitchResponse {
+   992→  role: FoundryRole
+   993→}
+   994→
+   995→// ─── M10.1 API usage (Task 8-b contract) ─────────────────────────────
+   996→
+   997→/** One zero-filled hour of the byHour series (UTC hour boundary). */
+   998→export interface ApiUsageBucket {
+   999→  /** '2026-10-02T19:00' — bucket start, UTC. */
+  1000→  hourIso: string
+  1001→  count: number
+  1002→  /** 4xx+5xx requests in this bucket (429 included). */
+  1003→  errors: number
+  1004→}
+  1005→
+  1006→/** Per-token usage joined in memory by id — logs survive token deletion. */
+  1007→export interface ApiUsageToken {
+  1008→  tokenId: string
+  1009→  /** '(deleted token)' when the id no longer exists in ApiToken. */
+  1010→  name: string
+  1011→  /** null for deleted tokens (name is displayable, prefix is not). */
+  1012→  prefix: string | null
+  1013→  count: number
+  1014→  lastSeen: string
+  1015→}
+  1016→
+  1017→/** Templated route usage — placeholders, NEVER raw ids/pks. */
+  1018→export interface ApiUsageRoute {
+  1019→  route: string
+  1020→  count: number
+  1021→}
+  1022→
+  1023→/** One non-2xx request from the dashboard tail (newest first). */
+  1024→export interface ApiUsageError {
+  1025→  id: string
+  1026→  route: string
+  1027→  status: number
+  1028→  tokenId: string
+  1029→  createdAt: string
+  1030→}
+  1031→
+  1032→/** GET /api/tokens/usage — 24h usage dashboard payload. */
+  1033→export interface ApiUsageResponse {
+  1034→  /** Always 24 today (the endpoint always returns exactly this many buckets). */
+  1035→  windowHours: number
+  1036→  total: number
+  1037→  /** 2xx count. */
+  1038→  ok: number
+  1039→  /** 4xx+5xx count (429 included). */
+  1040→  errors: number
+  1041→  /** 429 count. */
+  1042→  limited: number
+  1043→  /** null when there is no traffic in the window. */
+  1044→  avgDurationMs: number | null
+  1045→  /** Exactly windowHours buckets, zero-filled, oldest → newest. */
+  1046→  byHour: ApiUsageBucket[]
+  1047→  /** Sorted count desc. */
+  1048→  byToken: ApiUsageToken[]
+  1049→  /** Top 6 templated routes, count desc. */
+  1050→  topRoutes: ApiUsageRoute[]
+  1051→  /** Last 10 non-2xx, newest first. */
+  1052→  recentErrors: ApiUsageError[]
+  1053→}
+  1054→
+  1055→/** POST /api/tokens/usage/seed — demo traffic inserted. */
+  1056→export interface ApiUsageSeedResponse {
+  1057→  seeded: number
+  1058→}
+  1059→
+  1060→/** DELETE /api/tokens/usage — all request logs cleared. */
+  1061→export interface ApiUsageClearResponse {
+  1062→  pruned: number
+  1063→}
+  1064→
+  1065→// ─── M3.1 pipeline versions (Task 9-b contract) ─────────────────────
+  1066→
+  1067→/** One entry of GET /api/pipelines/[id]/versions (desc by versionNumber). */
+  1068→export interface PipelineVersionSummary {
+  1069→  versionNumber: number
+  1070→  nodeCount: number
+  1071→  note: string | null
+  1072→  createdBy: string | null
+  1073→  createdAt: string
+  1074→  /** Runs pinned to this version (pre-versioning runs count nowhere). */
+  1075→  runCount: number
+  1076→}
+  1077→
+  1078→export interface PipelineVersionsResponse {
+  1079→  versions: PipelineVersionSummary[]
+  1080→}
+  1081→
+  1082→/** GET /api/pipelines/[id]/versions/[version] — one snapshot with its parsed graph. */
+  1083→export interface PipelineVersionDetail {
+  1084→  versionNumber: number
+  1085→  nodeCount: number
+  1086→  note: string | null
+  1087→  createdBy: string | null
+  1088→  createdAt: string
+  1089→  graph: PipelineGraph | null
+  1090→}
+  1091→
+  1092→export interface PipelineVersionResponse {
+  1093→  version: PipelineVersionDetail
+  1094→}
+  1095→
+  1096→/** POST /api/pipelines/[id]/restore — pipeline payload mirrors PUT/PATCH + new snapshot. */
+  1097→export interface RestorePipelineResponse {
+  1098→  pipeline: PipelineDetail
+  1099→  version: {
+  1100→    versionNumber: number
+  1101→    nodeCount: number
+  1102→    note: string | null
+  1103→    createdBy: string | null
+  1104→    createdAt: string
+  1105→  }
+  1106→}
+  1107→
+  1108→// ─── Misc helpers ────────────────────────────────────────────────────
+  1109→
+  1110→export interface SeedResponse {
+  1111→  seeded: boolean
+  1112→  datasets: string[]
+  1113→  /** M9 (additive): demo users ensured during this seed call. */
+  1114→  usersEnsured?: number
+  1115→}
+  1116→
+  1117→export interface CreatePipelineResponse {
+  1118→  pipeline: PipelineDetail
+  1119→}
+  1120→
+  1121→export function shortId(id: string | null | undefined, len = 8): string {
+  1122→  if (!id) return '—'
+  1123→  return id.length <= len ? id : id.slice(0, len)
+  1124→}
+  1125→
+  1126→export function formatDuration(startedAt: string, finishedAt: string | null): string {
+  1127→  if (!finishedAt) return '—'
+  1128→  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
+  1129→  if (ms < 1000) return `${ms}ms`
+  1130→  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  1131→  const m = Math.floor(ms / 60_000)
+  1132→  const s = Math.round((ms % 60_000) / 1000)
+  1133→  return `${m}m ${s}s`
+  1134→}
+  1135→
+  1136→/** Strict relative time ("3m ago") for data-UI timestamps; '—' for null/invalid. */
+  1137→export function formatRelative(iso: string | null | undefined): string {
+  1138→  if (!iso) return '—'
+  1139→  const d = new Date(iso)
+  1140→  if (Number.isNaN(d.getTime())) return '—'
+  1141→  return formatDistanceToNowStrict(d, { addSuffix: true })
+  1142→}
+  1143→
+  1144→/** "every 10m" / "every 1h" / "every 1d" — human label for schedule intervals. */
+  1145→export function formatInterval(minutes: number): string {
+  1146→  if (minutes >= 1440 && minutes % 1440 === 0) return `every ${minutes / 1440}d`
+  1147→  if (minutes >= 60 && minutes % 60 === 0) return `every ${minutes / 60}h`
+  1148→  return `every ${minutes}m`
+  1149→}
+  1150→
+  1151→// Data-freshness thresholds (Task 2-c spec): fresh < 15m, aging < 2h, else stale.
+  1152→export const FRESH_THRESHOLD_MINUTES = 15
+  1153→export const STALE_THRESHOLD_MINUTES = 120
+  1154→
+  1155→export type FreshnessLevel = 'fresh' | 'aging' | 'stale'
+  1156→
+  1157→export function freshnessLevel(freshnessMinutes: number): FreshnessLevel {
+  1158→  if (freshnessMinutes < FRESH_THRESHOLD_MINUTES) return 'fresh'
+  1159→  if (freshnessMinutes < STALE_THRESHOLD_MINUTES) return 'aging'
+  1160→  return 'stale'
+  1161→}
+  1162→

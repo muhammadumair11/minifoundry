@@ -1,0 +1,1076 @@
+     1→'use client'
+     2→
+     3→// M4 Code Workbooks (Task 5-b) — the /transforms showpiece.
+     4→// Two-pane layout: workbook list (sidebar) + editor (code, inputs, run,
+     5→// preview / logs / run-history). Backend contract: agent-ctx 5-a.
+     6→
+     7→import { useMemo, useRef, useState } from 'react'
+     8→import Link from 'next/link'
+     9→import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+    10→import { toast } from 'sonner'
+    11→import {
+    12→  Braces,
+    13→  Database,
+    14→  Loader2,
+    15→  Pencil,
+    16→  Play,
+    17→  Plus,
+    18→  Save,
+    19→  Sparkles,
+    20→  SquareCode,
+    21→  Table2,
+    22→  Trash2,
+    23→  ScrollText,
+    24→  History,
+    25→} from 'lucide-react'
+    26→import {
+    27→  AlertDialog,
+    28→  AlertDialogAction,
+    29→  AlertDialogCancel,
+    30→  AlertDialogContent,
+    31→  AlertDialogDescription,
+    32→  AlertDialogFooter,
+    33→  AlertDialogHeader,
+    34→  AlertDialogTitle,
+    35→} from '@/components/ui/alert-dialog'
+    36→import { Button } from '@/components/ui/button'
+    37→import {
+    38→  Dialog,
+    39→  DialogContent,
+    40→  DialogDescription,
+    41→  DialogFooter,
+    42→  DialogHeader,
+    43→  DialogTitle,
+    44→} from '@/components/ui/dialog'
+    45→import { Input } from '@/components/ui/input'
+    46→import { Label } from '@/components/ui/label'
+    47→import { Skeleton } from '@/components/ui/skeleton'
+    48→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    49→import {
+    50→  Table,
+    51→  TableBody,
+    52→  TableCell,
+    53→  TableHead,
+    54→  TableHeader,
+    55→  TableRow,
+    56→} from '@/components/ui/table'
+    57→import { StatusDot } from '@/components/foundry/status-badge'
+    58→import { LogViewer } from '@/components/foundry/log-viewer'
+    59→import { GatedButton } from '@/components/foundry/governance/gated-button'
+    60→import { LanguageBadge } from '@/components/foundry/transforms/language-badge'
+    61→import { NewWorkbookDialog } from '@/components/foundry/transforms/new-workbook-dialog'
+    62→import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+    63→import { formatRelative } from '@/lib/foundry-types'
+    64→import type {
+    65→  DatasetSummary,
+    66→  FoundryRole,
+    67→  SeedTransformsResponse,
+    68→  SessionResponse,
+    69→  TransformDetailResponse,
+    70→  TransformLanguage,
+    71→  TransformRunResponse,
+    72→  TransformRunSummary,
+    73→  TransformRunsListResponse,
+    74→  TransformSummary,
+    75→  TransformsListResponse,
+    76→  DatasetsListResponse,
+    77→} from '@/lib/foundry-types'
+    78→import { cn } from '@/lib/utils'
+    79→
+    80→const EDITOR_NOTE: Record<TransformLanguage, string> = {
+    81→  sql: 'tables are named after datasets:  FROM shipments JOIN suppliers ON ...',
+    82→  javascript:
+    83→    'code runs as the body of function(input) — return an array of rows;  input.rows = first input,  input.datasets["Name"] = any input',
+    84→  python:
+    85→    'define transform(input) — return a list of dicts;  input["rows"] = first input,  input["datasets"]["Name"] = any input,  print() shows up in run logs',
+    86→}
+    87→
+    88→const EDITOR_FILE: Record<TransformLanguage, string> = {
+    89→  sql: 'query.sql',
+    90→  javascript: 'transform.js',
+    91→  python: 'transform.py',
+    92→}
+    93→
+    94→const canEditRole = (role: FoundryRole | undefined) => role === 'editor' || role === 'admin'
+    95→
+    96→// ── Page ─────────────────────────────────────────────────────────────
+    97→
+    98→export default function TransformsPage() {
+    99→  const queryClient = useQueryClient()
+   100→  const [rawSelectedId, setRawSelectedId] = useState<string | null>(null)
+   101→  const [createOpen, setCreateOpen] = useState(false)
+   102→
+   103→  const transformsQuery = useQuery<TransformsListResponse>({
+   104→    queryKey: ['transforms'],
+   105→    queryFn: () => apiJson<TransformsListResponse>('/api/transforms'),
+   106→  })
+   107→
+   108→  const datasetsQuery = useQuery<DatasetsListResponse>({
+   109→    queryKey: ['datasets'],
+   110→    queryFn: () => apiJson<DatasetsListResponse>('/api/datasets'),
+   111→  })
+   112→
+   113→  const sessionQuery = useQuery<SessionResponse>({
+   114→    queryKey: ['session'],
+   115→    queryFn: () => apiJson<SessionResponse>('/api/session'),
+   116→    staleTime: 30_000,
+   117→  })
+   118→  const canEdit = canEditRole(sessionQuery.data?.role)
+   119→
+   120→  const transforms = transformsQuery.data?.transforms ?? []
+   121→  const datasets = datasetsQuery.data?.datasets ?? []
+   122→
+   123→  // Derived selection: falls back to the first workbook when the raw id
+   124→  // disappears (deleted) — no effects needed.
+   125→  const selectedId =
+   126→    rawSelectedId && transforms.some((t) => t.id === rawSelectedId)
+   127→      ? rawSelectedId
+   128→      : (transforms[0]?.id ?? null)
+   129→  const selectedTransform = transforms.find((t) => t.id === selectedId) ?? null
+   130→
+   131→  const detailQuery = useQuery<TransformDetailResponse>({
+   132→    queryKey: ['transform', selectedId],
+   133→    queryFn: () => apiJson<TransformDetailResponse>(`/api/transforms/${selectedId}`),
+   134→    enabled: !!selectedId,
+   135→  })
+   136→
+   137→  const seedMutation = useMutation({
+   138→    mutationFn: () => apiSend<SeedTransformsResponse>('/api/transforms/seed-demo', 'POST'),
+   139→    onSuccess: (res) => {
+   140→      if (res.seeded) {
+   141→        toast.success(`Seeded ${res.created.length} demo workbooks`, {
+   142→          description: res.created.join(', '),
+   143→        })
+   144→      } else {
+   145→        toast.info('Demo workbooks already seeded', {
+   146→          description: `${res.skipped.length} already present — nothing to do.`,
+   147→        })
+   148→      }
+   149→      queryClient.invalidateQueries({ queryKey: ['transforms'] })
+   150→    },
+   151→    onError: (err) => toastApiError(err, 'Could not seed demo workbooks'),
+   152→  })
+   153→
+   154→  const handleSelect = (id: string) => setRawSelectedId(id)
+   155→  const handleDeleted = () => setRawSelectedId(null)
+   156→
+   157→  return (
+   158→    <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:py-8">
+   159→      {/* Header */}
+   160→      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+   161→        <div className="min-w-0">
+   162→          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">
+   163→            <SquareCode className="h-5 w-5 text-emerald-400" aria-hidden />
+   164→            Code Workbooks
+   165→          </h1>
+   166→          <p className="mt-1 max-w-2xl text-sm text-zinc-400">
+   167→            SQL, JavaScript, and Python transforms that read datasets, compute new rows, and publish
+   168→            the
+   169→            result as a versioned dataset on every run.
+   170→          </p>
+   171→        </div>
+   172→        <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-zinc-500">
+   173→          <span className="rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1">
+   174→            {transforms.length} workbooks
+   175→          </span>
+   176→          <span className="hidden rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1 sm:inline">
+   177→            {transforms.reduce((n, t) => n + t.runsCount, 0)} runs
+   178→          </span>
+   179→        </div>
+   180→      </div>
+   181→
+   182→      {/* Two panes */}
+   183→      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+   184→        {/* ── Left: workbook list ── */}
+   185→        <aside className="w-full shrink-0 lg:w-72 xl:w-80" aria-label="Workbook list">
+   186→          <div className="flex h-full flex-col rounded-lg border border-zinc-800 bg-zinc-900/60">
+   187→            <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+   188→              <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+   189→                Workbooks
+   190→              </h2>
+   191→              {transformsQuery.isLoading && (
+   192→                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" aria-hidden />
+   193→              )}
+   194→            </div>
+   195→
+   196→            <div className="foundry-scroll max-h-[320px] flex-1 overflow-y-auto p-2 lg:max-h-[560px]">
+   197→              {transformsQuery.isLoading ? (
+   198→                <div className="space-y-2 p-1">
+   199→                  {[0, 1, 2].map((i) => (
+   200→                    <Skeleton key={i} className="h-14 w-full bg-zinc-800/70" />
+   201→                  ))}
+   202→                </div>
+   203→              ) : transforms.length === 0 ? (
+   204→                <p className="px-3 py-6 text-center text-xs text-zinc-500">
+   205→                  Nothing here yet — create a workbook or seed the demos below.
+   206→                </p>
+   207→              ) : (
+   208→                <ul className="space-y-1">
+   209→                  {transforms.map((t) => {
+   210→                    const active = t.id === selectedId
+   211→                    return (
+   212→                      <li key={t.id}>
+   213→                        <button
+   214→                          type="button"
+   215→                          onClick={() => handleSelect(t.id)}
+   216→                          aria-current={active ? 'true' : undefined}
+   217→                          className={cn(
+   218→                            'w-full rounded-md border-l-2 px-3 py-2.5 text-left transition-colors',
+   219→                            active
+   220→                              ? 'border-l-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10'
+   221→                              : 'border-l-transparent hover:bg-zinc-900',
+   222→                          )}
+   223→                        >
+   224→                          <div className="flex items-center gap-2">
+   225→                            <span
+   226→                              className={cn(
+   227→                                'min-w-0 flex-1 truncate text-sm font-medium',
+   228→                                active ? 'text-emerald-300' : 'text-zinc-200',
+   229→                              )}
+   230→                            >
+   231→                              {t.name}
+   232→                            </span>
+   233→                            <LanguageBadge language={t.language} />
+   234→                          </div>
+   235→                          <div className="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-zinc-500">
+   236→                            <StatusDot status={t.latestRun?.status ?? null} className="h-1.5 w-1.5" />
+   237→                            {t.latestRun ? (
+   238→                              <span className="truncate">
+   239→                                {formatRelative(t.latestRun.finishedAt)} ·{' '}
+   240→                                {t.latestRun.rowCount !== null
+   241→                                  ? `${t.latestRun.rowCount.toLocaleString()} rows`
+   242→                                  : t.latestRun.status}
+   243→                              </span>
+   244→                            ) : (
+   245→                              <span>never run</span>
+   246→                            )}
+   247→                            <span className="ml-auto shrink-0 text-zinc-600">
+   248→                              {t.runsCount} {t.runsCount === 1 ? 'run' : 'runs'}
+   249→                            </span>
+   250→                          </div>
+   251→                        </button>
+   252→                      </li>
+   253→                    )
+   254→                  })}
+   255→                </ul>
+   256→              )}
+   257→            </div>
+   258→
+   259→            {/* Sidebar actions */}
+   260→            <div className="flex flex-col gap-2 border-t border-zinc-800 p-3">
+   261→              <GatedButton
+   262→                allowed={canEdit}
+   263→                reason="requires editor role"
+   264→                variant="outline"
+   265→                size="sm"
+   266→                onClick={() => setCreateOpen(true)}
+   267→                className="w-full justify-center border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   268→              >
+   269→                <Plus className="h-3.5 w-3.5" aria-hidden />
+   270→                New workbook
+   271→              </GatedButton>
+   272→              <GatedButton
+   273→                allowed={canEdit}
+   274→                reason="requires editor role"
+   275→                variant="ghost"
+   276→                size="sm"
+   277→                onClick={() => seedMutation.mutate()}
+   278→                disabled={seedMutation.isPending}
+   279→                className="w-full justify-center text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+   280→              >
+   281→                {seedMutation.isPending ? (
+   282→                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   283→                ) : (
+   284→                  <Sparkles className="h-3.5 w-3.5" aria-hidden />
+   285→                )}
+   286→                Seed demo workbooks
+   287→              </GatedButton>
+   288→            </div>
+   289→          </div>
+   290→        </aside>
+   291→
+   292→        {/* ── Right: editor ── */}
+   293→        <section className="min-w-0 flex-1" aria-label="Workbook editor">
+   294→          {!selectedTransform ? (
+   295→            <EmptyWorkbookState
+   296→              canEdit={canEdit}
+   297→              onCreate={() => setCreateOpen(true)}
+   298→              onSeed={() => seedMutation.mutate()}
+   299→              seeding={seedMutation.isPending}
+   300→            />
+   301→          ) : (
+   302→            <WorkbookEditor
+   303→              key={selectedTransform.id}
+   304→              transform={selectedTransform}
+   305→              detail={detailQuery.data ?? null}
+   306→              detailLoading={detailQuery.isLoading}
+   307→              detailError={detailQuery.error instanceof Error ? detailQuery.error.message : null}
+   308→              datasets={datasets}
+   309→              canEdit={canEdit}
+   310→              onDeleted={handleDeleted}
+   311→            />
+   312→          )}
+   313→        </section>
+   314→      </div>
+   315→
+   316→      <NewWorkbookDialog
+   317→        open={createOpen}
+   318→        onOpenChange={setCreateOpen}
+   319→        datasets={datasets}
+   320→        onCreated={(id) => setRawSelectedId(id)}
+   321→      />
+   322→    </div>
+   323→  )
+   324→}
+   325→
+   326→// ── Empty state ──────────────────────────────────────────────────────
+   327→
+   328→function EmptyWorkbookState({
+   329→  canEdit,
+   330→  onCreate,
+   331→  onSeed,
+   332→  seeding,
+   333→}: {
+   334→  canEdit: boolean
+   335→  onCreate: () => void
+   336→  onSeed: () => void
+   337→  seeding: boolean
+   338→}) {
+   339→  return (
+   340→    <div className="flex h-full flex-col items-center justify-center gap-5 rounded-lg border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center sm:p-12">
+   341→      <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10">
+   342→        <SquareCode className="h-7 w-7 text-emerald-400" aria-hidden />
+   343→      </span>
+   344→      <div className="max-w-lg">
+   345→        <p className="text-base font-semibold text-zinc-100">No code workbooks yet</p>
+   346→        <p className="mt-1.5 text-sm text-zinc-400">
+   347→          Workbooks are code-first pipelines. Pick the flavor that fits the job:
+   348→        </p>
+   349→      </div>
+   350→      <div className="grid w-full max-w-3xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
+   351→        <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-4">
+   352→          <LanguageBadge language="sql" />
+   353→          <p className="mt-2 text-xs leading-5 text-zinc-400">
+   354→            Write a <span className="font-mono text-emerald-400">SELECT</span> against real
+   355→            tables named after your datasets. Best for joins and aggregations.
+   356→          </p>
+   357→        </div>
+   358→        <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-4">
+   359→          <LanguageBadge language="javascript" />
+   360→          <p className="mt-2 text-xs leading-5 text-zinc-400">
+   361→            JavaScript body receiving{' '}
+   362→            <span className="font-mono text-amber-400">function(input)</span>. Best for custom
+   363→            row-level logic and flags.
+   364→          </p>
+   365→        </div>
+   366→        <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-4">
+   367→          <LanguageBadge language="python" />
+   368→          <p className="mt-2 text-xs leading-5 text-zinc-400">
+   369→            Python module defining{' '}
+   370→            <span className="font-mono text-violet-400">transform(input)</span>. Best for richer
+   371→            logic — loops, sorting, scoring.
+   372→          </p>
+   373→        </div>
+   374→      </div>
+   375→      <div className="flex flex-wrap items-center justify-center gap-2">
+   376→        <GatedButton
+   377→          allowed={canEdit}
+   378→          reason="requires editor role"
+   379→          onClick={onSeed}
+   380→          disabled={seeding}
+   381→          className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+   382→        >
+   383→          {seeding ? (
+   384→            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+   385→          ) : (
+   386→            <Sparkles className="h-4 w-4" aria-hidden />
+   387→          )}
+   388→          Seed demo workbooks
+   389→        </GatedButton>
+   390→        <GatedButton
+   391→          allowed={canEdit}
+   392→          reason="requires editor role"
+   393→          variant="outline"
+   394→          onClick={onCreate}
+   395→          className="border-zinc-700 bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+   396→        >
+   397→          <Plus className="h-4 w-4" aria-hidden />
+   398→          New workbook
+   399→        </GatedButton>
+   400→      </div>
+   401→    </div>
+   402→  )
+   403→}
+   404→
+   405→// ── Editor (remounts per workbook via key) ───────────────────────────
+   406→
+   407→function WorkbookEditor({
+   408→  transform,
+   409→  detail,
+   410→  detailLoading,
+   411→  detailError,
+   412→  datasets,
+   413→  canEdit,
+   414→  onDeleted,
+   415→}: {
+   416→  transform: TransformSummary
+   417→  detail: TransformDetailResponse | null
+   418→  detailLoading: boolean
+   419→  detailError: string | null
+   420→  datasets: DatasetSummary[]
+   421→  canEdit: boolean
+   422→  onDeleted: () => void
+   423→}) {
+   424→  const queryClient = useQueryClient()
+   425→  const [draftCode, setDraftCode] = useState(transform.sourceCode)
+   426→  const [renameOpen, setRenameOpen] = useState(false)
+   427→  const [renameValue, setRenameValue] = useState(transform.name)
+   428→  const [deleteOpen, setDeleteOpen] = useState(false)
+   429→  const [activeTab, setActiveTab] = useState<'preview' | 'logs' | 'history'>('preview')
+   430→  const [result, setResult] = useState<TransformRunResponse | null>(null)
+   431→  const textareaRef = useRef<HTMLTextAreaElement>(null)
+   432→
+   433→  const dirty = draftCode !== transform.sourceCode
+   434→
+   435→  const runsQuery = useQuery<TransformRunsListResponse>({
+   436→    queryKey: ['transform-runs', transform.id],
+   437→    queryFn: () =>
+   438→      apiJson<TransformRunsListResponse>(`/api/transforms/${transform.id}/runs?limit=20`),
+   439→  })
+   440→
+   441→  // The run shown in Preview/Logs: the fresh in-memory run, else the latest
+   442→  // run from the detail payload.
+   443→  const displayedRun: TransformRunSummary | null =
+   444→    result?.run ?? detail?.runs[0] ?? null
+   445→  const hasPreviewRows = !!result && result.preview.length >= 0 && result.run.status === 'success'
+   446→
+   447→  // Output dataset chip — resolve the id from the latest successful run and
+   448→  // the display name from the datasets cache.
+   449→  const outputDatasetId =
+   450→    (result?.run.status === 'success' ? result.run.outputDatasetId : null) ??
+   451→    detail?.runs.find((r) => r.status === 'success' && r.outputDatasetId)?.outputDatasetId ??
+   452→    null
+   453→  const outputDataset = datasets.find((d) => d.id === outputDatasetId) ?? null
+   454→
+   455→  const invalidateAfterChange = (id: string) => {
+   456→    queryClient.invalidateQueries({ queryKey: ['transform', id] })
+   457→    queryClient.invalidateQueries({ queryKey: ['transforms'] })
+   458→    queryClient.invalidateQueries({ queryKey: ['transform-runs', id] })
+   459→    queryClient.invalidateQueries({ queryKey: ['datasets'] })
+   460→    queryClient.invalidateQueries({ queryKey: ['stats'] })
+   461→  }
+   462→
+   463→  const runMutation = useMutation({
+   464→    // Save-then-run (pipeline-builder convention): run always executes the
+   465→    // SAVED source code, so flush a dirty draft first.
+   466→    mutationFn: async () => {
+   467→      if (dirty) {
+   468→        await apiSend<TransformDetailResponse>(`/api/transforms/${transform.id}`, 'PATCH', {
+   469→          sourceCode: draftCode,
+   470→        })
+   471→      }
+   472→      return apiSend<TransformRunResponse>(`/api/transforms/${transform.id}/run`, 'POST')
+   473→    },
+   474→    onSuccess: (res) => {
+   475→      setResult(res)
+   476→      if (res.run.status === 'success') {
+   477→        setActiveTab('preview')
+   478→        toast.success('Run succeeded', {
+   479→          description: `${(res.run.rowCount ?? 0).toLocaleString()} rows → ${transform.outputDatasetName}`,
+   480→        })
+   481→      } else {
+   482→        setActiveTab('logs')
+   483→        toast.error('Run failed', {
+   484→          description: res.run.error ?? 'Check the Logs tab for details.',
+   485→        })
+   486→      }
+   487→      invalidateAfterChange(transform.id)
+   488→    },
+   489→    onError: (err) => toastApiError(err, 'Run request failed'),
+   490→  })
+   491→
+   492→  const saveMutation = useMutation({
+   493→    mutationFn: () =>
+   494→      apiSend<TransformDetailResponse>(`/api/transforms/${transform.id}`, 'PATCH', {
+   495→        sourceCode: draftCode,
+   496→      }),
+   497→    onSuccess: () => {
+   498→      toast.success('Workbook saved', { description: transform.name })
+   499→      invalidateAfterChange(transform.id)
+   500→    },
+   501→    onError: (err) => toastApiError(err, 'Save failed'),
+   502→  })
+   503→
+   504→  const renameMutation = useMutation({
+   505→    mutationFn: (name: string) =>
+   506→      apiSend<TransformDetailResponse>(`/api/transforms/${transform.id}`, 'PATCH', { name }),
+   507→    onSuccess: () => {
+   508→      toast.success('Workbook renamed', { description: renameValue.trim() })
+   509→      setRenameOpen(false)
+   510→      invalidateAfterChange(transform.id)
+   511→    },
+   512→    onError: (err) => toastApiError(err, 'Rename failed'),
+   513→  })
+   514→
+   515→  const deleteMutation = useMutation({
+   516→    mutationFn: () => apiSend<{ ok: boolean }>(`/api/transforms/${transform.id}`, 'DELETE'),
+   517→    onSuccess: () => {
+   518→      toast.success('Workbook deleted', { description: `${transform.name} — runs and history removed` })
+   519→      setDeleteOpen(false)
+   520→      queryClient.invalidateQueries({ queryKey: ['transforms'] })
+   521→      queryClient.invalidateQueries({ queryKey: ['datasets'] })
+   522→      onDeleted()
+   523→    },
+   524→    onError: (err) => toastApiError(err, 'Delete failed'),
+   525→  })
+   526→
+   527→  const run = () => {
+   528→    if (!canEdit || runMutation.isPending) return
+   529→    runMutation.mutate()
+   530→  }
+   531→
+   532→  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+   533→    if (e.key === 'Tab') {
+   534→      e.preventDefault()
+   535→      const el = e.currentTarget
+   536→      const { selectionStart, selectionEnd, value } = el
+   537→      const next = `${value.slice(0, selectionStart)}  ${value.slice(selectionEnd)}`
+   538→      setDraftCode(next)
+   539→      requestAnimationFrame(() => {
+   540→        el.selectionStart = el.selectionEnd = selectionStart + 2
+   541→      })
+   542→      return
+   543→    }
+   544→    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+   545→      e.preventDefault()
+   546→      run()
+   547→    }
+   548→  }
+   549→
+   550→  const submitRename = () => {
+   551→    const next = renameValue.trim()
+   552→    if (!next || next === transform.name || renameMutation.isPending) return
+   553→    renameMutation.mutate(next)
+   554→  }
+   555→
+   556→  const latestRunStatus = transform.latestRun?.status ?? null
+   557→
+   558→  return (
+   559→    <div className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/60">
+   560→      {/* ── Header row ── */}
+   561→      <div className="border-b border-zinc-800 p-4 sm:p-5">
+   562→        <div className="flex flex-wrap items-start justify-between gap-3">
+   563→          <div className="min-w-0">
+   564→            <div className="flex min-w-0 items-center gap-2">
+   565→              <h2 className="truncate text-lg font-semibold tracking-tight text-zinc-100">
+   566→                {transform.name}
+   567→              </h2>
+   568→              <GatedButton
+   569→                allowed={canEdit}
+   570→                reason="requires editor role"
+   571→                variant="ghost"
+   572→                size="icon"
+   573→                aria-label={`Rename ${transform.name}`}
+   574→                onClick={() => {
+   575→                  setRenameValue(transform.name)
+   576→                  setRenameOpen(true)
+   577→                }}
+   578→                className="h-7 w-7 shrink-0 text-zinc-500 hover:text-emerald-400"
+   579→              >
+   580→                <Pencil className="h-3.5 w-3.5" aria-hidden />
+   581→              </GatedButton>
+   582→            </div>
+   583→            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+   584→              <LanguageBadge language={transform.language} />
+   585→              {outputDatasetId ? (
+   586→                <Link
+   587→                  href={`/datasets/${outputDatasetId}`}
+   588→                  className="inline-flex max-w-[260px] items-center gap-1.5 rounded border border-zinc-700 bg-zinc-950/60 px-1.5 py-px font-mono text-[10px] text-zinc-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-400"
+   589→                  title={`Output dataset: ${outputDataset?.name ?? transform.outputDatasetName}`}
+   590→                >
+   591→                  <Database className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden />
+   592→                  <span className="truncate">
+   593→                    {outputDataset?.name ?? transform.outputDatasetName}
+   594→                  </span>
+   595→                </Link>
+   596→              ) : (
+   597→                <span className="inline-flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-950/60 px-1.5 py-px font-mono text-[10px] text-zinc-500">
+   598→                  <Database className="h-3 w-3 shrink-0" aria-hidden />
+   599→                  {transform.outputDatasetName}
+   600→                </span>
+   601→              )}
+   602→              <span className="font-mono text-[10px] text-zinc-500">
+   603→                {transform.runsCount} {transform.runsCount === 1 ? 'run' : 'runs'}
+   604→              </span>
+   605→              {latestRunStatus && (
+   606→                <span className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-500">
+   607→                  <StatusDot status={latestRunStatus} className="h-1.5 w-1.5" />
+   608→                  last {formatRelative(transform.latestRun?.finishedAt)}
+   609→                </span>
+   610→              )}
+   611→              {dirty && (
+   612→                <span className="flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-px font-mono text-[10px] text-amber-400">
+   613→                  unsaved changes
+   614→                </span>
+   615→              )}
+   616→            </div>
+   617→          </div>
+   618→
+   619→          <div className="flex shrink-0 items-center gap-2">
+   620→            <GatedButton
+   621→              allowed={canEdit}
+   622→              reason="requires editor role"
+   623→              variant="outline"
+   624→              size="sm"
+   625→              onClick={() => saveMutation.mutate()}
+   626→              disabled={!dirty || saveMutation.isPending || runMutation.isPending}
+   627→              className="h-8 gap-1.5 border-zinc-700 bg-zinc-900/60 text-xs text-zinc-200 hover:bg-zinc-800"
+   628→              aria-label="Save workbook"
+   629→            >
+   630→              {saveMutation.isPending ? (
+   631→                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   632→              ) : (
+   633→                <Save className="h-3.5 w-3.5" aria-hidden />
+   634→              )}
+   635→              Save
+   636→            </GatedButton>
+   637→            <GatedButton
+   638→              allowed={canEdit}
+   639→              reason="requires editor role"
+   640→              size="sm"
+   641→              onClick={run}
+   642→              disabled={runMutation.isPending || saveMutation.isPending}
+   643→              className="relative h-8 gap-1.5 bg-emerald-500 text-xs text-zinc-950 hover:bg-emerald-400"
+   644→              aria-label="Run workbook"
+   645→            >
+   646→              {runMutation.isPending ? (
+   647→                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   648→              ) : (
+   649→                <Play className="h-3.5 w-3.5" aria-hidden />
+   650→              )}
+   651→              Run
+   652→              {runMutation.isPending && (
+   653→                <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5" aria-hidden>
+   654→                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+   655→                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-zinc-950 bg-emerald-400" />
+   656→                </span>
+   657→              )}
+   658→            </GatedButton>
+   659→            <GatedButton
+   660→              allowed={canEdit}
+   661→              reason="requires editor role"
+   662→              variant="ghost"
+   663→              size="icon"
+   664→              onClick={() => setDeleteOpen(true)}
+   665→              className="h-8 w-8 text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
+   666→              aria-label={`Delete ${transform.name}`}
+   667→            >
+   668→              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+   669→            </GatedButton>
+   670→          </div>
+   671→        </div>
+   672→
+   673→        {/* ── Inputs row ── */}
+   674→        <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950/50 p-3">
+   675→          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+   676→            Inputs
+   677→          </p>
+   678→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   679→            {transform.inputs.length === 0 && (
+   680→              <span className="font-mono text-[11px] text-zinc-600">no inputs configured</span>
+   681→            )}
+   682→            {transform.inputs.map((inp) =>
+   683→              inp.datasetName ? (
+   684→                <Link
+   685→                  key={inp.datasetId}
+   686→                  href={`/datasets/${inp.datasetId}`}
+   687→                  className="inline-flex max-w-[220px] items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900/80 px-2 py-0.5 font-mono text-[11px] text-zinc-300 transition-colors hover:border-emerald-500/40 hover:text-emerald-400"
+   688→                >
+   689→                  <Database className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden />
+   690→                  <span className="truncate">{inp.datasetName}</span>
+   691→                </Link>
+   692→              ) : (
+   693→                <span
+   694→                  key={inp.datasetId}
+   695→                  className="inline-flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-600"
+   696→                  title="The input dataset was deleted"
+   697→                >
+   698→                  <Database className="h-3 w-3 shrink-0" aria-hidden />
+   699→                  deleted dataset
+   700→                </span>
+   701→              ),
+   702→            )}
+   703→          </div>
+   704→          <p className="mt-2 break-words font-mono text-[11px] leading-5 text-zinc-500">
+   705→            {EDITOR_NOTE[transform.language]}
+   706→          </p>
+   707→        </div>
+   708→      </div>
+   709→
+   710→      {/* ── Code editor ── */}
+   711→      <div className="p-4 sm:p-5">
+   712→        <div className="mb-2 flex items-center justify-between gap-2">
+   713→          <div className="flex items-center gap-2">
+   714→            <LanguageBadge language={transform.language} />
+   715→            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+   716→              {EDITOR_FILE[transform.language]}
+   717→            </span>
+   718→          </div>
+   719→          <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-600">
+   720→            {dirty && <span className="text-amber-400">● modified</span>}
+   721→            <span>{draftCode.length.toLocaleString()} chars</span>
+   722→            <span className="hidden sm:inline">· ⌘/Ctrl+Enter to run</span>
+   723→          </div>
+   724→        </div>
+   725→        <textarea
+   726→          ref={textareaRef}
+   727→          value={draftCode}
+   728→          onChange={(e) => setDraftCode(e.target.value)}
+   729→          onKeyDown={handleEditorKeyDown}
+   730→          spellCheck={false}
+   731→          aria-label={`${EDITOR_FILE[transform.language]} source code for ${transform.name}`}
+   732→          className="foundry-scroll max-h-[420px] min-h-[220px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/90 p-4 font-mono text-[13px] leading-relaxed text-zinc-100 shadow-inner outline-none transition-colors placeholder:text-zinc-600 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20"
+   733→          placeholder={
+   734→            transform.language === 'sql'
+   735→              ? 'SELECT ...\nFROM shipments ...'
+   736→              : transform.language === 'python'
+   737→                ? 'def transform(input):\n    return input["rows"][:10]'
+   738→                : '// runs as function(input){ ... }\nreturn input.rows.slice(0, 10)'
+   739→          }
+   740→        />
+   741→
+   742→        {/* ── Results ── */}
+   743→        <Tabs
+   744→          value={activeTab}
+   745→          onValueChange={(v) => setActiveTab(v as 'preview' | 'logs' | 'history')}
+   746→          className="mt-5"
+   747→        >
+   748→          <TabsList className="bg-zinc-900/80">
+   749→            <TabsTrigger
+   750→              value="preview"
+   751→              className="gap-1.5 text-xs data-[state=active]:text-emerald-400"
+   752→            >
+   753→              <Table2 className="h-3.5 w-3.5" aria-hidden />
+   754→              Preview
+   755→            </TabsTrigger>
+   756→            <TabsTrigger
+   757→              value="logs"
+   758→              className="gap-1.5 text-xs data-[state=active]:text-emerald-400"
+   759→            >
+   760→              <ScrollText className="h-3.5 w-3.5" aria-hidden />
+   761→              Logs
+   762→            </TabsTrigger>
+   763→            <TabsTrigger
+   764→              value="history"
+   765→              className="gap-1.5 text-xs data-[state=active]:text-emerald-400"
+   766→            >
+   767→              <History className="h-3.5 w-3.5" aria-hidden />
+   768→              Run history
+   769→            </TabsTrigger>
+   770→          </TabsList>
+   771→
+   772→          {/* Preview */}
+   773→          <TabsContent value="preview" className="mt-3">
+   774→            {runMutation.isPending ? (
+   775→              <div className="flex h-40 items-center justify-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 font-mono text-xs text-zinc-500">
+   776→                <Loader2 className="h-4 w-4 animate-spin text-emerald-400" aria-hidden />
+   777→                running workbook…
+   778→              </div>
+   779→            ) : hasPreviewRows && result ? (
+   780→              <PreviewTable result={result} outputName={transform.outputDatasetName} />
+   781→            ) : displayedRun ? (
+   782→              <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/60 p-4 text-center">
+   783→                <Table2 className="h-5 w-5 text-zinc-600" aria-hidden />
+   784→                <p className="text-xs text-zinc-400">
+   785→                  Latest run: <span className="font-mono">{displayedRun.status}</span>
+   786→                  {displayedRun.rowCount !== null &&
+   787→                    ` · ${displayedRun.rowCount.toLocaleString()} rows published`}
+   788→                </p>
+   789→                <p className="font-mono text-[10px] text-zinc-600">
+   790→                  press Run to materialize a fresh preview
+   791→                </p>
+   792→              </div>
+   793→            ) : (
+   794→              <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-zinc-800 bg-zinc-950/40 p-4 text-center">
+   795→                <Table2 className="h-5 w-5 text-zinc-600" aria-hidden />
+   796→                <p className="text-xs text-zinc-500">
+   797→                  No results yet — press <span className="font-mono text-emerald-400">Run</span> to
+   798→                  execute the workbook.
+   799→                </p>
+   800→              </div>
+   801→            )}
+   802→          </TabsContent>
+   803→
+   804→          {/* Logs */}
+   805→          <TabsContent value="logs" className="mt-3">
+   806→            {displayedRun ? (
+   807→              <div>
+   808→                <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-zinc-500">
+   809→                  <span className="flex items-center gap-1.5">
+   810→                    <StatusDot status={displayedRun.status} className="h-1.5 w-1.5" />
+   811→                    run {displayedRun.id.slice(0, 8)}
+   812→                  </span>
+   813→                  <span>
+   814→                    {formatRelative(displayedRun.startedAt)} ·{' '}
+   815→                    {displayedRun.durationMs !== null ? `${displayedRun.durationMs}ms` : '—'}
+   816→                  </span>
+   817→                  {displayedRun.error && (
+   818→                    <span className="truncate text-rose-400" title={displayedRun.error}>
+   819→                      {displayedRun.error}
+   820→                    </span>
+   821→                  )}
+   822→                </div>
+   823→                <LogViewer
+   824→                  key={displayedRun.id}
+   825→                  logs={displayedRun.logs ?? []}
+   826→                  maxHeightClass="max-h-[300px]"
+   827→                  ariaLabel="Workbook run logs"
+   828→                />
+   829→              </div>
+   830→            ) : (
+   831→              <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-zinc-800 bg-zinc-950/40 text-xs text-zinc-500">
+   832→                No runs yet — logs will appear here after the first run.
+   833→              </div>
+   834→            )}
+   835→          </TabsContent>
+   836→
+   837→          {/* Run history */}
+   838→          <TabsContent value="history" className="mt-3">
+   839→            <div className="foundry-scroll max-h-96 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/50">
+   840→              {detailError ? (
+   841→                <p className="p-6 text-center text-xs text-rose-400">{detailError}</p>
+   842→              ) : runsQuery.isLoading || (detailLoading && !detail) ? (
+   843→                <div className="space-y-2 p-3">
+   844→                  {[0, 1, 2].map((i) => (
+   845→                    <Skeleton key={i} className="h-10 w-full bg-zinc-800" />
+   846→                  ))}
+   847→                </div>
+   848→              ) : (runsQuery.data?.runs.length ?? 0) === 0 ? (
+   849→                <p className="p-8 text-center text-xs text-zinc-500">
+   850→                  No runs recorded for this workbook.
+   851→                </p>
+   852→              ) : (
+   853→                <ul className="divide-y divide-zinc-800/70">
+   854→                  {(runsQuery.data?.runs ?? []).map((r) => (
+   855→                    <li
+   856→                      key={r.id}
+   857→                      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 transition-colors hover:bg-zinc-900/60"
+   858→                    >
+   859→                      <StatusDot status={r.status} />
+   860→                      <span
+   861→                        className={cn(
+   862→                          'font-mono text-[11px] font-medium',
+   863→                          r.status === 'success' && 'text-emerald-400',
+   864→                          r.status === 'failed' && 'text-rose-400',
+   865→                          r.status === 'running' && 'text-amber-400',
+   866→                        )}
+   867→                      >
+   868→                        {r.status}
+   869→                      </span>
+   870→                      <span className="font-mono text-[11px] text-zinc-400" title={r.startedAt}>
+   871→                        {formatRelative(r.startedAt)}
+   872→                      </span>
+   873→                      <span className="font-mono text-[11px] text-zinc-600">
+   874→                        {r.durationMs !== null ? `${r.durationMs}ms` : '—'}
+   875→                      </span>
+   876→                      <span className="font-mono text-[11px] text-zinc-400">
+   877→                        {r.rowCount !== null ? `${r.rowCount.toLocaleString()} rows` : '—'}
+   878→                      </span>
+   879→                      {r.outputVersionNumber !== null && (
+   880→                        <span className="rounded border border-zinc-800 bg-zinc-900 px-1 font-mono text-[10px] text-zinc-500">
+   881→                          v{r.outputVersionNumber}
+   882→                        </span>
+   883→                      )}
+   884→                      {r.error && (
+   885→                        <span
+   886→                          className="ml-auto max-w-[280px] truncate font-mono text-[10px] text-rose-400/80"
+   887→                          title={r.error}
+   888→                        >
+   889→                          {r.error}
+   890→                        </span>
+   891→                      )}
+   892→                    </li>
+   893→                  ))}
+   894→                </ul>
+   895→              )}
+   896→            </div>
+   897→          </TabsContent>
+   898→        </Tabs>
+   899→      </div>
+   900→
+   901→      {/* Rename dialog */}
+   902→      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+   903→        <DialogContent className="border-zinc-800 bg-zinc-900 sm:max-w-sm">
+   904→          <DialogHeader>
+   905→            <DialogTitle className="text-base text-zinc-100">Rename workbook</DialogTitle>
+   906→            <DialogDescription className="text-xs text-zinc-500">
+   907→              The output dataset name stays unchanged.
+   908→            </DialogDescription>
+   909→          </DialogHeader>
+   910→          <div className="space-y-1.5">
+   911→            <Label htmlFor="rename-input" className="text-xs text-zinc-400">
+   912→              Name
+   913→            </Label>
+   914→            <Input
+   915→              id="rename-input"
+   916→              value={renameValue}
+   917→              onChange={(e) => setRenameValue(e.target.value)}
+   918→              onKeyDown={(e) => {
+   919→                if (e.key === 'Enter') submitRename()
+   920→              }}
+   921→              className="h-8 border-zinc-700 bg-zinc-950 text-sm text-zinc-100"
+   922→            />
+   923→          </div>
+   924→          <DialogFooter className="gap-2">
+   925→            <Button
+   926→              variant="outline"
+   927→              size="sm"
+   928→              onClick={() => setRenameOpen(false)}
+   929→              className="border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800"
+   930→            >
+   931→              Cancel
+   932→            </Button>
+   933→            <Button
+   934→              size="sm"
+   935→              onClick={submitRename}
+   936→              disabled={!renameValue.trim() || renameMutation.isPending}
+   937→              className="bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+   938→            >
+   939→              {renameMutation.isPending ? (
+   940→                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+   941→              ) : null}
+   942→              Rename
+   943→            </Button>
+   944→          </DialogFooter>
+   945→        </DialogContent>
+   946→      </Dialog>
+   947→
+   948→      {/* Delete confirm */}
+   949→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   950→        <AlertDialogContent className="border-zinc-800 bg-zinc-900">
+   951→          <AlertDialogHeader>
+   952→            <AlertDialogTitle className="text-base text-zinc-100">
+   953→              Delete “{transform.name}”?
+   954→            </AlertDialogTitle>
+   955→            <AlertDialogDescription className="text-sm text-zinc-400">
+   956→              This permanently deletes the workbook. All runs and history are removed. The output
+   957→              dataset (if published) stays in the catalog.
+   958→            </AlertDialogDescription>
+   959→          </AlertDialogHeader>
+   960→          <AlertDialogFooter>
+   961→            <AlertDialogCancel className="border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-800">
+   962→              Cancel
+   963→            </AlertDialogCancel>
+   964→            <AlertDialogAction
+   965→              onClick={() => deleteMutation.mutate()}
+   966→              disabled={deleteMutation.isPending}
+   967→              className="bg-rose-500 text-zinc-950 hover:bg-rose-400"
+   968→            >
+   969→              {deleteMutation.isPending ? (
+   970→                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+   971→              ) : (
+   972→                <Trash2 className="h-4 w-4" aria-hidden />
+   973→              )}
+   974→              Delete workbook
+   975→            </AlertDialogAction>
+   976→          </AlertDialogFooter>
+   977→        </AlertDialogContent>
+   978→      </AlertDialog>
+   979→    </div>
+   980→  )
+   981→}
+   982→
+   983→// ── Preview table ────────────────────────────────────────────────────
+   984→
+   985→function PreviewTable({
+   986→  result,
+   987→  outputName,
+   988→}: {
+   989→  result: TransformRunResponse
+   990→  outputName: string
+   991→}) {
+   992→  const columns = result.schema
+   993→  const rows = result.preview
+   994→  const typeByName = useMemo(() => {
+   995→    const m = new Map<string, string>()
+   996→    for (const c of columns) m.set(c.name, c.type)
+   997→    return m
+   998→  }, [columns])
+   999→
+  1000→  const renderCell = (value: unknown, colName: string) => {
+  1001→    if (value === null || value === undefined || value === '') {
+  1002→      return <span className="text-zinc-700">∅</span>
+  1003→    }
+  1004→    const type = typeByName.get(colName)
+  1005→    if (typeof value === 'boolean' || type === 'boolean') {
+  1006→      return (
+  1007→        <span className={value ? 'text-amber-400' : 'text-zinc-500'}>{String(value)}</span>
+  1008→      )
+  1009→    }
+  1010→    if (typeof value === 'number' || type === 'number') {
+  1011→      const n = typeof value === 'number' ? value : Number(value)
+  1012→      return <span className="tabular-nums">{Number.isNaN(n) ? String(value) : n.toLocaleString()}</span>
+  1013→    }
+  1014→    return String(value)
+  1015→  }
+  1016→
+  1017→  return (
+  1018→    <div className="rounded-md border border-zinc-800 bg-zinc-950/50">
+  1019→      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2">
+  1020→        <p className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
+  1021→          <Braces className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+  1022→          output → <span className="text-emerald-400">{outputName}</span>
+  1023→          {result.run.outputVersionNumber !== null && (
+  1024→            <span className="rounded border border-zinc-800 bg-zinc-900 px-1 text-[10px] text-zinc-500">
+  1025→              v{result.run.outputVersionNumber}
+  1026→            </span>
+  1027→          )}
+  1028→        </p>
+  1029→        <p className="font-mono text-[10px] text-zinc-500">
+  1030→          showing {rows.length} of {(result.run.rowCount ?? rows.length).toLocaleString()} rows ·{' '}
+  1031→          {result.run.durationMs !== null ? `${result.run.durationMs}ms` : '—'}
+  1032→        </p>
+  1033→      </div>
+  1034→      <div className="foundry-scroll max-h-80 overflow-auto">
+  1035→        <Table>
+  1036→          <TableHeader className="sticky top-0 z-10 bg-zinc-900">
+  1037→            <TableRow className="border-zinc-800 hover:bg-transparent">
+  1038→              {columns.map((col) => (
+  1039→                <TableHead
+  1040→                  key={col.name}
+  1041→                  className={cn(
+  1042→                    'h-8 whitespace-nowrap px-3 font-mono text-[11px] text-zinc-400',
+  1043→                    col.type === 'number' && 'text-right',
+  1044→                  )}
+  1045→                >
+  1046→                  {col.name}
+  1047→                  <span className="ml-1 text-zinc-600">
+  1048→                    {col.type === 'number' ? '#' : col.type === 'boolean' ? '⌥' : 'A'}
+  1049→                  </span>
+  1050→                </TableHead>
+  1051→              ))}
+  1052→            </TableRow>
+  1053→          </TableHeader>
+  1054→          <TableBody>
+  1055→            {rows.map((row, i) => (
+  1056→              <TableRow key={i} className="border-zinc-800/70 hover:bg-zinc-900/70">
+  1057→                {columns.map((col) => (
+  1058→                  <TableCell
+  1059→                    key={col.name}
+  1060→                    className={cn(
+  1061→                      'whitespace-nowrap px-3 py-1.5 font-mono text-xs text-zinc-300',
+  1062→                      col.type === 'number' && 'text-right tabular-nums',
+  1063→                    )}
+  1064→                  >
+  1065→                    {renderCell(row[col.name], col.name)}
+  1066→                  </TableCell>
+  1067→                ))}
+  1068→              </TableRow>
+  1069→            ))}
+  1070→          </TableBody>
+  1071→        </Table>
+  1072→      </div>
+  1073→    </div>
+  1074→  )
+  1075→}
+  1076→

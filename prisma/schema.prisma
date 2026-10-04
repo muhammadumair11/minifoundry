@@ -1,0 +1,658 @@
+// MiniFoundry — learning-scale Palantir Foundry clone
+// Modules covered: M0 (platform), M1 (connectors/ingestion), M2 (versioned datasets),
+// M3 (pipelines + runs), M4 (code transforms), M6 (lineage)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── M0: Platform shell ───────────────────────────────────────────
+
+model Project {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  datasets    Dataset[]
+  pipelines   Pipeline[]
+}
+
+// ─── M1: Connectors & ingestion ───────────────────────────────────
+
+model Connector {
+  id         String      @id @default(cuid())
+  name       String
+  // csv_upload | json_upload | rest_url | sample
+  type       String
+  // JSON: { url?, sampleKey?, description? }
+  config     String      @default("{}")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  ingestions Ingestion[]
+}
+
+model Ingestion {
+  id           String     @id @default(cuid())
+  connectorId  String?
+  connector    Connector? @relation(fields: [connectorId], references: [id])
+  datasetId    String?
+  // running | success | failed
+  status       String     @default("running")
+  message      String?
+  rowsIngested Int        @default(0)
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+
+  // P5: connector history + ingestion feed indexes.
+  @@index([connectorId, startedAt])
+}
+
+// ─── M2: Datasets (immutable, versioned) ──────────────────────────
+
+model Dataset {
+  id                String           @id @default(cuid())
+  name              String
+  description       String?
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id])
+  sourceConnectorId String?
+  // JSON string[]
+  tags              String           @default("[]")
+  versions          DatasetVersion[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  objectTypes       ObjectType[]
+  linkTypesFrom     LinkType[]       @relation("linkDataset")
+  columnMarkings    ColumnMarking[]
+  // max versions retained when new versions are published; 0 = unlimited
+  keepLastN         Int              @default(20)
+  branches          DatasetBranch[]
+  qualityRules      QualityRule[]
+  comments          DatasetComment[]
+  watchers          DatasetWatcher[]
+  // P2 trust workflow: when true, new versions land as DRAFTS and consumers
+  // (pipelines, dashboards, objects) read the last PUBLISHED version instead.
+  qualityGate       Boolean          @default(false)
+  // latest version cleared for consumption (null = pre-gate head; consumers
+  // fall back to head while null). Only moves on publish when the gate is on.
+  publishedVersion  Int?
+}
+
+model DatasetVersion {
+  id            String   @id @default(cuid())
+  datasetId     String
+  dataset       Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  // JSON: [{ name: string, type: "string"|"number"|"boolean" }]
+  schemaJson    String
+  rowCount      Int      @default(0)
+  // JSON: array of row objects
+  dataJson      String   @default("[]")
+  // ingestion id | pipeline run id | "seed"
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  // R14: which branch this version belongs to ("main" = published lineage)
+  branch        String   @default("main")
+  // R14: versionNumber of the parent commit (branch/commit chain)
+  parentVersion Int?
+  // P2 trust workflow: draft = awaiting publication; published = consumable.
+  // Datasets with the quality gate OFF publish every version immediately.
+  lifecycle     String   @default("published")
+  // P2: not_evaluated | passed | warned | failed — refreshed on every
+  // automatic (post-run) or manual quality evaluation of this version.
+  qualityState  String?
+  // JSON: { passed, failed, errorFailures, warnFailures, evaluatedAt }
+  qualitySummaryJson String?
+
+  @@unique([datasetId, versionNumber])
+}
+
+// ─── P2: Version-level lineage (trust workflow) ───────────────────
+
+// Which exact input VERSIONS produced which output version — finer grained
+// than LineageEdge (dataset level). Written by the engine's output node.
+model VersionLineageEdge {
+  id                String   @id @default(cuid())
+  // pipeline run that produced the output version (null = non-pipeline writes)
+  runId             String?
+  pipelineId        String?
+  fromDatasetId     String
+  fromVersionNumber Int
+  toDatasetId       String
+  toVersionNumber   Int
+  createdAt         DateTime @default(now())
+
+  @@index([toDatasetId, toVersionNumber])
+  @@index([fromDatasetId, fromVersionNumber])
+}
+
+// ─── M3: Pipelines & runs ─────────────────────────────────────────
+
+model Pipeline {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  projectId   String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  // JSON: { nodes: FoundryNode[], edges: FoundryEdge[] }
+  graphJson   String        @default("{\"nodes\":[],\"edges\":[]}")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  runs        PipelineRun[]
+  schedules   Schedule[]
+  // R14: "manual" | "upstream" — upstream runs automatically when any
+  // dataset in upstreamDatasetIds gets a new version
+  triggerMode        String @default("manual")
+  // JSON: string[] of dataset ids watched for new versions
+  upstreamDatasetIds String @default("[]")
+  // R14: automatic retry policy for failed runs
+  maxRetries    Int    @default(0)
+}
+
+model PipelineRun {
+  id         String    @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  // running | success | failed
+  status     String    @default("running")
+  // JSON: [{ ts, level: "info"|"warn"|"error"|"success", msg }]
+  logsJson   String    @default("[]")
+  // M3.1: pipeline version this run executed (null for pre-versioning runs)
+  versionNumber Int?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  // R14: what caused this run: manual | schedule | upstream | retry
+  trigger    String    @default("manual")
+  attempt    Int       @default(1)
+  // ── Phase 1 (reproducible builds): the run manifest ─────────────────
+  // JSON RunManifest: { graphVersion: {versionNumber, nodeCount},
+  //   inputs:  [{datasetId, datasetName, versionNumber, rowCount}],
+  //   outputs: [{datasetId, datasetName, versionNumber, rowCount}],
+  //   nodes:   [{nodeId, type, label?, codeSha256?}] }
+  // Together with `versionNumber` (the pinned graph snapshot) this makes a
+  // past run explainable AND replayable from its recorded inputs + logic.
+  manifestJson String?
+  // Queryable convenience columns (mirrors of manifest content):
+  durationMs Int?
+  failureCause String?
+  outputDatasetId String?
+  outputVersionNumber Int?
+  // Set when this run replays an earlier run's manifest (trigger = 'replay').
+  replayedFromRunId String?
+
+  // P5 scale track: hot-path indexes (per-pipeline history, jobs table, health).
+  @@index([pipelineId, startedAt])
+  @@index([status, startedAt])
+}
+
+// ─── P3: Guided curriculum progress ───────────────────────────────
+
+// Manual check-offs for curriculum steps that cannot be auto-verified from
+// platform state. Auto-verified steps are computed LIVE from real data and
+// are never stored here. actorKey = session email, or 'sim:<role>' for the
+// demo-mode simulator identity.
+model CurriculumProgress {
+  id          String   @id @default(cuid())
+  actorKey    String
+  stepId      String
+  source      String   @default("manual")
+  completedAt DateTime @default(now())
+
+  @@unique([actorKey, stepId])
+}
+
+// ─── P4: Collaboration — dataset discussion & watchers ────────────
+
+// Threaded-free discussion attached to a dataset (optionally pinned to one
+// version). authorKey = email or 'sim:<role>'; authorLabel is display-only.
+model DatasetComment {
+  id            String   @id @default(cuid())
+  datasetId     String
+  dataset       Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  versionNumber Int?
+  authorKey     String
+  authorLabel   String
+  authorRole    String
+  body          String
+  createdAt     DateTime @default(now())
+
+  @@index([datasetId, createdAt])
+}
+
+// Opt-in subscription: notify watchers when the dataset gets a new version.
+// userEmail stores a session email OR 'sim:<role>' in demo mode.
+model DatasetWatcher {
+  id        String   @id @default(cuid())
+  datasetId String
+  dataset   Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  userEmail String
+  createdAt DateTime @default(now())
+
+  @@unique([datasetId, userEmail])
+  @@index([userEmail])
+}
+
+// ─── M3.1: Pipeline versions (immutable graph snapshots) ──────────
+
+model PipelineVersion {
+  id            String   @id @default(cuid())
+  pipelineId    String
+  versionNumber Int
+  graphJson     String
+  nodeCount     Int
+  note          String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  @@unique([pipelineId, versionNumber])
+  @@index([pipelineId])
+}
+
+// ─── M5: Orchestration (schedules) ────────────────────────────────
+
+model Schedule {
+  id              String    @id @default(cuid())
+  pipelineId      String
+  pipeline        Pipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name            String
+  enabled         Boolean   @default(true)
+  intervalMinutes Int       @default(60)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ─── M7: Ontology (semantic layer) ────────────────────────────────
+
+model ObjectType {
+  id              String       @id @default(cuid())
+  // url-safe unique name, e.g. "shipment"
+  apiName         String       @unique
+  displayName     String
+  description     String?
+  // backing dataset (rows = object instances)
+  sourceDatasetId String?
+  sourceDataset   Dataset?     @relation(fields: [sourceDatasetId], references: [id])
+  // property apiName used as primary key (column in backing dataset)
+  primaryKey      String?
+  // lucide icon name + accent key (emerald|amber|rose|teal|orange|zinc)
+  icon            String       @default("box")
+  color           String       @default("emerald")
+  properties      Property[]
+  views           ObjectView[]
+  outgoingLinks   LinkType[]   @relation("fromType")
+  incomingLinks   LinkType[]   @relation("toType")
+  actions         ActionType[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model Property {
+  id           String     @id @default(cuid())
+  objectTypeId String
+  objectType   ObjectType @relation(fields: [objectTypeId], references: [id], onDelete: Cascade)
+  apiName      String
+  displayName  String
+  // string | number | boolean (mirrors dataset schema types)
+  dataType     String     @default("string")
+  // shown as the object's title in explorer
+  isTitle      Boolean    @default(false)
+  hideInTable  Boolean    @default(false)
+
+  @@unique([objectTypeId, apiName])
+}
+
+model LinkType {
+  id            String     @id @default(cuid())
+  apiName       String
+  displayName   String
+  fromTypeId    String
+  fromType      ObjectType @relation("fromType", fields: [fromTypeId], references: [id], onDelete: Cascade)
+  toTypeId      String
+  toType        ObjectType @relation("toType", fields: [toTypeId], references: [id], onDelete: Cascade)
+  // one-to-many (fk on to-type dataset) | many-to-many (link dataset)
+  cardinality   String     @default("one-to-many")
+  // one-to-many: column in the TO type's backing dataset holding FROM type PK values
+  fkProperty    String?
+  // many-to-many: dataset with two columns holding both PKs
+  linkDatasetId String?
+  linkDataset   Dataset?   @relation("linkDataset", fields: [linkDatasetId], references: [id])
+  createdAt     DateTime   @default(now())
+
+  @@unique([fromTypeId, apiName])
+}
+
+model ActionType {
+  id              String       @id @default(cuid())
+  apiName         String       @unique
+  displayName     String
+  description     String?
+  objectTypeId    String
+  objectType      ObjectType   @relation(fields: [objectTypeId], references: [id], onDelete: Cascade)
+  // create | update | delete
+  operation       String       @default("update")
+  // JSON: [{ apiName, displayName, dataType: string|number|boolean, required, mapsTo (column), isPk?, defaultValue?, oneOf?: string[] }]
+  parametersJson  String       @default("[]")
+  enabled         Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  logs            ActionLog[]
+  // R14: optional write-back target — when set, submitting the action appends
+  // (writeMode "append") or upserts ("upsert", matched on keyProperty) a row
+  // into the target dataset, creating a NEW dataset version
+  targetDatasetId String?
+  writeMode       String?
+  keyProperty     String?
+}
+
+model ActionLog {
+  id           String     @id @default(cuid())
+  actionTypeId String
+  actionType   ActionType @relation(fields: [actionTypeId], references: [id], onDelete: Cascade)
+  paramsJson   String     @default("{}")
+  // success | failed
+  result       String
+  message      String?
+  // primary key value of the affected object (when applicable)
+  objectPk     String?
+  // dataset version created by the write-back (if any)
+  versionNumber Int?
+  createdAt    DateTime   @default(now())
+}
+
+// ─── M6: Lineage (auto-captured) ──────────────────────────────────
+
+model LineageEdge {
+  id            String   @id @default(cuid())
+  fromDatasetId String
+  toDatasetId   String
+  pipelineId    String?
+  createdAt     DateTime @default(now())
+
+  @@unique([fromDatasetId, toDatasetId, pipelineId])
+}
+
+// ─── M9: Governance & audit ───────────────────────────────────────
+
+model Marking {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  description String?
+  // rose | amber | teal | zinc
+  color       String          @default("rose")
+  // minimum role that can see VALUES in marked columns: viewer | editor | admin
+  minRole     String          @default("editor")
+  createdAt   DateTime        @default(now())
+  columnMarkings ColumnMarking[]
+}
+
+model ColumnMarking {
+  id         String   @id @default(cuid())
+  datasetId  String
+  dataset    Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  columnName String
+  markingId  String
+  marking    Marking  @relation(fields: [markingId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, columnName])
+}
+
+model ApprovalRequest {
+  id           String    @id @default(cuid())
+  // publish_dataset | publish_pipeline
+  kind         String
+  targetId     String
+  targetName   String
+  requestedBy  String
+  note         String?
+  // pending | approved | rejected
+  status       String    @default("pending")
+  decidedBy    String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime  @default(now())
+}
+
+model AuditEntry {
+  id           String   @id @default(cuid())
+  // viewer | editor | admin | system
+  actorRole    String
+  // user email when the actor was a real (session) user; null for simulator/machine actors
+  actorEmail   String?
+  action       String
+  // dataset | pipeline | connector | marking | approval | ontology | schedule | user
+  resourceType String
+  resourceId   String?
+  resourceName String?
+  detail       String?
+  createdAt    DateTime @default(now())
+
+  // P5: audit feed is always latest-first (createdAt) and filterable.
+  @@index([createdAt])
+  @@index([resourceType])
+}
+
+// ─── M9: Real users & sessions (Task 7-b) ─────────────────────────
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+  // viewer | editor | admin
+  role  String
+  // scrypt:<saltHex>:<hashHex> — NEVER returned by any API route
+  passwordHash String
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+// ─── M4: Code transforms (workbooks) ──────────────────────────────
+
+model Transform {
+  id                String         @id @default(cuid())
+  name              String         @unique
+  description       String?
+  // sql | javascript | python
+  language          String         @default("sql")
+  sourceCode        String
+  // JSON: string[] — input dataset ids, in order
+  inputsJson        String         @default("[]")
+  // result rows are written as a NEW version of the dataset with this name (created if missing)
+  outputDatasetName String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  runs              TransformRun[]
+}
+
+model TransformRun {
+  id                  String    @id @default(cuid())
+  transformId         String
+  transform           Transform @relation(fields: [transformId], references: [id], onDelete: Cascade)
+  // running | success | failed
+  status              String    @default("running")
+  // JSON: [{ ts, level: "info"|"warn"|"error"|"success", msg }]
+  logsJson            String    @default("[]")
+  durationMs          Int?
+  rowCount            Int?
+  outputDatasetId     String?
+  outputVersionNumber Int?
+  error               String?
+  startedAt           DateTime  @default(now())
+  finishedAt          DateTime?
+
+  // P5: per-workbook run history.
+  @@index([transformId, startedAt])
+}
+
+// ─── M10.1: API usage observability (Task 8-b) ─────────────────────
+
+// One row per authenticated public-API request. Deliberately NO relation to
+// ApiToken: logs must survive token deletion, so usage reads join the token
+// name/prefix in memory by id ((deleted token) when the id no longer exists).
+model ApiRequestLog {
+  id         String   @id @default(cuid())
+  tokenId    String
+  route      String
+  status     Int
+  durationMs Int
+  createdAt  DateTime @default(now())
+
+  @@index([tokenId])
+  @@index([createdAt])
+}
+
+// ─── R14: Dataset branches ─────────────────────────────────────────
+
+// A named pointer to a head version on an isolated commit line.
+// Version numbers stay globally unique per dataset (a shared commit counter
+// across branches), so @@unique([datasetId, versionNumber]) still holds.
+model DatasetBranch {
+  id          String    @id @default(cuid())
+  datasetId   String
+  dataset     Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  name        String
+  // versionNumber on main the branch was created from
+  baseVersion Int
+  // current head versionNumber ON this branch
+  headVersion Int
+  // set when merged back into main (branch becomes read-only)
+  mergedAt    DateTime?
+  mergedInto  Int?
+  description String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([datasetId, name])
+}
+
+// ─── R14: Data quality (expectations & health) ─────────────────────
+
+model QualityRule {
+  id         String          @id @default(cuid())
+  datasetId  String
+  dataset    Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  name       String
+  // not_null | unique | range | allowed_values | regex | freshness | row_count_min
+  kind       String
+  column     String?
+  // JSON per kind: {min,max} | {values:[]} | {pattern} | {maxAgeMinutes} | {minRows}
+  configJson String          @default("{}")
+  // warn | error — error failures surface as platform notifications
+  severity   String          @default("warn")
+  enabled    Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  results    QualityResult[]
+}
+
+model QualityResult {
+  id            String      @id @default(cuid())
+  ruleId        String
+  rule          QualityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  datasetId     String
+  versionNumber Int
+  passed        Boolean
+  // observed metric, e.g. violating-row count or age in minutes
+  actual        String?
+  message       String?
+  // manual | post_run | auto (post_run = pipeline output; auto = other writes)
+  trigger       String      @default("manual")
+  createdAt     DateTime    @default(now())
+
+  @@index([ruleId, createdAt])
+  // P5: version-state lookups (quality panel, gate checks).
+  @@index([datasetId, versionNumber])
+}
+
+// ─── R14: Dashboards (Contour-like analytics) ──────────────────────
+
+model Dashboard {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // JSON Widget[]: { id, type: bar|line|pie|area|stat|table, title,
+  //   datasetId, config: { groupBy?, valueColumn?, agg?, topN?, sortDir?, metric? } }
+  layoutJson  String   @default("[]")
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── R14: Saved object views ───────────────────────────────────────
+
+model ObjectView {
+  id           String     @id @default(cuid())
+  objectTypeId String
+  objectType   ObjectType @relation(fields: [objectTypeId], references: [id], onDelete: Cascade)
+  name         String
+  // JSON: [{ property, op: eq|neq|contains|gt|lt|gte|lte|in, value }]
+  filtersJson  String     @default("[]")
+  sortBy       String?
+  // asc | desc
+  sortDir      String     @default("asc")
+  createdBy    String?
+  createdAt    DateTime   @default(now())
+
+  @@unique([objectTypeId, name])
+}
+
+// ─── R14: Per-resource ACLs ────────────────────────────────────────
+
+model ResourceAcl {
+  id           String   @id @default(cuid())
+  // dataset | pipeline | dashboard
+  resourceType String
+  resourceId   String
+  userEmail    String
+  // viewer | editor | owner — ELEVATES a user on this resource beyond their
+  // global role (e.g. global viewer → editor on one dataset)
+  level        String   @default("editor")
+  grantedBy    String?
+  createdAt    DateTime @default(now())
+
+  @@unique([resourceType, resourceId, userEmail])
+  @@index([resourceId])
+}
+
+// ─── R14: Notification center ──────────────────────────────────────
+
+model Notification {
+  id           String    @id @default(cuid())
+  // null = broadcast to all users
+  userEmail    String?
+  // run_failed | quality_failed | approval_requested | pipeline_triggered | system
+  type         String
+  title        String
+  body         String?
+  resourceType String?
+  resourceId   String?
+  // in-app deep link (e.g. /pipelines/[id])
+  href         String?
+  readAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([userEmail])
+  @@index([createdAt])
+}
+
+// ─── M10: Platform API (public token-authed read API) ─────────────
+
+model ApiToken {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  // sha256 hex of the plaintext secret (mf_live_...) — plaintext is NEVER stored
+  tokenHash    String    @unique
+  // first 12 chars of the secret (mf_live_XXX) — safe to display
+  prefix       String
+  requestCount Int       @default(0)
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+}
