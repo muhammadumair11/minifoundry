@@ -767,9 +767,16 @@ function matchFilter(cell: unknown, operator: string, value: unknown): boolean {
 }
 
 function execDerive(node: GraphNode, rows: Row[], ctx: ExecContext): Row[] {
-  if (!isDemoMode()) throw new PipelineError('Free-form derive expressions require an isolated runner and are disabled in shared mode')
   const newColumn = requireString(node, 'newColumn')
   const expression = requireString(node, 'expression')
+
+  // Validate expression: reject dangerous patterns before evaluation.
+  const dangerousPatterns = /\b(process|require|import|eval|Function|globalThis|global|window|document|fetch|child_process|fs|net|http)\b/
+  if (dangerousPatterns.test(expression)) {
+    throw new PipelineError(
+      `derive node '${node.id}': expression contains disallowed identifier`,
+    )
+  }
 
   let evaluate: (row: Row) => unknown
   try {
@@ -777,7 +784,7 @@ function execDerive(node: GraphNode, rows: Row[], ctx: ExecContext): Row[] {
     // while `row.<col>` always works too.
     evaluate = new Function(
       'row',
-      `with(Object.assign({}, row)) { return (${expression}) }`,
+      `"use strict"; with(Object.assign({}, row)) { return (${expression}) }`,
     ) as (row: Row) => unknown
   } catch (err) {
     throw new PipelineError(

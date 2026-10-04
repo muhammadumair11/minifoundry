@@ -26,15 +26,11 @@
 //   env vars/user site-packages, and both files live in a mkdtemp dir removed
 //   in a finally block. Same row-value rules as JS: str|int|float|bool|None.
 
-import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
-import vm from 'node:vm'
 import type { NextRequest } from 'next/server'
 import type { Transform, TransformRun } from '@prisma/client'
 import { db } from '@/lib/db'
 import { isDemoMode } from '@/lib/runtime-mode'
+import { executeSqlIsolated, executeJsIsolated, executePythonIsolated } from '@/lib/isolated-runner'
 import { emitVersionCreated } from '@/lib/version-events'
 import {
   parseJsonSafe,
@@ -247,311 +243,6 @@ function validateSql(raw: string, log: LogFn): string {
   return sql
 }
 
-/**
- * Materialize each input dataset version into a REAL SQLite table named after
- * the sanitized dataset name. Registers every created table for cleanup and
- * drops leftovers of the same name first so the user SQL sees fresh data.
- */
-async function materializeInputs(
-  inputs: LoadedInput[],
-  tempTables: string[],
-  log: LogFn,
-): Promise<void> {
-  const used = new Set<string>() // lowercase names claimed during THIS run
-  for (const input of inputs) {
-    const base = sanitizeTableName(input.name)
-    let table = base
-    let n = 2
-    while (used.has(table.toLowerCase()) || PROTECTED_TABLES.has(table.toLowerCase())) {
-      table = `${base}_${n++}`
-    }
-    used.add(table.toLowerCase())
-    tempTables.push(table)
-
-    await db.$executeRawUnsafe(`DROP TABLE IF EXISTS ${quoteIdent(table)}`)
-
-    // Column set = schema columns first, then any row keys missing from the schema (TEXT).
-    const colTypes = new Map<string, string>()
-    for (const col of input.schema) {
-      colTypes.set(col.name, col.type === 'number' ? 'REAL' : col.type === 'boolean' ? 'INTEGER' : 'TEXT')
-    }
-    for (const row of input.rows) {
-      for (const key of Object.keys(row)) {
-        if (!colTypes.has(key)) colTypes.set(key, 'TEXT')
-      }
-    }
-    const cols = [...colTypes.keys()]
-    if (cols.length === 0) {
-      throw new Error(`input "${input.name}" has no columns`)
-    }
-    const colDefs = cols.map((c) => `${quoteIdent(c)} ${colTypes.get(c)}`).join(', ')
-    await db.$executeRawUnsafe(`CREATE TABLE ${quoteIdent(table)} (${colDefs})`)
-
-    // Chunked parameterized inserts. 200-row chunks, clamped so the bind-param
-    // count stays well under SQLite's variable limit even for wide tables.
-    const chunkRows = Math.max(1, Math.min(200, Math.floor(800 / cols.length)))
-    for (let i = 0; i < input.rows.length; i += chunkRows) {
-      const chunk = input.rows.slice(i, i + chunkRows)
-      const valuesSql = chunk.map(() => `(${cols.map(() => '?').join(',')})`).join(', ')
-      const params = chunk.flatMap((row) => cols.map((c) => toSqlParam(row[c])))
-      await db.$executeRawUnsafe(
-        `INSERT INTO ${quoteIdent(table)} (${cols.map(quoteIdent).join(', ')}) VALUES ${valuesSql}`,
-        ...params,
-      )
-    }
-    log('info', `loaded input "${input.name}" (${input.rows.length} rows) as table "${table}"`)
-  }
-}
-
-/** Execute the validated SELECT and normalize every cell of the result. */
-async function executeSql(sql: string, log: LogFn): Promise<Row[]> {
-  log('info', 'executing SQL against materialized input tables')
-  const raw = await db.$queryRawUnsafe<Record<string, unknown>[]>(sql)
-  const rows: Row[] = raw.map((r) => {
-    const out: Row = {}
-    // Object.keys of the first row preserves the result column order.
-    for (const key of Object.keys(r)) {
-      out[key] = sanitizeCell(r[key])
-    }
-    return out
-  })
-  log('info', `query returned ${rows.length} rows`)
-  return rows
-}
-
-// ─── Row validation (shared by the JS and Python paths) ──────────────
-
-/**
- * Validate an arbitrary decoded JSON value as the transform result:
- * an array of plain objects whose values are string|number|boolean|null.
- * Returns typed rows; throws with a precise row/column message otherwise.
- */
-function validateRows(raw: unknown): Row[] {
-  if (!Array.isArray(raw)) {
-    throw new Error(
-      `transform must return an array of row objects (got ${raw === null ? 'null' : typeof raw})`,
-    )
-  }
-  return raw.map((el, i) => {
-    if (el === null || typeof el !== 'object' || Array.isArray(el)) {
-      const got = el === null ? 'null' : Array.isArray(el) ? 'array' : typeof el
-      throw new Error(`row ${i}: expected a plain object (got ${got})`)
-    }
-    const row: Row = {}
-    for (const [key, value] of Object.entries(el as Record<string, unknown>)) {
-      const ok =
-        typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null
-      if (!ok) {
-        throw new Error(
-          `row ${i} column "${key}": value must be string|number|boolean|null (got ${typeof value})`,
-        )
-      }
-      row[key] = value
-    }
-    return row
-  })
-}
-
-// ─── JS path ──────────────────────────────────────────────────────────
-
-/** Execute the JS body in a fresh vm context with a 2s timeout; validate the result. */
-function executeJavaScript(code: string, input: unknown, log: LogFn): Row[] {
-  log('info', 'executing javascript in sandbox (vm, 2s timeout)')
-  let result: unknown
-  try {
-    result = vm.runInNewContext(`(function(input){\n${code}\n})(__input)`, { __input: input }, { timeout: 2000 })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (/timed out/i.test(msg)) {
-      throw new Error('script timed out after 2000ms')
-    }
-    throw new Error(`script error: ${msg}`)
-  }
-  return validateRows(result)
-}
-
-// ─── Python path ──────────────────────────────────────────────────────
-
-/**
- * Runner prelude executed as `python3 -I -B runner.py`.
- * Contract with the user module (written next to this file as user.py):
- *   def transform(input): -> list[dict]
- * where input = { rows, datasets, schemas } (same shape as the JS path).
- * The result is validated then written as JSON to $MF_OUT; stdout is treated
- * as user logs; anything on stderr + a non-zero exit means failure.
- */
-const PYTHON_RUNNER = `import json, math, os, sys
-
-OUT = os.environ["MF_OUT"]
-
-
-def __mf_fail(msg):
-    sys.stderr.write(str(msg) + "\\n")
-    sys.exit(1)
-
-
-try:
-    input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
-except Exception as exc:
-    __mf_fail("bad input json: " + str(exc))
-
-_g = {"__name__": "transform"}
-_here = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(_here, "user.py"), "r", encoding="utf-8") as f:
-    _src = f.read()
-try:
-    exec(compile(_src, "transform.py", "exec"), _g)
-except SystemExit:
-    raise
-except Exception:
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-_fn = _g.get("transform")
-if not callable(_fn):
-    __mf_fail('define a callable transform(input) that returns a list of row dicts')
-
-try:
-    _result = _fn(input)
-except Exception:
-    import traceback
-    traceback.print_exc()
-    __mf_fail('transform(input) raised (see traceback above)')
-
-if not isinstance(_result, list):
-    __mf_fail('transform(input) must return a list of row dicts (got ' + type(_result).__name__ + ')')
-
-for _i, _row in enumerate(_result):
-    if not isinstance(_row, dict):
-        __mf_fail('row ' + str(_i) + ': expected a dict (got ' + type(_row).__name__ + ')')
-    for _k, _v in _row.items():
-        if _v is None or isinstance(_v, (str, bool, int, float)):
-            if isinstance(_v, float) and (math.isnan(_v) or math.isinf(_v)):
-                __mf_fail('row ' + str(_i) + ' column "' + str(_k) + '": float values must be finite (got ' + str(_v) + ')')
-        else:
-            __mf_fail('row ' + str(_i) + ' column "' + str(_k) + '": value must be str|int|float|bool|None (got ' + type(_v).__name__ + ')')
-
-with open(OUT, "w", encoding="utf-8") as f:
-    json.dump(_result, f, ensure_ascii=False, allow_nan=False)
-`
-
-interface PythonSpawnResult {
-  code: number | null
-  stdout: string
-  stderr: string
-  timedOut: boolean
-}
-
-const PY_TIMEOUT_MS = 5_000
-const PY_STREAM_CAP = 100_000 // cap captured stdout/stderr per stream (chars)
-
-/** Spawn `python3 -I -B runner.py`, feed stdin, enforce the timeout, collect streams. */
-function spawnPython(workDir: string, stdinJson: string): Promise<PythonSpawnResult> {
-  return new Promise((resolve) => {
-    const child = spawn('python3', ['-I', '-B', path.join(workDir, 'runner.py')], {
-      // Phase 0 isolation hardening: a MINIMAL environment — the child gets
-      // PATH + the out-file path only, so server secrets (AUTH_SECRET,
-      // MF_SERVICE_TOKEN, DATABASE_URL, …) are never inherited by user code.
-      // (`-I` already isolates interpreter paths; this closes the env leak.)
-      env: {
-        PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
-        NODE_ENV: process.env.NODE_ENV,
-        MF_OUT: path.join(workDir, 'out.json'),
-        HOME: workDir,
-        LANG: 'C.UTF-8',
-      },
-      cwd: workDir,
-    })
-    let stdout = ''
-    let stderr = ''
-    let timedOut = false
-    let settled = false
-
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill('SIGKILL')
-    }, PY_TIMEOUT_MS)
-
-    const finish = (code: number | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve({ code, stdout, stderr, timedOut })
-    }
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      if (stdout.length < PY_STREAM_CAP) stdout += chunk.toString('utf8')
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (stderr.length < PY_STREAM_CAP) stderr += chunk.toString('utf8')
-    })
-    child.on('error', (err) => {
-      stderr += `\nspawn error: ${err.message}`
-      finish(null)
-    })
-    child.on('close', (code) => finish(code))
-
-    child.stdin.on('error', () => {
-      /* EPIPE if the child exits before reading — the close handler reports */
-    })
-    child.stdin.end(stdinJson, 'utf8')
-  })
-}
-
-/**
- * Execute a Python transform module: write runner.py + user.py into a fresh
- * mkdtemp dir, feed the input JSON on stdin, read the validated result from
- * out.json. User print() lines surface as run logs; stderr tails as the error.
- */
-async function executePython(code: string, input: unknown, log: LogFn): Promise<Row[]> {
-  log('info', `executing python (python3 -I -B, ${PY_TIMEOUT_MS / 1000}s timeout)`)
-  const dir = await mkdtemp(path.join(tmpdir(), 'mf-py-'))
-  try {
-    await writeFile(path.join(dir, 'runner.py'), PYTHON_RUNNER, 'utf8')
-    await writeFile(path.join(dir, 'user.py'), code, 'utf8')
-    const res = await spawnPython(dir, JSON.stringify(input))
-
-    for (const line of res.stdout.split('\n')) {
-      const trimmed = line.trimEnd()
-      if (trimmed.trim() !== '') log('info', `py: ${trimmed}`)
-    }
-
-    if (res.timedOut) {
-      throw new Error(`python timed out after ${PY_TIMEOUT_MS}ms`)
-    }
-    if (res.code !== 0) {
-      const tail = res.stderr
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .slice(-8)
-        .join('\n')
-      throw new Error(
-        tail ? `python exited with code ${res.code}:\n${tail}` : `python exited with code ${res.code}`,
-      )
-    }
-
-    let raw: string
-    try {
-      raw = await readFile(path.join(dir, 'out.json'), 'utf8')
-    } catch {
-      throw new Error('python runner did not produce a result file')
-    }
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      throw new Error('python runner produced unreadable output (invalid JSON)')
-    }
-    return validateRows(parsed)
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {
-      /* cleanup is best-effort; the dir is a fresh mkdtemp under tmpdir */
-    })
-  }
-}
-
 // ─── Main entry ───────────────────────────────────────────────────────
 
 /**
@@ -562,7 +253,7 @@ async function executePython(code: string, input: unknown, log: LogFn): Promise<
  * run (status failed + error + logs) so callers always get a run back.
  */
 export async function runTransform(transform: Transform, _req?: NextRequest, options: TransformRunOptions = {}): Promise<TransformRun> {
-  if (!isDemoMode()) throw new Error('Code transforms require an isolated runner and are disabled in shared mode')
+  // The isolated runner handles SQL/JS/Python safely. Shared mode is now allowed.
   const run = await db.transformRun.create({
     data: { transformId: transform.id, status: 'running', logsJson: '[]', replayOfRunId: options.replayOfRunId ?? null },
   })
@@ -571,7 +262,6 @@ export async function runTransform(transform: Transform, _req?: NextRequest, opt
     logs.push({ ts: new Date().toISOString(), level, msg })
   }
   const startedAt = Date.now()
-  const tempTables: string[] = []
   let status: 'success' | 'failed' = 'failed'
   let error: string | null = null
   let rowCount: number | null = null
@@ -601,7 +291,8 @@ export async function runTransform(transform: Transform, _req?: NextRequest, opt
         datasets: Object.fromEntries(inputs.map((i) => [i.name, i.rows])),
         schemas: Object.fromEntries(inputs.map((i) => [i.name, i.schema])),
       }
-      rows = executeJavaScript(transform.sourceCode, input, log)
+      log('info', 'executing javascript via isolated worker thread')
+      rows = await executeJsIsolated(transform.sourceCode, input, { timeoutMs: 5000, maxRows: MAX_ROWS })
     } else if (transform.language === 'python') {
       const first = inputs[0]
       const input = {
@@ -609,11 +300,17 @@ export async function runTransform(transform: Transform, _req?: NextRequest, opt
         datasets: Object.fromEntries(inputs.map((i) => [i.name, i.rows])),
         schemas: Object.fromEntries(inputs.map((i) => [i.name, i.schema])),
       }
-      rows = await executePython(transform.sourceCode, input, log)
+      log('info', 'executing python via isolated subprocess')
+      rows = await executePythonIsolated(transform.sourceCode, input, { timeoutMs: 10000, maxRows: MAX_ROWS })
     } else {
       const sql = validateSql(transform.sourceCode, log)
-      await materializeInputs(inputs, tempTables, log)
-      rows = await executeSql(sql, log)
+      log('info', 'executing SQL via isolated ephemeral database')
+      const sqlInputs = inputs.map((i) => ({
+        name: sanitizeTableName(i.name),
+        columns: i.schema.map((c) => c.name),
+        rows: i.rows,
+      }))
+      rows = executeSqlIsolated(sql, sqlInputs, { maxRows: MAX_ROWS })
     }
 
     if (rows.length > MAX_ROWS) {
@@ -661,16 +358,7 @@ export async function runTransform(transform: Transform, _req?: NextRequest, opt
     error = err instanceof Error ? err.message : String(err)
     log('error', error)
   } finally {
-    // Temp tables are REAL tables in the shared db file — ALWAYS drop them,
-    // even when the run failed mid-way. Individual failures are swallowed so
-    // the run row can still be finalized.
-    for (const table of tempTables) {
-      try {
-        await db.$executeRawUnsafe(`DROP TABLE IF EXISTS ${quoteIdent(table)}`)
-      } catch {
-        // cleanup is best-effort; table is prefixed-free but scoped to this run
-      }
-    }
+    // Isolated runner handles its own cleanup (ephemeral DB, temp dirs).
   }
 
   return db.transformRun.update({
