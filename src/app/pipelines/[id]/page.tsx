@@ -626,7 +626,8 @@ function Builder() {
                   nodeColor={miniMapColor}
                   maskColor={isDark ? 'rgb(9, 9, 11, 0.7)' : 'rgb(250, 250, 250, 0.7)'}
                   position="top-right"
-                  className="!h-24 !w-36 hidden sm:block"
+                  style={{ width: 140, height: 90 }}
+                  className="hidden sm:block"
                 />
               </ReactFlow>
             </div>
