@@ -778,18 +778,38 @@ function execDerive(node: GraphNode, rows: Row[], ctx: ExecContext): Row[] {
     )
   }
 
-  let evaluate: (row: Row) => unknown
-  try {
-    // Columns are also exposed as bare identifiers via `with` (e.g. `quantity * unitPrice`),
-    // while `row.<col>` always works too.
-    evaluate = new Function(
-      'row',
-      `"use strict"; with(Object.assign({}, row)) { return (${expression}) }`,
-    ) as (row: Row) => unknown
-  } catch (err) {
-    throw new PipelineError(
-      `derive node '${node.id}': invalid expression — ${err instanceof Error ? err.message : String(err)}`,
-    )
+  // Build an evaluator that exposes row columns as bare identifiers.
+  // We compile per-row-key destructuring from the first row to avoid `with`
+  // (which is forbidden in strict mode). `row.col` always works too.
+  let evaluate: ((row: Row) => unknown) | null = null
+  let compileError: string | null = null
+
+  // Try compiling with known column names from the first row
+  const sampleKeys = rows.length > 0 ? Object.keys(rows[0]).filter((k) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)) : []
+  if (sampleKeys.length > 0) {
+    try {
+      const destructured = sampleKeys.join(', ')
+      evaluate = new Function(
+        'row',
+        `var {${destructured}} = row; return (${expression})`,
+      ) as (row: Row) => unknown
+    } catch (err) {
+      compileError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  // Fallback: only `row.col` access works (no bare identifiers)
+  if (!evaluate) {
+    try {
+      evaluate = new Function(
+        'row',
+        `return (${expression})`,
+      ) as (row: Row) => unknown
+    } catch (err) {
+      throw new PipelineError(
+        `derive node '${node.id}': invalid expression — ${compileError ?? (err instanceof Error ? err.message : String(err))}`,
+      )
+    }
   }
 
   let failed = 0
