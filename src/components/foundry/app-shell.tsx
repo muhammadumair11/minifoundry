@@ -743,7 +743,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <HeaderLogo badge />
           </div>
         </header>
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
         <SiteFooter />
       </div>
     )
@@ -854,7 +854,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* flex-col lets full-height pages (e.g. /login, builder, transform
             workbench) stretch via flex-1 so the footer sticks to the bottom */}
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
 
         {!focus && <SiteFooter />}
       </div>

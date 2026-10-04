@@ -175,7 +175,7 @@ export default function TransformsPage() {
   const handleDeleted = () => setRawSelectedId(null)
 
   return (
-    <div className="flex min-h-0 flex-col lg:h-[calc(100dvh-var(--mf-chrome-h,3.5rem)-var(--mf-footer-h,42px))]">
+    <div className="flex min-h-0 flex-col overflow-hidden lg:flex-1">
       {/* Compact workbench header — context only; the working area below owns
           the rest of the viewport (R11 Focus Workspace) */}
       <header className="flex h-10 shrink-0 items-center gap-2.5 border-b border-border px-3">
