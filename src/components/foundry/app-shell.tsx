@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -694,26 +695,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Esc exits focus mode — but never while the user is typing or a dialog/
   // popover is open (Radix owns Esc there).
-  useEffect(() => {
-    if (!focus) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      const target = e.target as HTMLElement | null
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return
-      }
-      if (document.querySelector('[role="dialog"][data-state="open"]')) return
-      setFocus(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [focus, setFocus])
+  useHotkeys('esc', () => {
+    // Let an open Radix surface handle Escape before focus mode does.
+    if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]')) return
+    setFocus(false)
+  }, { enabled: focus }, [focus, setFocus])
 
   const { data: stats } = useQuery<ApiStats>({
     queryKey: ['stats'],

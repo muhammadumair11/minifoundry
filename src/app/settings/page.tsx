@@ -9,7 +9,7 @@
 //                 keeping only login users (POST /api/settings/reset)
 //   Session     → who you are + the role-simulation note
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
@@ -27,7 +27,6 @@ import {
 } from 'lucide-react'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -244,6 +243,7 @@ function DangerZoneSection() {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [confirmText, setConfirmText] = useState('')
+  const confirmInputRef = useRef<HTMLInputElement>(null)
 
   const sessionQuery = useQuery<SessionResponse>({
     queryKey: ['session'],
@@ -319,7 +319,12 @@ function DangerZoneSection() {
           if (!open) setConfirmText('')
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            confirmInputRef.current?.focus()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Reset the workspace?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -328,30 +333,35 @@ function DangerZoneSection() {
               <span className="font-mono text-foreground">{CONFIRM_WORD}</span> to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <Input
-            aria-label={`Type ${CONFIRM_WORD} to confirm`}
-            placeholder={CONFIRM_WORD}
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            className="font-mono"
-            autoFocus
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={confirmText !== CONFIRM_WORD || resetMutation.isPending}
-              className="bg-rose-600 text-white hover:bg-rose-500 dark:bg-rose-500 dark:text-zinc-950 dark:hover:bg-rose-400"
-              onClick={(e) => {
-                e.preventDefault()
-                if (confirmText === CONFIRM_WORD) resetMutation.mutate()
-              }}
-            >
-              {resetMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : null}
-              Delete everything
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (confirmText === CONFIRM_WORD && !resetMutation.isPending) resetMutation.mutate()
+            }}
+          >
+            <Input
+              ref={confirmInputRef}
+              aria-label={`Type ${CONFIRM_WORD} to confirm`}
+              placeholder={CONFIRM_WORD}
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="font-mono"
+            />
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+              <Button
+                type="submit"
+                disabled={confirmText !== CONFIRM_WORD || resetMutation.isPending}
+                className="bg-rose-600 text-white hover:bg-rose-500 dark:bg-rose-500 dark:text-zinc-950 dark:hover:bg-rose-400"
+              >
+                {resetMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : null}
+                Delete everything
+              </Button>
+            </AlertDialogFooter>
+          </form>
         </AlertDialogContent>
       </AlertDialog>
     </section>

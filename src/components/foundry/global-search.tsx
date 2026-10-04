@@ -8,6 +8,7 @@
 // listener lives HERE (not in app-shell) so the shell stays untouched.
 
 import { useEffect, useMemo, useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -71,18 +72,15 @@ export function GlobalSearch() {
   // never goes stale across opens (fresh open always highlights the first hit).
   const [openSeq, setOpenSeq] = useState(0)
 
-  // ⌘K / Ctrl+K toggles the palette — scoped to this component on purpose.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setOpen((v) => !v)
-        setOpenSeq((n) => n + 1) // fresh cmdk state per dialog session
-      }
+  // Search works from ordinary inputs; editors and textareas keep their own shortcuts.
+  useHotkeys('ctrl+k,meta+k', (event) => {
+    if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) {
+      if (!open) return
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+    event.preventDefault()
+    setOpen((value) => !value)
+    setOpenSeq((value) => value + 1)
+  }, { enableOnFormTags: ['INPUT'] }, [open])
 
   // 250ms debounce; the query resets when the palette closes (both the program
   //matic run() path and Radix's ESC/backdrop close go through handleOpenChange).
