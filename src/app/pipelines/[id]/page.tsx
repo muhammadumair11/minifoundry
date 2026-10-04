@@ -591,82 +591,84 @@ function Builder() {
           <NodePalette compact onAdd={addNode} />
         </div>
 
-        {/* ── Main area ── */}
-        <div className="flex min-h-0 flex-1">
-          <NodePalette onAdd={addNode} className="hidden lg:flex" />
+        {/* ── Main area + Run panel share vertical space ── */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            <NodePalette onAdd={addNode} className="hidden lg:flex" />
 
-          <div className="relative min-h-[420px] flex-1 lg:min-h-[520px]">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onSelectionChange={onSelectionChange}
-              onPaneClick={onPaneClick}
-              nodeTypes={nodeTypes}
-              colorMode={isDark ? 'dark' : 'light'}
-              fitView
-              fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
-              minZoom={0.2}
-              deleteKeyCode={['Backspace', 'Delete']}
-              className="bg-background"
-            >
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={22}
-                size={1.4}
-                color={isDark ? '#3f3f46' : '#d4d4d8'}
+            <div className="relative min-h-[300px] flex-1 lg:min-h-[400px]">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onSelectionChange={onSelectionChange}
+                onPaneClick={onPaneClick}
+                nodeTypes={nodeTypes}
+                colorMode={isDark ? 'dark' : 'light'}
+                fitView
+                fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
+                minZoom={0.2}
+                deleteKeyCode={['Backspace', 'Delete']}
+                className="bg-background"
+              >
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  gap={22}
+                  size={1.4}
+                  color={isDark ? '#3f3f46' : '#d4d4d8'}
+                />
+                <Controls showInteractive={false} position="bottom-left" />
+                <MiniMap
+                  pannable
+                  zoomable
+                  nodeColor={miniMapColor}
+                  maskColor={isDark ? 'rgb(9, 9, 11, 0.7)' : 'rgb(250, 250, 250, 0.7)'}
+                  position="top-right"
+                  className="!h-24 !w-36 hidden sm:block"
+                />
+              </ReactFlow>
+            </div>
+
+            {/* Desktop config panel */}
+            <aside className="hidden w-80 shrink-0 border-l border-border bg-muted/30 lg:block">
+              <ConfigPanel
+                node={selectedNode}
+                datasets={datasets}
+                onPatchData={updateNodeData}
+                onDelete={deleteNodeById}
+                nodeCount={nodes.length}
+                edgeCount={edges.length}
               />
-              <Controls showInteractive={false} position="bottom-left" />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={miniMapColor}
-                maskColor={isDark ? 'rgb(9, 9, 11, 0.7)' : 'rgb(250, 250, 250, 0.7)'}
-                position="top-right"
-                className="hidden sm:block"
-              />
-            </ReactFlow>
+            </aside>
           </div>
 
-          {/* Desktop config panel */}
-          <aside className="hidden w-80 shrink-0 border-l border-border bg-muted/30 lg:block">
-            <ConfigPanel
-              node={selectedNode}
-              datasets={datasets}
-              onPatchData={updateNodeData}
-              onDelete={deleteNodeById}
-              nodeCount={nodes.length}
-              edgeCount={edges.length}
-            />
-          </aside>
-        </div>
-
-        {/* Mobile config panel */}
-        {selectedNode && (
-          <div className="max-h-[45vh] overflow-y-auto border-t border-border bg-muted/30 foundry-scroll lg:hidden">
-            <ConfigPanel
-              node={selectedNode}
-              datasets={datasets}
-              onPatchData={updateNodeData}
-              onDelete={deleteNodeById}
-              nodeCount={nodes.length}
-              edgeCount={edges.length}
-            />
-          </div>
-        )}
-
-        {/* ── Run panel ── */}
-        <div ref={runPanelRef}>
-          {runPanelOpen && (
-            <RunPanel
-              runs={runs}
-              selectedRun={selectedRun}
-              onSelectRun={setSelectedRunId}
-              onClose={() => setRunPanelOpen(false)}
-            />
+          {/* Mobile config panel */}
+          {selectedNode && (
+            <div className="max-h-[45vh] overflow-y-auto border-t border-border bg-muted/30 foundry-scroll lg:hidden">
+              <ConfigPanel
+                node={selectedNode}
+                datasets={datasets}
+                onPatchData={updateNodeData}
+                onDelete={deleteNodeById}
+                nodeCount={nodes.length}
+                edgeCount={edges.length}
+              />
+            </div>
           )}
+
+          {/* ── Run panel — shrinks canvas above it ── */}
+          <div ref={runPanelRef} className="shrink-0">
+            {runPanelOpen && (
+              <RunPanel
+                runs={runs}
+                selectedRun={selectedRun}
+                onSelectRun={setSelectedRunId}
+                onClose={() => setRunPanelOpen(false)}
+              />
+            )}
+          </div>
         </div>
 
         {/* Save with a version note (M3.1) — snapshots the graph as the next
