@@ -81,13 +81,25 @@ test('jobs deduplicate events, allow one lease, recover an expired lease, and ex
       graphOverride: graph, versionNumber: outputJob.versionNumber, outputJobId: outputJob.id,
     })
     expect(firstRun.status).toBe('success')
-    // The run committed its output, but the worker died before acknowledging the job.
+    // Simulate a crash immediately after the version commit, before finalizing
+    // the run and its version-level lineage.
+    const checkpoint = JSON.parse(firstRun.manifestJson!)
+    checkpoint.outputs = []
+    await db.pipelineRun.update({ where: { id: firstRun.id }, data: {
+      status: 'running', finishedAt: null, outputDatasetId: null,
+      outputVersionNumber: null, manifestJson: JSON.stringify(checkpoint),
+    } })
+    await db.versionLineageEdge.deleteMany({ where: { runId: firstRun.id } })
     await db.executionJob.update({ where: { id: outputJob.id }, data: { leaseUntil: new Date(0) } })
     const secondLease = await claimExecutionJob('worker-four')
     expect(secondLease?.id).toBe(outputJob.id)
     await processExecutionJob(secondLease!, 'worker-four')
     expect((await db.executionJob.findUniqueOrThrow({ where: { id: outputJob.id } })).status).toBe('succeeded')
     expect(await db.datasetVersion.count({ where: { outputJobId: outputJob.id } })).toBe(1)
+    const repairedRun = await db.pipelineRun.findUniqueOrThrow({ where: { id: firstRun.id } })
+    expect(repairedRun.status).toBe('success')
+    expect(JSON.parse(repairedRun.manifestJson!).outputs).toHaveLength(1)
+    expect(await db.versionLineageEdge.count({ where: { runId: firstRun.id } })).toBe(1)
 
     const { NextRequest } = await import('next/server')
     const { POST } = await import('../src/app/api/pipelines/[id]/run/route')

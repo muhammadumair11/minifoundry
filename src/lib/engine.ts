@@ -44,6 +44,7 @@ export class PipelineError extends Error {}
 interface ExecContext {
   pipelineId: string
   runId: string
+  graphVersionNumber: number | null
   outputJobId?: string
   /** Pipeline display name — used to label version-created events (loop guards). */
   pipelineName: string
@@ -259,7 +260,7 @@ export async function runPipeline(
   const capture = newManifestCapture()
   try {
     const graphJson = opts.graphOverride ?? pipeline.graphJson
-    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {}, opts.outputJobId)
+    result = await executeGraph(pipelineId, run.id, pipeline.name, graphJson, log, capture, opts.inputOverrides ?? {}, opts.outputJobId, opts.versionNumber ?? null)
     const elapsed = Date.now() - startedAtMs
     log(
       'success',
@@ -436,6 +437,7 @@ async function executeGraph(
   capture: ManifestCapture = newManifestCapture(),
   inputOverrides: Record<string, number> = {},
   outputJobId?: string,
+  graphVersionNumber: number | null = null,
 ): Promise<ExecuteResult> {
   const graph = parseGraph(graphJson)
   log('info', `Pipeline '${pipelineName}' run started (graph: ${graph.nodes.length} nodes, ${graph.edges.length} edges)`)
@@ -446,6 +448,7 @@ async function executeGraph(
   const ctx: ExecContext = {
     pipelineId,
     runId,
+    graphVersionNumber,
     outputJobId,
     pipelineName,
     sourceDatasetIds: [
@@ -1035,6 +1038,17 @@ function execLimit(node: GraphNode, rows: Row[]): Row[] {
 
 async function execOutput(node: GraphNode, rows: Row[], ctx: ExecContext): Promise<Row[]> {
   const name = requireString(node, 'name')
+  // Keep the input versions and node fingerprints before committing the output.
+  // A restarted worker can then repair provenance if it finds that output.
+  if (ctx.outputJobId) {
+    await db.pipelineRun.update({
+      where: { id: ctx.runId },
+      data: { manifestJson: JSON.stringify({
+        graphVersion: { versionNumber: ctx.graphVersionNumber, nodeCount: ctx.capture.nodes.length },
+        inputs: ctx.capture.inputs, outputs: [], nodes: ctx.capture.nodes,
+      } satisfies RunManifest) },
+    })
+  }
   const { dataset, version, truncated } = await createDatasetFromRows({
     name,
     rows,

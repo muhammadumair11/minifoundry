@@ -4,6 +4,8 @@ import { db } from '@/lib/db'
 import { ensurePipelineVersion } from '@/lib/pipeline-version-service'
 import { PIPELINE_BUSY_MESSAGE, runPipeline } from '@/lib/engine'
 import { createNotification } from '@/lib/notify'
+import { parseJsonSafe } from '@/lib/api-utils'
+import type { RunManifest } from '@/lib/engine'
 
 const LEASE_MS = 2 * 60_000
 const RETRY_DELAY_MS = 2_000
@@ -160,15 +162,49 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
 }
 
 async function completeCommittedOutput(jobId: string, workerId: string): Promise<boolean> {
-  const output = await db.datasetVersion.findUnique({ where: { outputJobId: jobId } })
+  const output = await db.datasetVersion.findUnique({
+    where: { outputJobId: jobId }, include: { dataset: { select: { name: true } } },
+  })
   if (!output) return false
   const runId = output.createdBy
   if (!runId) throw new Error(`Output for job ${jobId} has no producing run`)
-  await db.pipelineRun.updateMany({
-    where: { id: runId, status: 'running' },
+  const run = await db.pipelineRun.findUnique({ where: { id: runId } })
+  if (!run) throw new Error(`Output for job ${jobId} has no producing run record`)
+  const manifest = parseJsonSafe<RunManifest | null>(run.manifestJson, null)
+  if (!manifest || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.nodes)) {
+    throw new Error(`Output for job ${jobId} has no recoverable input manifest`)
+  }
+  const inputs = [...new Map(manifest.inputs
+    .filter((input) => input.versionNumber != null)
+    .map((input) => [input.datasetId, input])).values()]
+  for (const input of inputs) {
+    await db.lineageEdge.upsert({
+      where: { fromDatasetId_toDatasetId_pipelineId: {
+        fromDatasetId: input.datasetId, toDatasetId: output.datasetId, pipelineId: run.pipelineId,
+      } },
+      update: {},
+      create: { fromDatasetId: input.datasetId, toDatasetId: output.datasetId, pipelineId: run.pipelineId },
+    })
+    const existing = await db.versionLineageEdge.findFirst({
+      where: { runId, fromDatasetId: input.datasetId, toDatasetId: output.datasetId,
+        toVersionNumber: output.versionNumber },
+    })
+    if (!existing) await db.versionLineageEdge.create({ data: {
+      runId, pipelineId: run.pipelineId, fromDatasetId: input.datasetId,
+      fromVersionNumber: input.versionNumber!, toDatasetId: output.datasetId,
+      toVersionNumber: output.versionNumber,
+    } })
+  }
+  const recoveredManifest: RunManifest = {
+    ...manifest,
+    outputs: [{ datasetId: output.datasetId, datasetName: output.dataset.name,
+      versionNumber: output.versionNumber, rowCount: output.rowCount }],
+  }
+  await db.pipelineRun.update({
+    where: { id: runId },
     data: {
       status: 'success', finishedAt: new Date(), outputDatasetId: output.datasetId,
-      outputVersionNumber: output.versionNumber,
+      outputVersionNumber: output.versionNumber, manifestJson: JSON.stringify(recoveredManifest),
       failureCause: null,
     },
   })
