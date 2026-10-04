@@ -9,7 +9,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -94,12 +93,6 @@ const nodeTypes: NodeTypes = {
 }
 
 const EDGE_STYLE = { stroke: '#71717a' } // zinc-500
-
-const miniMapColor = (node: AppNode): string => {
-  if (node.type === 'source') return '#34d399'
-  if (node.type === 'output') return '#fb7185'
-  return '#52525b'
-}
 
 async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -620,15 +613,6 @@ function Builder() {
                   color={isDark ? '#3f3f46' : '#d4d4d8'}
                 />
                 <Controls showInteractive={false} position="bottom-left" />
-                <MiniMap
-                  pannable
-                  zoomable
-                  nodeColor={miniMapColor}
-                  maskColor={isDark ? 'rgb(9, 9, 11, 0.7)' : 'rgb(250, 250, 250, 0.7)'}
-                  position="top-right"
-                  style={{ width: 140, height: 90 }}
-                  className="hidden sm:block"
-                />
               </ReactFlow>
             </div>
 
