@@ -3,6 +3,7 @@
 // Used by BOTH /api/ingest and the seeder, and by the pipeline engine (output node).
 
 import { db } from '@/lib/db'
+import { parseJsonSafe } from '@/lib/api-utils'
 import type { Dataset, DatasetVersion } from '@prisma/client'
 
 export type Row = Record<string, unknown>
@@ -123,9 +124,6 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
 
   if (existing) {
     const nextVersionNumber = (existing.versions[0]?.versionNumber ?? 0) + 1
-    // P2 trust workflow: gated datasets hold new versions as DRAFTS until an
-    // editor publishes them; ungated datasets publish immediately and keep the
-    // publishedVersion pointer synced to the new head.
     const lifecycle = existing.qualityGate ? 'draft' : 'published'
     const [version, dataset] = await db.$transaction([
       db.datasetVersion.create({
@@ -146,13 +144,12 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
           updatedAt: new Date(),
           ...(opts.description !== undefined ? { description: opts.description } : {}),
           ...(opts.connectorId ? { sourceConnectorId: opts.connectorId } : {}),
-          // gate off => consumers may use the new version right away
           ...(existing.qualityGate ? {} : { publishedVersion: nextVersionNumber }),
         },
       }),
     ])
-    // Retention: drop versions beyond the dataset's keepLastN window
-    // (0 = unlimited). Keeps high-frequency scheduled datasets bounded.
+    // Write rows to indexed storage for paged reads
+    await writeVersionRows(existing.id, nextVersionNumber, normalized)
     await pruneDatasetVersions(existing.id, existing.keepLastN)
     return { dataset, version, schema, rowCount: normalized.length, truncated }
   }
@@ -164,7 +161,6 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
       projectId: opts.projectId ?? null,
       sourceConnectorId: opts.connectorId ?? null,
       tags: JSON.stringify(opts.tags ?? []),
-      // v1 of a brand-new dataset is immediately consumable (gate off by default).
       publishedVersion: 1,
     },
   })
@@ -180,7 +176,70 @@ export async function createDatasetFromRows(opts: CreateDatasetOptions): Promise
       lifecycle: 'published',
     },
   })
+  await writeVersionRows(dataset.id, 1, normalized)
   return { dataset, version, schema, rowCount: normalized.length, truncated }
+}
+
+/**
+ * Write rows to the indexed DatasetVersionRow table for paged access.
+ * Uses batched inserts to stay within SQLite variable limits.
+ */
+async function writeVersionRows(datasetId: string, versionNumber: number, rows: Row[]): Promise<void> {
+  if (rows.length === 0) return
+  const BATCH_SIZE = 100
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE)
+    await db.datasetVersionRow.createMany({
+      data: batch.map((row, idx) => ({
+        datasetId,
+        versionNumber,
+        rowIndex: i + idx,
+        rowData: JSON.stringify(row),
+      })),
+    })
+  }
+}
+
+/**
+ * Read rows from the indexed storage with pagination.
+ * Falls back to dataJson parsing if no indexed rows exist (legacy versions).
+ */
+export async function readVersionRowsPaged(
+  datasetId: string,
+  versionNumber: number,
+  page: number,
+  pageSize: number,
+): Promise<{ rows: Row[]; total: number }> {
+  // Check if indexed rows exist
+  const count = await db.datasetVersionRow.count({
+    where: { datasetId, versionNumber },
+  })
+  if (count > 0) {
+    const skip = (page - 1) * pageSize
+    const raw = await db.datasetVersionRow.findMany({
+      where: { datasetId, versionNumber },
+      orderBy: { rowIndex: 'asc' },
+      skip,
+      take: pageSize,
+      select: { rowData: true },
+    })
+    return {
+      rows: raw.map((r) => parseJsonSafe<Row>(r.rowData, {})),
+      total: count,
+    }
+  }
+  // Fallback: parse dataJson from version record
+  const version = await db.datasetVersion.findUnique({
+    where: { datasetId_versionNumber: { datasetId, versionNumber } },
+    select: { dataJson: true, rowCount: true },
+  })
+  if (!version) return { rows: [], total: 0 }
+  const allRows = parseJsonSafe<Row[]>(version.dataJson, [])
+  const start = (page - 1) * pageSize
+  return {
+    rows: allRows.slice(start, start + pageSize),
+    total: version.rowCount,
+  }
 }
 
 /**

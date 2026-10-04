@@ -7,7 +7,7 @@
 
 import { db } from '@/lib/db'
 import { badRequest, jsonError, jsonOk, notFound, parseJsonSafe, parseSchema, serverError } from '@/lib/api-utils'
-import { compareValues, getDatasetVersion, resolveConsumerVersion, type Row } from '@/lib/dataset-service'
+import { compareValues, getDatasetVersion, readVersionRowsPaged, resolveConsumerVersion, type Row } from '@/lib/dataset-service'
 import { applyMasking, getRole, maskSchema } from '@/lib/governance'
 import type { NextRequest } from 'next/server'
 
@@ -64,14 +64,31 @@ export async function GET(
 
     const columns = parseSchema(version)
 
-    // Mask FIRST (all rows of the version), then search/sort/paginate on the
-    // masked rows — counts and search can never reveal governed values.
+    // pagination params (pageSize capped at 200)
+    const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1)
+    const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get('pageSize') ?? '50') || 50))
+    const query = url.searchParams.get('query')
+    const orderBy = url.searchParams.get('orderBy')
+
+    // When no search/sort is needed, use paged reads from indexed storage
+    if (!query && !orderBy) {
+      const paged = await readVersionRowsPaged(id, version.versionNumber, page, pageSize)
+      const { rows: maskedRows, maskedColumns } = await applyMasking(id, paged.rows, role)
+      return jsonOk({
+        rows: maskedRows,
+        total: paged.total,
+        page,
+        pageSize,
+        columns: await maskSchema(columns, id),
+        maskedColumns,
+      })
+    }
+
+    // For search/sort, load all rows (masked first for security)
     const raw = parseJsonSafe<Row[]>(version.dataJson, [])
     const { rows: maskedRows, maskedColumns } = await applyMasking(id, raw, role)
     let rows = maskedRows
 
-    // substring filter over stringified row values (case-insensitive)
-    const query = url.searchParams.get('query')
     if (query) {
       const q = query.toLowerCase()
       rows = rows.filter((row) =>
@@ -79,8 +96,6 @@ export async function GET(
       )
     }
 
-    // optional sort
-    const orderBy = url.searchParams.get('orderBy')
     if (orderBy) {
       const dir = url.searchParams.get('dir') === 'desc' ? 'desc' : 'asc'
       rows = [...rows].sort((a, b) => {
@@ -89,9 +104,6 @@ export async function GET(
       })
     }
 
-    // pagination (pageSize capped at 200)
-    const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1)
-    const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get('pageSize') ?? '50') || 50))
     const total = rows.length
     const start = (page - 1) * pageSize
 

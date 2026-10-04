@@ -116,6 +116,23 @@ model DatasetVersion {
   @@unique([datasetId, versionNumber])
 }
 
+// ─── Scalable row storage ──────────────────────────────────────────
+
+// Individual rows for a dataset version, enabling paged reads without
+// loading the entire version into memory. Replaces dataJson for new writes.
+model DatasetVersionRow {
+  id            String   @id @default(cuid())
+  datasetId     String
+  versionNumber Int
+  rowIndex      Int      // 0-based position within the version
+  // JSON: single row object { col: value }
+  rowData       String
+  createdAt     DateTime @default(now())
+
+  @@index([datasetId, versionNumber, rowIndex])
+  @@unique([datasetId, versionNumber, rowIndex])
+}
+
 // ─── P2: Version-level lineage (trust workflow) ───────────────────
 
 // Which exact input VERSIONS produced which output version — finer grained
