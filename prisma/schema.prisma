@@ -206,6 +206,8 @@ model ExecutionJob {
   trigger         String
   scheduleId      String?
   eventKey        String    @unique
+  // Immutable request context: replay input pins, parent run, and cascade depth.
+  payloadJson     String    @default("{}")
   status          String    @default("queued")
   attempt         Int       @default(0)
   maxAttempts     Int       @default(1)

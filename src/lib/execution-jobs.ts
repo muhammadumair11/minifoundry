@@ -11,10 +11,19 @@ const LEASE_MS = 2 * 60_000
 const RETRY_DELAY_MS = 2_000
 
 export interface EnqueuePipelineOptions {
-  trigger: 'manual' | 'schedule' | 'upstream'
+  trigger: 'manual' | 'schedule' | 'upstream' | 'replay' | 'retry' | 'cascade'
   eventKey: string
   scheduleId?: string
   maxAttempts?: number
+  graphVersionNumber?: number
+  payload?: ExecutionJobPayload
+}
+
+export interface ExecutionJobPayload {
+  inputOverrides?: Record<string, number>
+  replayOfRunId?: string
+  parentRunId?: string
+  cascadeDepth?: number
 }
 
 export async function enqueuePipelineJob(pipelineId: string, options: EnqueuePipelineOptions): Promise<ExecutionJob> {
@@ -22,7 +31,14 @@ export async function enqueuePipelineJob(pipelineId: string, options: EnqueuePip
   if (existing) return existing
 
   // Capture the graph version at event time, before a learner edits it again.
-  const version = await ensurePipelineVersion(pipelineId)
+  const version = options.graphVersionNumber == null
+    ? await ensurePipelineVersion(pipelineId)
+    : await db.pipelineVersion.findUnique({
+      where: { pipelineId_versionNumber: {
+        pipelineId, versionNumber: options.graphVersionNumber,
+      } },
+    })
+  if (!version) throw new Error(`Pipeline version ${options.graphVersionNumber} is unavailable`)
   try {
     return await db.executionJob.create({
       data: {
@@ -31,6 +47,7 @@ export async function enqueuePipelineJob(pipelineId: string, options: EnqueuePip
         trigger: options.trigger,
         scheduleId: options.scheduleId ?? null,
         eventKey: options.eventKey,
+        payloadJson: JSON.stringify(options.payload ?? {}),
         maxAttempts: Math.max(1, Math.min(6, options.maxAttempts ?? 1)),
       },
     })
@@ -98,10 +115,14 @@ export async function processExecutionJob(job: ExecutionJob, workerId: string): 
       where: { pipelineId_versionNumber: { pipelineId: job.pipelineId, versionNumber: job.versionNumber } },
     })
     if (!version) throw new Error(`Pipeline version ${job.versionNumber} is unavailable`)
+    const payload = parseJsonSafe<ExecutionJobPayload>(job.payloadJson, {})
     const run = await runPipeline(job.pipelineId, {
       graphOverride: version.graphJson,
       versionNumber: version.versionNumber,
       outputJobId: job.id,
+      inputOverrides: payload.inputOverrides,
+      replayOfRunId: payload.replayOfRunId,
+      cascadeDepth: payload.cascadeDepth ?? 0,
       // The schedule window was reserved when the job was enqueued.
       trigger: job.attempt === 1 ? job.trigger : 'retry',
       attempt: job.attempt,
