@@ -467,7 +467,7 @@ function Builder() {
 
   return (
     <BuilderDatasetsContext.Provider value={datasets}>
-      <div className="flex min-h-[560px] flex-col lg:h-[calc(100dvh-var(--mf-chrome-h,3.5rem)-var(--mf-footer-h,42px))]">
+      <div className="flex min-h-[560px] flex-col overflow-hidden lg:h-[calc(100dvh-var(--mf-chrome-h,3.5rem)-var(--mf-footer-h,42px))] lg:min-h-0">
         {/* ── Toolbar ── */}
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
           <Input
@@ -589,7 +589,7 @@ function Builder() {
           <div className="flex min-h-0 flex-1">
             <NodePalette onAdd={addNode} className="hidden lg:flex" />
 
-            <div className="relative min-h-[300px] flex-1 lg:min-h-[400px]">
+            <div className="relative min-h-[300px] flex-1 lg:min-h-[300px]">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
