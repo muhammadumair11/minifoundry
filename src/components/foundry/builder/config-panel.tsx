@@ -101,7 +101,7 @@ export function ConfigPanel({
 }) {
   if (!node) {
     return (
-      <div className="flex h-full flex-col gap-3 p-4">
+      <div className="foundry-scroll flex h-full flex-col gap-3 overflow-y-auto p-4">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
           Configuration
         </p>

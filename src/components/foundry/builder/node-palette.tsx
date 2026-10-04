@@ -43,7 +43,7 @@ export function NodePalette({
 
   return (
     <aside
-      className={cn('flex w-52 shrink-0 flex-col border-r border-border bg-card', className)}
+      className={cn('flex w-52 shrink-0 flex-col overflow-hidden border-r border-border bg-card', className)}
       aria-label="Node palette"
     >
       <p className="border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">

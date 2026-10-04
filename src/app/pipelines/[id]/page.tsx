@@ -189,7 +189,6 @@ function Builder() {
     if (job.lastRunId) {
       setSelectedRunId(job.lastRunId)
       setRunPanelOpen(true)
-      setTimeout(() => runPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100)
     }
     if (job.status === 'succeeded') toast.success('Run succeeded')
     else toast.error('Run failed', { description: job.error ?? 'Check the run logs in Orchestration.' })
@@ -197,7 +196,6 @@ function Builder() {
   const [saveNoteOpen, setSaveNoteOpen] = useState(false)
   const [versionNote, setVersionNote] = useState('')
   const initializedRef = useRef(false)
-  const runPanelRef = useRef<HTMLDivElement | null>(null)
   // M3.1: canonical JSON of the last loaded/saved graph — dirty-tracking ref
   // so Run/Save only snapshot when the canvas actually differs.
   const savedGraphRef = useRef<string>('')
@@ -467,15 +465,15 @@ function Builder() {
 
   return (
     <BuilderDatasetsContext.Provider value={datasets}>
-      <div className="flex min-h-[560px] flex-col overflow-hidden lg:min-h-0 lg:flex-1">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* ── Toolbar ── */}
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+        <div className="foundry-scroll flex h-12 shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-card px-3">
           <Input
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             onBlur={() => void handleRename()}
             aria-label="Pipeline name"
-            className="h-8 min-w-0 max-w-[240px] border-transparent bg-transparent px-2 text-sm font-medium text-foreground hover:border-border focus-visible:border-border"
+            className="h-8 w-40 shrink-0 border-transparent bg-transparent px-2 text-sm font-medium text-foreground hover:border-border focus-visible:border-border sm:w-60"
           />
           {latestRun && (
             <div className="hidden items-center gap-2 sm:flex" title="Latest run">
@@ -485,7 +483,7 @@ function Builder() {
               </span>
             </div>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {/* R14: trigger automation (upstream + retries) — editor-gated dialog. */}
             <div className="hidden md:block">
               <PipelineAutomation
@@ -585,11 +583,11 @@ function Builder() {
         </div>
 
         {/* ── Main area + Run panel share vertical space ── */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex h-0 flex-1 overflow-hidden">
             <NodePalette onAdd={addNode} className="hidden lg:flex" />
 
-            <div className="relative min-h-[300px] flex-1 lg:min-h-[300px]">
+            <div className="relative min-w-0 flex-1 overflow-hidden">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -617,7 +615,7 @@ function Builder() {
             </div>
 
             {/* Desktop config panel */}
-            <aside className="hidden w-80 shrink-0 border-l border-border bg-muted/30 lg:block">
+            <aside className="hidden w-80 shrink-0 overflow-hidden border-l border-border bg-muted/30 lg:block">
               <ConfigPanel
                 node={selectedNode}
                 datasets={datasets}
@@ -631,7 +629,7 @@ function Builder() {
 
           {/* Mobile config panel */}
           {selectedNode && (
-            <div className="max-h-[45vh] overflow-y-auto border-t border-border bg-muted/30 foundry-scroll lg:hidden">
+            <div className="h-0 flex-1 overflow-hidden border-t border-border bg-muted/30 lg:hidden">
               <ConfigPanel
                 node={selectedNode}
                 datasets={datasets}
@@ -643,17 +641,17 @@ function Builder() {
             </div>
           )}
 
-          {/* ── Run panel — shrinks canvas above it ── */}
-          <div ref={runPanelRef} className="shrink-0">
-            {runPanelOpen && (
+          {/* Runs and canvas take equal shares of the available space. */}
+          {runPanelOpen && (
+            <div className="h-0 flex-1 overflow-hidden">
               <RunPanel
                 runs={runs}
                 selectedRun={selectedRun}
                 onSelectRun={setSelectedRunId}
                 onClose={() => setRunPanelOpen(false)}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Save with a version note (M3.1) — snapshots the graph as the next

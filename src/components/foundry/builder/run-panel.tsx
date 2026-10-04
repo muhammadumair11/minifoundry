@@ -21,9 +21,9 @@ export function RunPanel({
   onClose: () => void
 }) {
   return (
-    <section aria-label="Run panel" className="overflow-hidden border-t border-border bg-card">
+    <section aria-label="Run panel" className="flex h-full flex-col overflow-hidden border-t border-border bg-card">
       {/* header */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <p className="shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             Runs
@@ -75,7 +75,7 @@ export function RunPanel({
 
       {/* selected run details */}
       {selectedRun && (
-        <div className="border-t border-border px-3 py-2">
+        <div className="foundry-scroll flex-1 overflow-auto border-t border-border px-3 py-2">
           <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
             <StatusBadge status={selectedRun.status} />
             {selectedRun.versionNumber != null && (
@@ -98,7 +98,7 @@ export function RunPanel({
             </span>
             <span className="font-mono text-[11px] text-muted-foreground/80">{selectedRun.id}</span>
           </div>
-          <LogViewer logs={selectedRun.logs ?? []} />
+          <LogViewer logs={selectedRun.logs ?? []} maxHeightClass="" />
         </div>
       )}
     </section>

@@ -6,10 +6,8 @@ const nextConfig: NextConfig = {
   // non-app folders (examples/, skills/), so `next build` fails on any app
   // type error. Keep it this way.
   reactStrictMode: false,
-  // Keep the dev-tools bubble out of the sidebar's footer corner.
-  devIndicators: {
-    position: "bottom-right",
-  },
+  // The floating dev-tools control covers dashboard content and scrollbars.
+  devIndicators: false,
 };
 
 export default nextConfig;

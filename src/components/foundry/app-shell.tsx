@@ -751,15 +751,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const current = FLAT_NAV.find((item) => isActive(pathname, item.href))
   const signedIn = session?.session ?? null
+  const isPipelineBuilder = /^\/pipelines\/[^/]+\/?$/.test(pathname)
 
   return (
     <div
-      className="flex min-h-dvh bg-background text-foreground"
+      className={cn(
+        'flex bg-background text-foreground',
+        isPipelineBuilder ? 'h-dvh overflow-hidden' : 'min-h-dvh',
+      )}
       style={
         {
-          // Builder pages compute their full-height layout from these two
-          // vars (e.g. h-[calc(100dvh-var(--mf-chrome-h)-var(--mf-footer-h))]);
-          // focus mode zeroes both so the workbench owns the whole viewport.
+          // Focus mode removes the chrome around viewport-sized workbenches.
           '--mf-chrome-h': focus ? '0px' : '3.5rem',
           '--mf-footer-h': focus ? '0px' : '42px',
         } as React.CSSProperties

@@ -91,7 +91,7 @@ function StatCard({
   children?: React.ReactNode
 }) {
   const card = (
-    <Card className={cn(href && 'h-full transition-colors group-hover:border-foreground/25')}>
+    <Card className={cn('gap-0 py-0', href && 'h-full transition-colors group-hover:border-foreground/25')}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
@@ -299,7 +299,7 @@ function CurriculumResumeBanner() {
     return (
       <Link
         href="/learn"
-        className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 font-mono text-[11px] text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+        className="my-4 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 font-mono text-[11px] text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
         aria-label={`Curriculum complete — all ${data.total} steps verified. Open Learn.`}
       >
         <GraduationCap className="h-3 w-3" aria-hidden />
@@ -316,7 +316,7 @@ function CurriculumResumeBanner() {
 
   return (
     <div
-      className="mt-4 flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 sm:flex-row sm:items-center sm:justify-between"
+      className="my-4 flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 sm:flex-row sm:items-center sm:justify-between"
       data-testid="curriculum-resume"
     >
       <div className="flex min-w-0 items-start gap-2.5">
@@ -591,8 +591,8 @@ export default function HomePage() {
 
       {/* Recent runs + recent datasets */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardHeader className="flex-row items-center justify-between border-b border-border p-4">
+        <Card className="gap-0 py-0 lg:col-span-3">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border p-4 [.border-b]:pb-4">
             <CardTitle className="text-sm font-medium text-foreground">Recent Runs</CardTitle>
             <Link
               href="/pipelines"
@@ -652,8 +652,8 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between border-b border-border p-4">
+        <Card className="gap-0 py-0 lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border p-4 [.border-b]:pb-4">
             <CardTitle className="text-sm font-medium text-foreground">Recent Datasets</CardTitle>
             <Link
               href="/datasets"
@@ -670,7 +670,7 @@ export default function HomePage() {
                 ))}
               </div>
             ) : data && data.recentDatasets.length > 0 ? (
-              <ul className="max-h-64 space-y-1 overflow-y-auto foundry-scroll">
+              <ul className="space-y-1">
                 {data.recentDatasets.map((ds) => (
                   <li key={ds.id}>
                     <Link
