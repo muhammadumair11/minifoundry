@@ -740,12 +740,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = FLAT_NAV.find((item) => isActive(pathname, item.href))
   const signedIn = session?.session ?? null
   const isPipelineBuilder = /^\/pipelines\/[^/]+\/?$/.test(pathname)
+  const isWorkbookWorkbench = /^\/transforms\/?$/.test(pathname)
 
   return (
     <div
       className={cn(
         'flex bg-background text-foreground',
-        isPipelineBuilder ? 'h-dvh overflow-hidden' : 'min-h-dvh',
+        isPipelineBuilder
+          ? 'h-dvh overflow-hidden'
+          : isWorkbookWorkbench
+            ? 'min-h-dvh lg:h-dvh lg:overflow-hidden'
+            : 'min-h-dvh',
       )}
       style={
         {

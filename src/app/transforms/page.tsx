@@ -840,9 +840,9 @@ function WorkbookEditor({
         </button>
       </div>
 
-      {/* ── Code area — the star of the workbench: a real Monaco editor that
-          fills every remaining pixel (highlighting, IntelliSense, minimap) ── */}
-      <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden lg:min-h-0">
+      {/* Keep the editor bounded on stacked screens; on desktop it shares the
+          viewport-height workbench with the results panel. */}
+      <div className="flex h-[min(42dvh,360px)] min-h-[240px] shrink-0 flex-col overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1">
         <CodeEditor
           value={draftCode}
           onChange={setDraftCode}
@@ -854,7 +854,7 @@ function WorkbookEditor({
           readOnly={!canEdit}
           schemaTables={schemaQuery.data ?? []}
           ariaLabel={`${EDITOR_FILE[transform.language]} — ${transform.name}`}
-          className="min-h-[240px] lg:min-h-0 lg:flex-1"
+          className="h-full min-h-0 lg:flex-1"
         />
       </div>
 
