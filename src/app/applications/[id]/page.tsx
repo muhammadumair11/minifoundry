@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   Gauge,
@@ -53,6 +54,7 @@ import type {
   AppConfig,
   AppFilterDef,
   AppObjectRef,
+  AppPage,
   AppWidget,
   ApplicationInfo,
   ApplicationResponse,
@@ -63,6 +65,8 @@ import { AppMapWidget } from '@/components/foundry/app-builder/app-map-widget'
 import { AppTableWidget } from '@/components/foundry/app-builder/app-table-widget'
 import { AppStatWidget } from '@/components/foundry/app-builder/app-stat-widget'
 import { AppActionWidget } from '@/components/foundry/app-builder/app-action-widget'
+import { AppChartWidget } from '@/components/foundry/app-builder/app-chart-widget'
+import type { AppExploration } from '@/components/foundry/app-builder/use-app-objects'
 import { AppDetailPanel } from '@/components/foundry/app-builder/app-detail-panel'
 import { AppFilterBar } from '@/components/foundry/app-builder/app-filter-bar'
 import { AppFilterDialog } from '@/components/foundry/app-builder/app-filter-dialog'
@@ -75,6 +79,7 @@ const WIDGET_ICON: Record<AppWidget['type'], typeof MapIcon> = {
   objectTable: Table2,
   stat: Gauge,
   actionButton: Zap,
+  chart: BarChart3,
 }
 
 interface Draft {
@@ -82,6 +87,7 @@ interface Draft {
   description: string
   widgets: AppWidget[]
   filters: AppFilterDef[]
+  pages: AppPage[]
 }
 
 function draftOf(a: ApplicationInfo): Draft {
@@ -90,6 +96,7 @@ function draftOf(a: ApplicationInfo): Draft {
     description: a.description ?? '',
     widgets: structuredClone(a.config.widgets),
     filters: structuredClone(a.config.filters),
+    pages: structuredClone(a.config.pages),
   }
 }
 
@@ -97,7 +104,7 @@ function sameDraft(a: Draft, b: Draft): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-const EMPTY_CONFIG: AppConfig = { widgets: [], filters: [] }
+const EMPTY_CONFIG: AppConfig = { pages: [{ id: 'overview', title: 'Overview', sections: [{ id: 'main', title: 'Main' }] }], widgets: [], filters: [] }
 
 export default function ApplicationCanvasPage() {
   const params = useParams<{ id: string }>()
@@ -130,11 +137,13 @@ export default function ApplicationCanvasPage() {
   const [spinning, setSpinning] = useState(false)
   const [selection, setSelection] = useState<AppObjectRef | null>(null)
   const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [exploration, setExploration] = useState<AppExploration | null>(null)
+  const [activePageId, setActivePageId] = useState<string | null>(null)
   const [widgetDialog, setWidgetDialog] = useState<{ mode: 'add' } | { mode: 'edit'; index: number } | null>(null)
   const [filterDialogOpen, setFilterDialogOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const config = editing && draft ? { widgets: draft.widgets, filters: draft.filters } : application?.config ?? EMPTY_CONFIG
+  const config = editing && draft ? { widgets: draft.widgets, filters: draft.filters, pages: draft.pages } : application?.config ?? EMPTY_CONFIG
 
   const startEditing = () => {
     if (!application) return
@@ -152,7 +161,7 @@ export default function ApplicationCanvasPage() {
       apiSend<ApplicationResponse>(`/api/applications/${appId}`, 'PATCH', {
         name: d.name.trim() || 'Untitled application',
         description: d.description.trim() === '' ? null : d.description.trim(),
-        config: { widgets: d.widgets, filters: d.filters },
+        config: { widgets: d.widgets, filters: d.filters, pages: d.pages },
       }),
     onSuccess: (res) => {
       toast.success('Application saved', {
@@ -188,6 +197,8 @@ export default function ApplicationCanvasPage() {
     () => editing && draft != null && application != null && !sameDraft(draft, draftOf(application)),
     [editing, draft, application],
   )
+  const layoutValid = !draft || draft.pages.every((page) =>
+    page.title.trim() && page.sections.every((section) => section.title.trim()))
 
   // ── draft mutators (edit mode) ─────────────────────────────────────
   const updateDraft = (fn: (d: Draft) => Draft) => setDraft((prev) => (prev ? fn(prev) : prev))
@@ -208,8 +219,15 @@ export default function ApplicationCanvasPage() {
   const moveWidget = (index: number, dir: -1 | 1) => {
     updateDraft((d) => {
       const next = [...d.widgets]
-      const j = index + dir
-      if (j < 0 || j >= next.length) return d
+      const widget = next[index]
+      const page = d.pages.find((p) => p.id === (widget.pageId ?? d.pages[0].id)) ?? d.pages[0]
+      const sectionId = widget.sectionId ?? page.sections[0].id
+      const indexes = next.flatMap((candidate, i) =>
+        (candidate.pageId ?? d.pages[0].id) === page.id &&
+        (candidate.sectionId ?? page.sections[0].id) === sectionId ? [i] : [])
+      const position = indexes.indexOf(index)
+      const j = indexes[position + dir]
+      if (j === undefined) return d
       ;[next[index], next[j]] = [next[j], next[index]]
       return { ...d, widgets: next }
     })
@@ -232,6 +250,45 @@ export default function ApplicationCanvasPage() {
       return next
     })
   }
+
+  const addPage = () => {
+    if (!draft || draft.pages.length >= 12) return
+    const id = crypto.randomUUID()
+    updateDraft((d) => ({ ...d, pages: [...d.pages, {
+      id, title: `Page ${d.pages.length + 1}`, sections: [{ id: crypto.randomUUID(), title: 'Main' }],
+    }] }))
+    setActivePageId(id)
+  }
+
+  const removePage = (id: string) => {
+    updateDraft((d) => {
+      if (d.pages.length <= 1) return d
+      const pages = d.pages.filter((page) => page.id !== id)
+      const destination = pages[0]
+      return { ...d, pages, widgets: d.widgets.map((widget) =>
+        (widget.pageId ?? d.pages[0].id) === id
+          ? { ...widget, pageId: destination.id, sectionId: destination.sections[0].id }
+          : widget) }
+    })
+    setActivePageId(null)
+  }
+
+  const addSection = (pageId: string) => updateDraft((d) => ({ ...d, pages: d.pages.map((page) =>
+    page.id === pageId && page.sections.length < 20
+      ? { ...page, sections: [...page.sections, { id: crypto.randomUUID(), title: `Section ${page.sections.length + 1}` }] }
+      : page) }))
+
+  const removeSection = (pageId: string, sectionId: string) => updateDraft((d) => {
+    const page = d.pages.find((item) => item.id === pageId)
+    if (!page || page.sections.length <= 1) return d
+    const sections = page.sections.filter((section) => section.id !== sectionId)
+    return { ...d,
+      pages: d.pages.map((item) => item.id === pageId ? { ...item, sections } : item),
+      widgets: d.widgets.map((widget) =>
+        (widget.pageId ?? d.pages[0].id) === pageId && (widget.sectionId ?? page.sections[0].id) === sectionId
+          ? { ...widget, pageId, sectionId: sections[0].id } : widget),
+    }
+  })
 
   // ── loading / error states ─────────────────────────────────────────
   if (appQuery.isLoading) {
@@ -269,6 +326,11 @@ export default function ApplicationCanvasPage() {
 
   const widgets = config.widgets
   const filterDefs = config.filters
+  const pages = config.pages
+  const currentPage = pages.find((page) => page.id === activePageId) ?? pages[0]
+  const inSection = (widget: AppWidget, sectionId: string) =>
+    (widget.pageId ?? pages[0].id) === currentPage.id &&
+    (widget.sectionId ?? currentPage.sections[0].id) === sectionId
   const existingWidget = widgetDialog?.mode === 'edit' ? widgets[widgetDialog.index] ?? null : null
 
   const renderBody = (widget: AppWidget) => {
@@ -280,6 +342,7 @@ export default function ApplicationCanvasPage() {
             objectTypes={objectTypes}
             filterDefs={filterDefs}
             filterValues={filterValues}
+            exploration={exploration}
             selection={selection}
             onSelect={setSelection}
           />
@@ -291,6 +354,7 @@ export default function ApplicationCanvasPage() {
             objectTypes={objectTypes}
             filterDefs={filterDefs}
             filterValues={filterValues}
+            exploration={exploration}
             selection={selection}
             onSelect={setSelection}
           />
@@ -302,8 +366,12 @@ export default function ApplicationCanvasPage() {
             objectTypes={objectTypes}
             filterDefs={filterDefs}
             filterValues={filterValues}
+            exploration={exploration}
           />
         )
+      case 'chart':
+        return <AppChartWidget widget={widget} objectTypes={objectTypes} filterDefs={filterDefs}
+          filterValues={filterValues} exploration={exploration} selection={selection} onExplore={setExploration} />
       case 'actionButton':
         return (
           <AppActionWidget widget={widget} objectTypes={objectTypes} selection={selection} canEdit={canEdit} />
@@ -384,7 +452,7 @@ export default function ApplicationCanvasPage() {
               <Button
                 size="sm"
                 className="gap-1.5"
-                disabled={!dirty || saveMutation.isPending}
+                disabled={!dirty || !layoutValid || saveMutation.isPending}
                 onClick={() => saveMutation.mutate(draft)}
               >
                 {saveMutation.isPending ? (
@@ -424,6 +492,36 @@ export default function ApplicationCanvasPage() {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-1.5 border-b border-border pb-2" aria-label="Application pages">
+        {pages.map((page) => (
+          <button key={page.id} type="button" aria-current={currentPage.id === page.id ? 'page' : undefined}
+            onClick={() => setActivePageId(page.id)}
+            className={cn('rounded-md px-3 py-1.5 text-xs transition-colors', currentPage.id === page.id
+              ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground')}>
+            {page.title}
+          </button>
+        ))}
+        {editing && <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" disabled={pages.length >= 12} onClick={addPage}>
+          <Plus className="h-3 w-3" aria-hidden /> Add page
+        </Button>}
+      </div>
+
+      {editing && draft && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-2">
+          <span className="text-[11px] text-muted-foreground">Page name</span>
+          <Input aria-label="Page name" className="h-8 max-w-64 text-xs" value={currentPage.title}
+            onChange={(event) => updateDraft((d) => ({ ...d, pages: d.pages.map((page) =>
+              page.id === currentPage.id ? { ...page, title: event.target.value } : page) }))} />
+          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => addSection(currentPage.id)}
+            disabled={currentPage.sections.length >= 20}><Plus className="h-3 w-3" aria-hidden /> Add section</Button>
+          <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs text-muted-foreground hover:text-rose-600"
+            disabled={pages.length <= 1} onClick={() => removePage(currentPage.id)}
+            title="Move this page's widgets to the first page, then remove it">
+            <Trash2 className="h-3 w-3" aria-hidden /> Remove page
+          </Button>
+        </div>
+      )}
+
       {/* Global filters */}
       <div className="mb-4">
         <AppFilterBar
@@ -437,10 +535,34 @@ export default function ApplicationCanvasPage() {
         />
       </div>
 
+      {exploration && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+          Chart filter: <span className="rounded-full border border-border bg-accent px-2 py-1 font-medium text-foreground">
+            {exploration.objectTypeApiName} · {exploration.property} = {exploration.value}
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setExploration(null)}>Clear</Button>
+        </div>
+      )}
+
       {/* Canvas + detail panel */}
       <div className="flex items-start gap-4">
-        <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {widgets.map((widget, i) => {
+        <div className="min-w-0 flex-1 space-y-5">
+        {currentPage.sections.map((section) => (
+          <section key={section.id} aria-label={section.title}>
+            <div className="mb-2 flex items-center gap-2">
+              {editing ? <Input aria-label="Section name" className="h-8 max-w-xs text-xs font-medium" value={section.title}
+                onChange={(event) => updateDraft((d) => ({ ...d, pages: d.pages.map((page) =>
+                  page.id === currentPage.id ? { ...page, sections: page.sections.map((item) =>
+                    item.id === section.id ? { ...item, title: event.target.value } : item) } : page) }))} />
+                : <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{section.title}</h2>}
+              {editing && <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-rose-600"
+                disabled={currentPage.sections.length <= 1} onClick={() => removeSection(currentPage.id, section.id)}
+                title="Move widgets to the first section, then remove this section">
+                <Trash2 className="h-3 w-3" aria-hidden />
+              </Button>}
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {widgets.map((widget, i) => ({ widget, i })).filter(({ widget }) => inSection(widget, section.id)).map(({ widget, i }) => {
             const Icon = WIDGET_ICON[widget.type]
             return (
               <div key={widget.id} className={cn('min-w-0', spanClass(widget.span))}>
@@ -455,7 +577,7 @@ export default function ApplicationCanvasPage() {
                           size="icon"
                           className="h-6 w-6"
                           onClick={() => moveWidget(i, -1)}
-                          disabled={i === 0}
+                          disabled={widgets.slice(0, i).every((candidate) => !inSection(candidate, section.id))}
                           title="Move left"
                         >
                           <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
@@ -465,7 +587,7 @@ export default function ApplicationCanvasPage() {
                           size="icon"
                           className="h-6 w-6"
                           onClick={() => moveWidget(i, 1)}
-                          disabled={i === widgets.length - 1}
+                          disabled={widgets.slice(i + 1).every((candidate) => !inSection(candidate, section.id))}
                           title="Move right"
                         >
                           <ChevronRight className="h-3.5 w-3.5" aria-hidden />
@@ -497,7 +619,7 @@ export default function ApplicationCanvasPage() {
             )
           })}
 
-          {widgets.length === 0 && (
+          {!widgets.some((widget) => inSection(widget, section.id)) && (
             <div className="flex h-56 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center md:col-span-2 xl:col-span-3">
               <LayoutTemplate className="h-7 w-7 text-muted-foreground/70" aria-hidden />
               <p className="text-sm font-medium text-muted-foreground">Empty canvas</p>
@@ -514,6 +636,9 @@ export default function ApplicationCanvasPage() {
               )}
             </div>
           )}
+            </div>
+          </section>
+        ))}
         </div>
 
         {/* Detail panel — inline on xl screens */}
@@ -542,6 +667,8 @@ export default function ApplicationCanvasPage() {
           open
           onOpenChange={(open) => !open && setWidgetDialog(null)}
           objectTypes={objectTypes}
+          pages={pages}
+          currentPageId={currentPage.id}
           existing={existingWidget}
           onSave={saveWidget}
         />

@@ -9,7 +9,7 @@
 // Config binds by apiName so apps survive workspace re-seeds.
 
 import { useMemo, useState } from 'react'
-import { Eye, EyeOff, Gauge, Map as MapIcon, Plus, Table2, Trash2, Zap } from 'lucide-react'
+import { BarChart3, Eye, EyeOff, Gauge, Map as MapIcon, Plus, Table2, Trash2, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +34,7 @@ import { detectFallbackProperty, detectLatLngProperties } from '@/lib/geo'
 import type {
   AppMapLayerConfig,
   AppMapMode,
+  AppPage,
   AppWidget,
   AppWidgetSpan,
   OntologyObjectType,
@@ -48,6 +49,7 @@ const KIND_META: { value: WidgetKind; label: string; icon: typeof MapIcon; blurb
   { value: 'map', label: 'Map', icon: MapIcon, blurb: 'Object types as geographic layers' },
   { value: 'objectTable', label: 'Object table', icon: Table2, blurb: 'Governed, filterable object list' },
   { value: 'stat', label: 'Stat', icon: Gauge, blurb: 'One aggregate over an object type' },
+  { value: 'chart', label: 'Chart', icon: BarChart3, blurb: 'Live grouped Ontology data with clickable categories' },
   { value: 'actionButton', label: 'Action', icon: Zap, blurb: 'Run an Ontology write-back action' },
 ]
 
@@ -65,6 +67,8 @@ interface AppWidgetDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   objectTypes: OntologyObjectType[]
+  pages: AppPage[]
+  currentPageId: string
   /** null = add mode; otherwise the widget being edited. */
   existing: AppWidget | null
   onSave: (widget: AppWidget) => void
@@ -75,11 +79,13 @@ interface AppWidgetDialogProps {
  * initialized once from props (same fresh-mount pattern as ActionDialog's
  * keyed form) — no reseed effects.
  */
-export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onSave }: AppWidgetDialogProps) {
+export function AppWidgetDialog({ open, onOpenChange, objectTypes, pages, currentPageId, existing, onSave }: AppWidgetDialogProps) {
   const [kind, setKind] = useState<WidgetKind>(existing?.type ?? 'map')
   const [title, setTitle] = useState(existing?.title ?? '')
   const [titleEdited, setTitleEdited] = useState(!!existing)
-  const [span, setSpan] = useState<AppWidgetSpan>((existing?.span ?? (existing?.type === 'map' ? 2 : 1)) as AppWidgetSpan)
+  const [span, setSpan] = useState<AppWidgetSpan>(existing?.span ?? 2)
+  const [pageId, setPageId] = useState(existing?.pageId ?? currentPageId)
+  const [sectionId, setSectionId] = useState(existing?.sectionId ?? pages.find((page) => page.id === (existing?.pageId ?? currentPageId))?.sections[0]?.id ?? 'main')
 
   // map config
   const [mapMode, setMapMode] = useState<AppMapMode>(existing?.type === 'map' ? existing.mapMode : 'markers')
@@ -92,6 +98,11 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
   const [columns, setColumns] = useState<string[]>(existing?.type === 'objectTable' ? existing.columns ?? [] : [])
   const [agg, setAgg] = useState<'count' | 'sum' | 'avg' | 'min' | 'max'>(existing?.type === 'stat' ? existing.agg : 'count')
   const [valueProperty, setValueProperty] = useState(existing?.type === 'stat' ? existing.valueProperty ?? '' : '')
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'area' | 'pie'>(existing?.type === 'chart' ? existing.chartType : 'bar')
+  const [groupBy, setGroupBy] = useState(existing?.type === 'chart' ? existing.groupBy : '')
+  const [chartAgg, setChartAgg] = useState<'count' | 'sum' | 'avg' | 'min' | 'max'>(existing?.type === 'chart' ? existing.agg : 'count')
+  const [chartValue, setChartValue] = useState(existing?.type === 'chart' ? existing.valueProperty ?? '' : '')
+  const [topN, setTopN] = useState(existing?.type === 'chart' ? existing.topN : 10)
 
   // action config
   const [actionApiName, setActionApiName] = useState(existing?.type === 'actionButton' ? existing.actionApiName : '')
@@ -119,6 +130,7 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
     }
     if (!selectedType) return ''
     if (kind === 'objectTable') return `${selectedType.displayName} table`
+    if (kind === 'chart') return `${selectedType.displayName} by ${prettyProperty(groupBy || 'category')}`
     if (kind === 'stat') {
       if (agg === 'count') return `Total ${selectedType.displayName.toLowerCase()}`
       return `${agg === 'avg' ? 'Average' : agg === 'sum' ? 'Total' : agg.charAt(0).toUpperCase() + agg.slice(1)} of ${valueProperty ? prettyProperty(valueProperty) : selectedType.displayName}`
@@ -130,8 +142,9 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
 
   const blocked =
     (kind === 'map' && layers.length === 0) ||
-    ((kind === 'objectTable' || kind === 'stat') && !objectTypeApiName) ||
+    ((kind === 'objectTable' || kind === 'stat' || kind === 'chart') && !objectTypeApiName) ||
     (kind === 'stat' && agg !== 'count' && !valueProperty) ||
+    (kind === 'chart' && (!groupBy || (chartAgg !== 'count' && !chartValue))) ||
     (kind === 'actionButton' && !actionApiName)
 
   const updateLayer = (id: string, patch: Partial<AppMapLayerConfig>) => {
@@ -150,7 +163,7 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
 
   const handleSave = () => {
     if (blocked) return
-    const base = { id: existing?.id ?? newId(), title: effectiveTitle || suggestedTitle || 'Untitled widget', span }
+    const base = { id: existing?.id ?? newId(), title: effectiveTitle || suggestedTitle || 'Untitled widget', span, pageId, sectionId }
     let widget: AppWidget
     switch (kind) {
       case 'map':
@@ -161,6 +174,10 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
         break
       case 'stat':
         widget = { ...base, type: 'stat', objectTypeApiName, agg, valueProperty: agg === 'count' ? null : valueProperty || null }
+        break
+      case 'chart':
+        widget = { ...base, type: 'chart', objectTypeApiName, chartType, groupBy, agg: chartAgg,
+          valueProperty: chartAgg === 'count' ? null : chartValue || null, topN }
         break
       case 'actionButton':
         widget = { ...base, type: 'actionButton', actionApiName, useSelection }
@@ -182,7 +199,7 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
 
         <div className="foundry-scroll max-h-[65vh] space-y-4 overflow-y-auto pr-1">
           {/* Type picker (locked when editing) */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             {KIND_META.map((meta) => {
               const Icon = meta.icon
               const disabled = !!existing && existing.type !== meta.value
@@ -240,6 +257,27 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
           </div>
 
           {/* ── MAP config ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label className="text-xs">Page</Label>
+              <Select value={pageId} onValueChange={(value) => {
+                setPageId(value)
+                setSectionId(pages.find((page) => page.id === value)?.sections[0]?.id ?? 'main')
+              }}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>{pages.map((page) => <SelectItem key={page.id} value={page.id}>{page.title}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs">Section</Label>
+              <Select value={sectionId} onValueChange={setSectionId}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>{pages.find((page) => page.id === pageId)?.sections.map((section) =>
+                  <SelectItem key={section.id} value={section.id}>{section.title}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {kind === 'map' && (
             <div className="space-y-3">
               <div className="grid gap-1.5">
@@ -398,7 +436,7 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
           )}
 
           {/* ── TABLE / STAT: object type ── */}
-          {(kind === 'objectTable' || kind === 'stat') && (
+          {(kind === 'objectTable' || kind === 'stat' || kind === 'chart') && (
             <div className="grid gap-1.5">
               <Label htmlFor="aw-type" className="text-xs">Object type</Label>
               <Select
@@ -407,6 +445,8 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
                   setObjectTypeApiName(v)
                   setColumns([])
                   setValueProperty('')
+                  setGroupBy('')
+                  setChartValue('')
                 }}
               >
                 <SelectTrigger id="aw-type" className="h-9 text-xs">
@@ -505,6 +545,48 @@ export function AppWidgetDialog({ open, onOpenChange, objectTypes, existing, onS
           )}
 
           {/* ── ACTION config ── */}
+          {kind === 'chart' && selectedType && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Chart type</Label>
+                <Select value={chartType} onValueChange={(value) => setChartType(value as typeof chartType)}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{(['bar', 'line', 'area', 'pie'] as const).map((value) =>
+                    <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Group by</Label>
+                <Select value={groupBy || undefined} onValueChange={setGroupBy}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Choose a property" /></SelectTrigger>
+                  <SelectContent>{selectedType.properties.map((property) =>
+                    <SelectItem key={property.apiName} value={property.apiName}>{property.displayName || property.apiName}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Aggregation</Label>
+                <Select value={chartAgg} onValueChange={(value) => setChartAgg(value as typeof chartAgg)}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>{AGG_OPTIONS.map((value) =>
+                    <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Value property</Label>
+                <Select value={chartValue || undefined} onValueChange={setChartValue} disabled={chartAgg === 'count'}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder={chartAgg === 'count' ? 'Not used' : 'Choose a number'} /></SelectTrigger>
+                  <SelectContent>{numberProps.map((property) =>
+                    <SelectItem key={property.apiName} value={property.apiName}>{property.displayName || property.apiName}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="aw-top-n" className="text-xs">Categories to show</Label>
+                <Input id="aw-top-n" type="number" min={1} max={100} value={topN}
+                  onChange={(event) => setTopN(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} className="h-9 text-xs" />
+              </div>
+            </div>
+          )}
+
           {kind === 'actionButton' && (
             <div className="space-y-3">
               <div className="grid gap-1.5">

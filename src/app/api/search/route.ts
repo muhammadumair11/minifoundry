@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
 
     // Cheap metadata lookups (id/name-only selects) — SQLite LIKE via Prisma
     // `contains` is case-insensitive for ASCII, matching our substring intent.
-    const [datasets, pipelines, transforms, objectTypes, dashboards, connectors] =
+    const [datasets, pipelines, transforms, objectTypes, applications, dashboards, connectors] =
       await Promise.all([
         db.dataset.findMany({
           where: { OR: [{ name: { contains: q } }, { description: { contains: q } }] },
@@ -132,6 +132,12 @@ export async function GET(req: NextRequest) {
           select: { id: true, apiName: true, displayName: true, description: true },
           take: 10,
           orderBy: { displayName: 'asc' },
+        }),
+        db.application.findMany({
+          where: { OR: [{ name: { contains: q } }, { description: { contains: q } }] },
+          select: { id: true, name: true, description: true },
+          take: 10,
+          orderBy: { updatedAt: 'desc' },
         }),
         db.dashboard.findMany({
           where: { OR: [{ title: { contains: q } }, { description: { contains: q } }] },
@@ -189,6 +195,13 @@ export async function GET(req: NextRequest) {
         title: d.title,
         subtitle: d.description,
         href: `/dashboards/${d.id}`,
+      })),
+      ...applications.map<SearchResultItem>((app) => ({
+        type: 'application',
+        id: app.id,
+        title: app.name,
+        subtitle: app.description,
+        href: `/applications/${app.id}`,
       })),
       ...connectors.map<SearchResultItem>((c) => ({
         type: 'connector',

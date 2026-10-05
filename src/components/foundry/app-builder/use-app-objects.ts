@@ -20,6 +20,12 @@ export interface ActiveFilter {
   value: string
 }
 
+export interface AppExploration {
+  objectTypeApiName: string
+  property: string
+  value: string
+}
+
 /**
  * Resolve the app's filter definitions + runtime values into the concrete
  * filter list for one object type. Definitions scoped to '*' apply to any
@@ -30,6 +36,7 @@ export function filtersForType(
   values: Record<string, string>,
   typeApiName: string,
   properties: { apiName: string }[] | undefined,
+  exploration?: AppExploration | null,
 ): ActiveFilter[] {
   const out: ActiveFilter[] = []
   for (const def of defs) {
@@ -39,6 +46,10 @@ export function filtersForType(
       def.objectTypeApiName === typeApiName ||
       (def.objectTypeApiName === '*' && (properties ?? []).some((p) => p.apiName === def.property))
     if (applies) out.push({ property: def.property, op: def.op, value })
+  }
+  if (exploration?.objectTypeApiName === typeApiName &&
+    (properties ?? []).some((property) => property.apiName === exploration.property)) {
+    out.push({ property: exploration.property, op: 'eq', value: exploration.value === '(empty)' ? '' : exploration.value })
   }
   return out
 }

@@ -50,6 +50,7 @@ const GROUP_ORDER: Array<SearchResultItem['type']> = [
   'transform',
   'objectType',
   'object',
+  'application',
   'dashboard',
   'connector',
 ]
@@ -60,7 +61,8 @@ const GROUP_META: Record<SearchResultItem['type'], { label: string; icon: Lucide
   transform: { label: 'Transforms', icon: SquareCode },
   objectType: { label: 'Object types', icon: Network },
   object: { label: 'Objects', icon: Compass },
-  dashboard: { label: 'Dashboards', icon: LayoutDashboard },
+  application: { label: 'Applications', icon: LayoutDashboard },
+  dashboard: { label: 'Earlier dashboards', icon: LayoutDashboard },
   connector: { label: 'Connectors', icon: Plug },
 }
 

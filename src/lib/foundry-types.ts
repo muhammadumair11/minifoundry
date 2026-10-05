@@ -1420,7 +1420,16 @@ export interface WidgetDataResponse {
 /** Grid span on large screens (3-column canvas). */
 export type AppWidgetSpan = 1 | 2 | 3
 export type AppMapMode = 'markers' | 'cluster' | 'heatmap'
-export type AppWidgetType = 'map' | 'objectTable' | 'stat' | 'actionButton'
+export type AppWidgetType = 'map' | 'objectTable' | 'stat' | 'actionButton' | 'chart'
+
+export interface AppSection { id: string; title: string }
+export interface AppPage { id: string; title: string; sections: AppSection[] }
+
+export interface AppWidgetPlacement {
+  /** Missing placement on pre-pages apps resolves to the first page/section. */
+  pageId?: string
+  sectionId?: string
+}
 
 /** One object-type layer rendered on a map widget. */
 export interface AppMapLayerConfig {
@@ -1439,7 +1448,7 @@ export interface AppMapLayerConfig {
   sizeBy?: string | null
 }
 
-export interface AppMapWidget {
+export interface AppMapWidget extends AppWidgetPlacement {
   id: string
   type: 'map'
   title: string
@@ -1448,7 +1457,7 @@ export interface AppMapWidget {
   span: AppWidgetSpan
 }
 
-export interface AppTableWidget {
+export interface AppTableWidget extends AppWidgetPlacement {
   id: string
   type: 'objectTable'
   title: string
@@ -1458,7 +1467,7 @@ export interface AppTableWidget {
   span: AppWidgetSpan
 }
 
-export interface AppStatWidget {
+export interface AppStatWidget extends AppWidgetPlacement {
   id: string
   type: 'stat'
   title: string
@@ -1469,7 +1478,7 @@ export interface AppStatWidget {
   span: AppWidgetSpan
 }
 
-export interface AppActionWidget {
+export interface AppActionWidget extends AppWidgetPlacement {
   id: string
   type: 'actionButton'
   title: string
@@ -1479,7 +1488,20 @@ export interface AppActionWidget {
   span: AppWidgetSpan
 }
 
-export type AppWidget = AppMapWidget | AppTableWidget | AppStatWidget | AppActionWidget
+export interface AppChartWidget extends AppWidgetPlacement {
+  id: string
+  type: 'chart'
+  title: string
+  objectTypeApiName: string
+  chartType: 'bar' | 'line' | 'area' | 'pie'
+  groupBy: string
+  agg: 'count' | 'sum' | 'avg' | 'min' | 'max'
+  valueProperty?: string | null
+  topN: number
+  span: AppWidgetSpan
+}
+
+export type AppWidget = AppMapWidget | AppTableWidget | AppStatWidget | AppActionWidget | AppChartWidget
 
 export type AppFilterOp = 'eq' | 'neq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte'
 
@@ -1497,6 +1519,7 @@ export interface AppFilterDef {
 }
 
 export interface AppConfig {
+  pages: AppPage[]
   widgets: AppWidget[]
   filters: AppFilterDef[]
 }
@@ -1592,7 +1615,7 @@ export interface NotificationListResponse {
 
 /** GET /api/search?q= — global platform search results. */
 export interface SearchResultItem {
-  type: 'dataset' | 'pipeline' | 'transform' | 'objectType' | 'object' | 'dashboard' | 'connector'
+  type: 'dataset' | 'pipeline' | 'transform' | 'objectType' | 'object' | 'application' | 'dashboard' | 'connector'
   id: string
   title: string
   subtitle: string | null

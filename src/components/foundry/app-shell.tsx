@@ -21,7 +21,6 @@ import {
   GitBranch,
   GitFork,
   Home,
-  LayoutDashboard,
   LayoutTemplate,
   Maximize2,
   Minimize2,
@@ -108,8 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Applications',
     items: [
-      { href: '/applications', label: 'Apps', icon: LayoutTemplate },
-      { href: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
+      { href: '/applications', label: 'Applications', icon: LayoutTemplate },
     ],
   },
   {

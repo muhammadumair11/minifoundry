@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { badRequest, jsonOk, parseJsonSafe, serverError, zodErrorMessage } from '@/lib/api-utils'
 import { audit, getActor, requireRole } from '@/lib/governance'
-import { appConfigSchema, referencedObjectTypes, serializeApplication } from './shared'
+import { appConfigSchema, DEFAULT_APP_PAGES, referencedObjectTypes, serializeApplication } from './shared'
 import type { AppConfig, ApplicationTemplate } from '@/lib/foundry-types'
 import type { NextRequest } from 'next/server'
 
@@ -23,12 +23,18 @@ const postSchema = z.object({
 
 /** Ready-made "Supply chain operations" app definition (Workshop-style). */
 const SUPPLY_CHAIN_CONFIG: AppConfig = {
+  pages: [
+    { id: 'overview', title: 'Overview', sections: [{ id: 'network', title: 'Network at a glance' }] },
+    { id: 'shipments', title: 'Shipments', sections: [{ id: 'workflow', title: 'Shipment workflow' }] },
+  ],
   widgets: [
     {
       id: 'map-network',
       type: 'map',
       title: 'Global network',
       span: 2,
+      pageId: 'overview',
+      sectionId: 'network',
       mapMode: 'markers',
       layers: [
         {
@@ -53,6 +59,8 @@ const SUPPLY_CHAIN_CONFIG: AppConfig = {
       type: 'stat',
       title: 'Shipments in scope',
       span: 1,
+      pageId: 'overview',
+      sectionId: 'network',
       objectTypeApiName: 'shipment',
       agg: 'count',
     },
@@ -61,14 +69,31 @@ const SUPPLY_CHAIN_CONFIG: AppConfig = {
       type: 'objectTable',
       title: 'Shipments',
       span: 2,
+      pageId: 'shipments',
+      sectionId: 'workflow',
       objectTypeApiName: 'shipment',
       columns: ['status', 'productName', 'supplierId', 'warehouseId', 'quantity', 'shipDate', 'etaDays'],
+    },
+    {
+      id: 'chart-shipment-status',
+      type: 'chart',
+      title: 'Shipments by status',
+      span: 2,
+      pageId: 'shipments',
+      sectionId: 'workflow',
+      objectTypeApiName: 'shipment',
+      chartType: 'bar',
+      groupBy: 'status',
+      agg: 'count',
+      topN: 10,
     },
     {
       id: 'action-update-status',
       type: 'actionButton',
       title: 'Update shipment status',
       span: 1,
+      pageId: 'shipments',
+      sectionId: 'workflow',
       actionApiName: 'update-shipment-status',
       useSelection: true,
     },
@@ -96,7 +121,7 @@ const SUPPLY_CHAIN_CONFIG: AppConfig = {
 }
 
 const TEMPLATE_DEFAULTS: Record<ApplicationTemplate, { name: string; description: string; config: AppConfig }> = {
-  blank: { name: 'Untitled application', description: '', config: { widgets: [], filters: [] } },
+  blank: { name: 'Untitled application', description: '', config: { pages: DEFAULT_APP_PAGES, widgets: [], filters: [] } },
   'supply-chain': {
     name: 'Supply chain operations',
     description:
@@ -112,9 +137,9 @@ export async function GET() {
     })
     return jsonOk({
       applications: applications.map((a) => {
-        const config = parseJsonSafe<AppConfig>(a.configJson, { widgets: [], filters: [] })
+        const config = parseJsonSafe<AppConfig>(a.configJson, { pages: DEFAULT_APP_PAGES, widgets: [], filters: [] })
         const parsed = appConfigSchema.safeParse(config)
-        const safe = parsed.success ? parsed.data : { widgets: [], filters: [] }
+        const safe = parsed.success ? parsed.data : { pages: DEFAULT_APP_PAGES, widgets: [], filters: [] }
         return {
           id: a.id,
           name: a.name,

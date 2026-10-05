@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Boxes, LayoutTemplate, Loader2, Map as MapIcon, Plus, Sparkles } from 'lucide-react'
+import { Boxes, LayoutDashboard, LayoutTemplate, Loader2, Map as MapIcon, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,6 +20,7 @@ import type {
   ApplicationInfo,
   ApplicationsListResponse,
   ApplicationTemplate,
+  DashboardListResponse,
   SessionResponse,
 } from '@/lib/foundry-types'
 
@@ -41,6 +42,11 @@ export default function ApplicationsPage() {
     queryFn: () => apiJson<ApplicationsListResponse>('/api/applications'),
   })
   const applications = data?.applications ?? []
+  const legacyQuery = useQuery<DashboardListResponse>({
+    queryKey: ['dashboards'],
+    queryFn: () => apiJson<DashboardListResponse>('/api/dashboards'),
+  })
+  const legacyDashboards = legacyQuery.data?.dashboards ?? []
 
   const makeCreate = (template: ApplicationTemplate) => async () => {
     const res = await apiSend<{ application: ApplicationInfo }>('/api/applications', 'POST', { template })
@@ -76,21 +82,24 @@ export default function ApplicationsPage() {
             </span>
           )}
         </div>
-        <GatedButton
-          allowed={canEdit}
-          reason="requires editor role (current: viewer)"
-          size="sm"
-          onClick={() => blankMutation.mutate()}
-          disabled={busy}
-        >
-          {blankMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <Plus className="h-4 w-4" aria-hidden />
-          )}
-          New application
-        </GatedButton>
+        <div className="flex items-center gap-2">
+          <GatedButton allowed={canEdit} reason="requires editor role (current: viewer)" size="sm"
+            variant="outline" onClick={() => sampleMutation.mutate()} disabled={busy}>
+            {sampleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+            Create sample
+          </GatedButton>
+          <GatedButton allowed={canEdit} reason="requires editor role (current: viewer)" size="sm"
+            onClick={() => blankMutation.mutate()} disabled={busy}>
+            {blankMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+            New application
+          </GatedButton>
+        </div>
       </div>
+
+      <p className="mb-5 max-w-3xl text-xs leading-5 text-muted-foreground">
+        Build a workspace for a task: organize pages and sections, add live Ontology maps, charts, tables and actions,
+        then use filters or select an object to investigate and update it. Open an app and press Edit to change its layout.
+      </p>
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -192,6 +201,24 @@ export default function ApplicationsPage() {
             </Link>
           ))}
         </div>
+      )}
+      {legacyDashboards.length > 0 && (
+        <section className="mt-8 border-t border-border pt-5" aria-label="Earlier dashboards">
+          <div className="mb-3 flex items-center gap-2">
+            <LayoutDashboard className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <h2 className="text-xs font-medium text-foreground">Earlier dashboards</h2>
+            <span className="text-[11px] text-muted-foreground">Saved before the Applications builder</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {legacyDashboards.map((dashboard) => (
+              <Link key={dashboard.id} href={`/dashboards/${dashboard.id}`}
+                className="rounded-md border border-border bg-card p-3 transition-colors hover:border-foreground/25">
+                <span className="text-xs font-medium text-foreground">{dashboard.title}</span>
+                <p className="mt-1 text-[11px] text-muted-foreground">{dashboard.widgetCount} widgets · updated {formatRelative(dashboard.updatedAt)}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )

@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { getObjectColorClasses, OntologyIcon } from '@/components/foundry/ontology/icon-map'
-import { filtersForType, formatObjectValue, useAppObjects, type ActiveFilter } from './use-app-objects'
+import { filtersForType, formatObjectValue, useAppObjects, type ActiveFilter, type AppExploration } from './use-app-objects'
 import type {
   AppFilterDef,
   AppObjectRef,
@@ -28,6 +28,7 @@ interface AppTableWidgetProps {
   objectTypes: OntologyObjectType[]
   filterDefs: AppFilterDef[]
   filterValues: Record<string, string>
+  exploration?: AppExploration | null
   selection: AppObjectRef | null
   onSelect: (ref: AppObjectRef | null) => void
 }
@@ -37,13 +38,14 @@ export function AppTableWidget({
   objectTypes,
   filterDefs,
   filterValues,
+  exploration,
   selection,
   onSelect,
 }: AppTableWidgetProps) {
   const [page, setPage] = useState(1)
   const objectType = objectTypes.find((t) => t.apiName === widget.objectTypeApiName) ?? null
   const filters: ActiveFilter[] = objectType
-    ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties)
+    ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties, exploration)
     : []
   const query = useAppObjects(objectType ? objectType.apiName : null, filters, page, PAGE_SIZE)
 

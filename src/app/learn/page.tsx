@@ -194,15 +194,15 @@ const GUIDE: GuideModule[] = [
   },
   {
     icon: LayoutDashboard,
-    title: '13 · Dashboards — analytics on top',
-    href: '/dashboards',
-    what: 'Build Contour-style dashboards: point-and-click widgets (stat, bar, line, pie, area, table) over any dataset, aggregated server-side (count/sum/avg/min/max grouped by a column). Refresh re-queries live data.',
+    title: '13 · Applications — operational workflows',
+    href: '/applications',
+    what: 'Build a task-focused application over Ontology objects. Pages and sections hold maps, charts, tables, metrics and actions; global filters and chart selections coordinate the whole app.',
     steps: [
-      'Open Dashboards → create one (or start from the sample) → Edit.',
-      'Add a widget: pick dataset, group-by column and metric — check it against a workbook query.',
-      'Share the mental model: dashboards read the catalog the way Foundry apps read the ontology.',
+      'Open Applications → Create sample → explore its Overview and Shipments pages.',
+      'Click a chart category to filter the workflow, then select a table row to inspect linked objects.',
+      'Press Edit → add a page or section, then add and place a widget; save the application.',
     ],
-    teaches: 'Teaches: the consumption layer — why models/tables alone are not a product until people can explore them.',
+    teaches: 'Teaches: the operational layer — how governed objects become a shared interface for decisions and write-back.',
   },
   {
     icon: ShieldCheck,

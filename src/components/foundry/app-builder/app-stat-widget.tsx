@@ -7,7 +7,7 @@
 
 import { Loader2, TriangleAlert } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { filtersForType, useAppObjects, type ActiveFilter } from './use-app-objects'
+import { filtersForType, useAppObjects, type ActiveFilter, type AppExploration } from './use-app-objects'
 import type {
   AppFilterDef,
   AppStatWidget as AppStatWidgetConfig,
@@ -19,6 +19,7 @@ interface AppStatWidgetProps {
   objectTypes: OntologyObjectType[]
   filterDefs: AppFilterDef[]
   filterValues: Record<string, string>
+  exploration?: AppExploration | null
 }
 
 function aggregate(
@@ -46,11 +47,11 @@ function formatValue(value: number | null, agg: string): string {
   return value.toLocaleString('en-US', { maximumFractionDigits: decimals })
 }
 
-export function AppStatWidget({ widget, objectTypes, filterDefs, filterValues }: AppStatWidgetProps) {
+export function AppStatWidget({ widget, objectTypes, filterDefs, filterValues, exploration }: AppStatWidgetProps) {
   const objectType = objectTypes.find((t) => t.apiName === widget.objectTypeApiName) ?? null
   const isCount = widget.agg === 'count'
   const filters: ActiveFilter[] = objectType
-    ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties)
+    ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties, exploration)
     : []
   const query = useAppObjects(objectType ? objectType.apiName : null, filters, 1, isCount ? 1 : 200)
 

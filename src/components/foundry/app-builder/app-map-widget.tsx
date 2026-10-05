@@ -30,7 +30,7 @@ import {
   detectLatLngProperties,
   resolveGeoPoint,
 } from '@/lib/geo'
-import { filtersForType } from './use-app-objects'
+import { filtersForType, type AppExploration } from './use-app-objects'
 import type { MapLayerData } from './map-canvas'
 import type {
   AppFilterDef,
@@ -51,6 +51,7 @@ interface AppMapWidgetProps {
   objectTypes: OntologyObjectType[]
   filterDefs: AppFilterDef[]
   filterValues: Record<string, string>
+  exploration?: AppExploration | null
   selection: AppObjectRef | null
   onSelect: (ref: AppObjectRef | null) => void
 }
@@ -68,6 +69,7 @@ export function AppMapWidget({
   objectTypes,
   filterDefs,
   filterValues,
+  exploration,
   selection,
   onSelect,
 }: AppMapWidgetProps) {
@@ -83,7 +85,7 @@ export function AppMapWidget({
     queries: activeLayers.map((layer) => {
       const objectType = objectTypes.find((t) => t.apiName === layer.objectTypeApiName) ?? null
       const filters = objectType
-        ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties)
+        ? filtersForType(filterDefs, filterValues, objectType.apiName, objectType.properties, exploration)
         : []
       const filtersJson = JSON.stringify(filters)
       return {

@@ -266,6 +266,8 @@ export async function getObjectRows(
     query?: string | null
     page?: number
     pageSize?: number
+    /** Server-side consumers that must aggregate the complete governed set. */
+    all?: boolean
     maskColumns?: string[]
     filters?: ObjectViewFilter[]
     sortBy?: string | null
@@ -334,7 +336,7 @@ export async function getObjectRows(
 
   const total = rows.length
   const start = (page - 1) * pageSize
-  const paged = rows.slice(start, start + pageSize)
+  const paged = opts.all ? rows : rows.slice(start, start + pageSize)
 
   // Fallback when a type somehow has no Property rows: derive from the dataset schema.
   const columns: PropertyLike[] = props.length
