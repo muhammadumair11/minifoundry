@@ -19,7 +19,10 @@ test('jobs deduplicate events, allow one lease, recover an expired lease, and ex
     throw new Error(`Could not create test database: ${init.stderr || init.stdout}`)
   }
   process.env.DATABASE_URL = dbUrl
-  const { db } = await import('../src/lib/db')
+  // bun runs all test files in one process: reload the shared db singleton so
+  // it points at THIS test's database even when another test cached it first.
+  const { reloadDbClientForTests } = await import('../src/lib/db')
+  const db = await reloadDbClientForTests()
   const { enqueuePipelineJob, claimExecutionJob, processExecutionJob } = await import('../src/lib/execution-jobs')
   const { runPipeline } = await import('../src/lib/engine')
   try {

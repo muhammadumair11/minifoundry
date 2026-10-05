@@ -22,7 +22,10 @@ test('a draft stays hidden until its exact approval and quality evaluation succe
     throw new Error(`Could not create test database: ${init.stderr || init.stdout}`)
   }
   process.env.DATABASE_URL = dbUrl
-  const { db } = await import('../src/lib/db')
+  // bun runs all test files in one process: reload the shared db singleton so
+  // it points at THIS test's database even when another test cached it first.
+  const { reloadDbClientForTests } = await import('../src/lib/db')
+  const db = await reloadDbClientForTests()
   const { resolveConsumerVersion } = await import('../src/lib/dataset-service')
   const { MAX_ROWS, createDatasetFromRows, normalizeValue } = await import('../src/lib/dataset-service')
   const { publishDatasetVersion, PublicationError } = await import('../src/lib/publication')
