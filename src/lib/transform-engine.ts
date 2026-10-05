@@ -18,7 +18,7 @@
 //   string|number|boolean|null values.
 // - Python: the source is a full module that must define
 //   `def transform(input):` and return a list of dicts. Executed as a
-//   `python3 -I -B` child process with a 5s hard timeout: input JSON arrives
+//   `python3 -I -B` (or `python -I -B` on Windows) child process: input JSON arrives
 //   on stdin, the result is written to a per-run temp file (MF_OUT env), user
 //   print() lines come back on stdout as run logs, tracebacks on stderr.
 //   The user code is NOT vm-isolated (learning-scale tradeoff: it is plain

@@ -125,7 +125,8 @@ These differ from real Foundry **on purpose** — they are teaching moments:
   pass and an admin approves the exact draft. Workbooks and pipelines consume
   the published pointer.
 - User code runs in-process: SQL against the same SQLite file, JS via
-  `node:vm`, Python as a `python3 -I -B` child with a **scrubbed environment**
+  `node:vm`, Python as a `python3 -I -B` child (`python` on Windows, or set
+  `MF_PYTHON_BIN`) with a **scrubbed environment**
   and 5s timeout. `node:vm` is NOT a security boundary — don't run untrusted
   users' code in a shared deployment. Shared mode blocks these operations
   while an isolated runner is being built.

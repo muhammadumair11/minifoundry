@@ -185,6 +185,9 @@ export async function executePythonIsolated(
 ): Promise<Row[]> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxRows = options.maxRows ?? DEFAULT_MAX_ROWS
+  // Windows commonly installs python.exe while python3.exe is only the
+  // Microsoft Store app alias. Allow an explicit interpreter override too.
+  const python = process.env.MF_PYTHON_BIN?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
 
   const dir = await mkdtemp(path.join(tmpdir(), 'mf-py-iso-'))
   try {
@@ -195,7 +198,7 @@ export async function executePythonIsolated(
       let stdout = ''
       let stderr = ''
       let timedOut = false
-      const proc = spawn('python3', ['-I', '-B', 'runner.py'], {
+      const proc = spawn(python, ['-I', '-B', 'runner.py'], {
         cwd: dir,
         stdio: 'pipe',
         env: { PATH: process.env.PATH ?? '', HOME: dir } as unknown as NodeJS.ProcessEnv,
