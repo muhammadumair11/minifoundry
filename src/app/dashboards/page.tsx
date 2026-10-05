@@ -47,7 +47,7 @@ function buildSampleWidgets(datasetId: string, datasetName: string, columns: { n
 
   const barGroup = pick(['supplierId', 'warehouseId', 'category', 'region', 'country'])
   const pieGroup = pick(['status', 'category', 'region', 'country'])
-  const meta = { datasetId, datasetName }
+  const meta = { sourceType: 'dataset' as const, datasetId, datasetName }
 
   return [
     {
@@ -204,8 +204,8 @@ export default function DashboardsPage() {
             <div>
               <p className="text-sm font-medium text-foreground">No dashboards yet</p>
               <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                Dashboards are point-and-click views over your datasets: pick a widget type, a dataset and an
-                aggregation — no SQL required. Start from a sample or a blank canvas.
+                Dashboards are point-and-click applications over Ontology objects, with direct dataset access
+                available for raw analytics. Start from a sample or a blank canvas.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2">

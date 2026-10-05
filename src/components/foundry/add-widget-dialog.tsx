@@ -1,7 +1,7 @@
 'use client'
 
 // Task 14-d — "Add widget" dialog for the dashboard builder. Point-and-click:
-// widget type (icons) → dataset → dynamic metric config (groupBy / agg /
+// widget type (icons) → Ontology object type or dataset → metric config (groupBy / agg /
 // valueColumn / topN / sortDir / span) with an editable auto-suggested title.
 // Column options come from the selected dataset's latest-version schema
 // (GET /api/datasets/[id] — reuses the shared ['dataset', id] cache).
@@ -42,6 +42,7 @@ import type {
   DashboardWidgetType,
   DatasetDetailResponse,
   DatasetSummary,
+  OntologyObjectType,
 } from '@/lib/foundry-types'
 
 const GROUP_TYPES: DashboardWidgetType[] = ['bar', 'line', 'pie', 'area']
@@ -67,14 +68,18 @@ function prettyColumn(c: string): string {
 
 export function AddWidgetDialog({
   datasets,
+  objectTypes,
   onAdd,
 }: {
   datasets: DatasetSummary[]
+  objectTypes: OntologyObjectType[]
   onAdd: (widget: DashboardWidget) => void
 }) {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<DashboardWidgetType>('bar')
+  const [sourceType, setSourceType] = useState<'objectType' | 'dataset'>('objectType')
   const [datasetId, setDatasetId] = useState('')
+  const [objectTypeId, setObjectTypeId] = useState('')
   const [groupBy, setGroupBy] = useState('')
   const [agg, setAgg] = useState<(typeof AGG_OPTIONS)[number]>('count')
   const [valueColumn, setValueColumn] = useState('')
@@ -89,15 +94,19 @@ export function AddWidgetDialog({
   const isGroupType = GROUP_TYPES.includes(type)
   const needsValue = NUMERIC_AGGS.includes(agg)
   const dataset = datasets.find((d) => d.id === datasetId) ?? null
+  const objectType = objectTypes.find((item) => item.id === objectTypeId) ?? null
+  const source = sourceType === 'objectType' ? objectType : dataset
 
   // Schema of the selected dataset (latest version) — shared cache with the
   // dataset detail page.
   const schemaQuery = useQuery<DatasetDetailResponse>({
     queryKey: ['dataset', datasetId],
     queryFn: () => apiJson<DatasetDetailResponse>(`/api/datasets/${datasetId}`),
-    enabled: open && datasetId !== '',
+    enabled: open && sourceType === 'dataset' && datasetId !== '',
   })
-  const columns = schemaQuery.data?.current?.schema ?? []
+  const columns = sourceType === 'objectType'
+    ? (objectType?.properties ?? []).map((property) => ({ name: property.apiName, type: property.dataType }))
+    : (schemaQuery.data?.current?.schema ?? [])
   const numberColumns = columns.filter((c) => c.type === 'number')
 
   // Sensible defaults: picking a dataset or type resets the dependent metric
@@ -118,23 +127,35 @@ export function AddWidgetDialog({
     resetDependentConfig()
   }
 
+  const pickObjectType = (id: string) => {
+    setObjectTypeId(id)
+    resetDependentConfig()
+  }
+
+  const pickSourceType = (value: 'objectType' | 'dataset') => {
+    setSourceType(value)
+    resetDependentConfig()
+  }
+
   // Auto-suggest the title until the user edits it manually.
   const suggested = useMemo(() => {
-    if (!dataset) return ''
-    const dsName = dataset.name
-    if (type === 'table') return `${dsName} rows`
+    if (!source) return ''
+    const sourceName = sourceType === 'objectType' ? objectType?.displayName ?? '' : dataset?.name ?? ''
+    if (type === 'table') return `${sourceName} records`
     if (type === 'stat') {
-      if (agg === 'count') return `Total ${dsName.toLowerCase().endsWith('s') ? dsName : `${dsName} rows`}`
-      return `${agg === 'avg' ? 'Average' : agg === 'sum' ? 'Total' : agg} of ${valueColumn ? prettyColumn(valueColumn) : dsName}`
+      if (agg === 'count') return `Total ${sourceName.toLowerCase().endsWith('s') ? sourceName : `${sourceName} records`}`
+      return `${agg === 'avg' ? 'Average' : agg === 'sum' ? 'Total' : agg} of ${valueColumn ? prettyColumn(valueColumn) : sourceName}`
     }
-    return groupBy ? `${dsName} by ${prettyColumn(groupBy)}` : ''
-  }, [dataset, type, agg, valueColumn, groupBy])
+    return groupBy ? `${sourceName} by ${prettyColumn(groupBy)}` : ''
+  }, [source, sourceType, objectType, dataset, type, agg, valueColumn, groupBy])
 
   const effectiveTitle = titleEdited ? title.trim() : suggested
 
   const reset = () => {
     setType('bar')
+    setSourceType('objectType')
     setDatasetId('')
+    setObjectTypeId('')
     setGroupBy('')
     setAgg('count')
     setValueColumn('')
@@ -146,10 +167,10 @@ export function AddWidgetDialog({
   }
 
   const blocked =
-    !datasetId ||
+    (sourceType === 'objectType' ? !objectTypeId : !datasetId) ||
     (isGroupType && !groupBy) ||
     (needsValue && !valueColumn) ||
-    schemaQuery.isLoading
+    (sourceType === 'dataset' && schemaQuery.isLoading)
 
   const handleAdd = () => {
     if (blocked) return
@@ -165,8 +186,10 @@ export function AddWidgetDialog({
       id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `w-${Date.now()}`,
       type,
       title: effectiveTitle || suggested || 'Untitled widget',
-      datasetId,
-      ...(dataset ? { datasetName: dataset.name } : {}),
+      sourceType,
+      ...(sourceType === 'dataset'
+        ? { datasetId, ...(dataset ? { datasetName: dataset.name } : {}) }
+        : { objectTypeId, ...(objectType ? { objectTypeName: objectType.displayName } : {}) }),
       config,
       span: span === '2' ? 2 : 1,
     }
@@ -193,7 +216,7 @@ export function AddWidgetDialog({
         <DialogHeader>
           <DialogTitle className="text-sm">Add widget</DialogTitle>
           <DialogDescription className="text-xs">
-            Point-and-click aggregation over any dataset&apos;s latest version.
+            Build from business objects in the Ontology, or directly from a dataset.
           </DialogDescription>
         </DialogHeader>
 
@@ -222,27 +245,61 @@ export function AddWidgetDialog({
             </div>
           </div>
 
-          {/* Dataset */}
-          <div className="grid gap-1.5">
-            <Label htmlFor="dw-dataset" className="text-xs">Dataset</Label>
-            <Select value={datasetId} onValueChange={pickDataset}>
-              <SelectTrigger id="dw-dataset" className="h-9 text-xs">
-                <SelectValue placeholder="Pick a dataset…" />
-              </SelectTrigger>
-              <SelectContent>
-                {datasets.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                    {d.currentVersion ? (
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                        {d.currentVersion.rowCount.toLocaleString('en-US')} rows
-                      </span>
-                    ) : null}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Semantic source first; datasets remain available for raw analytics. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="dw-source-layer" className="text-xs">Source layer</Label>
+              <Select value={sourceType} onValueChange={(value) => pickSourceType(value as 'objectType' | 'dataset')}>
+                <SelectTrigger id="dw-source-layer" className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="objectType">Ontology</SelectItem>
+                  <SelectItem value="dataset">Dataset</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dw-source" className="text-xs">
+                {sourceType === 'objectType' ? 'Object type' : 'Dataset'}
+              </Label>
+              <Select
+                value={sourceType === 'objectType' ? objectTypeId : datasetId}
+                onValueChange={sourceType === 'objectType' ? pickObjectType : pickDataset}
+              >
+                <SelectTrigger id="dw-source" className="h-9 text-xs">
+                  <SelectValue placeholder={sourceType === 'objectType' ? 'Pick an object type…' : 'Pick a dataset…'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceType === 'objectType'
+                    ? objectTypes.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.displayName}
+                          <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                            {item.objectCount?.toLocaleString('en-US') ?? 0} objects
+                          </span>
+                        </SelectItem>
+                      ))
+                    : datasets.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                          {d.currentVersion ? (
+                            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                              {d.currentVersion.rowCount.toLocaleString('en-US')} rows
+                            </span>
+                          ) : null}
+                        </SelectItem>
+                      ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {sourceType === 'objectType' && objectTypes.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No object types yet. Create one in Ontology, or switch the source layer to Dataset.
+            </p>
+          )}
 
           {/* Dynamic metric config */}
           {isGroupType && (
@@ -250,7 +307,7 @@ export function AddWidgetDialog({
               <Label htmlFor="dw-groupby" className="text-xs">Group by column</Label>
               <Select value={groupBy} onValueChange={setGroupBy}>
                 <SelectTrigger id="dw-groupby" className="h-9 text-xs">
-                  <SelectValue placeholder={columns.length ? 'Pick a column…' : 'Select a dataset first'} />
+                  <SelectValue placeholder={columns.length ? 'Pick a property…' : 'Select a source first'} />
                 </SelectTrigger>
                 <SelectContent>
                   {columns.map((c) => (
@@ -287,7 +344,7 @@ export function AddWidgetDialog({
               <Label htmlFor="dw-valuecol" className="text-xs">Value column</Label>
               <Select value={valueColumn} onValueChange={setValueColumn}>
                 <SelectTrigger id="dw-valuecol" className="h-9 text-xs">
-                  <SelectValue placeholder={columns.length ? 'Pick a numeric column…' : 'Select a dataset first'} />
+                  <SelectValue placeholder={columns.length ? 'Pick a numeric property…' : 'Select a source first'} />
                 </SelectTrigger>
                 <SelectContent>
                   {(numberColumns.length ? numberColumns : columns).map((c) => (

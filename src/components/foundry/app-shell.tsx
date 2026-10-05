@@ -79,25 +79,22 @@ const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { href: '/', label: 'Home', icon: Home },
-      { href: '/learn', label: 'Learn', icon: BookOpen },
+      { href: '/projects', label: 'Projects', icon: FolderKanban },
+    ],
+  },
+  {
+    label: 'Connect',
+    items: [
+      { href: '/connectors', label: 'Connectors', icon: Plug },
     ],
   },
   {
     label: 'Data',
     items: [
-      { href: '/projects', label: 'Projects', icon: FolderKanban },
-      { href: '/connectors', label: 'Connectors', icon: Plug },
-      { href: '/data-sources', label: 'Data sources', icon: Database },
       { href: '/datasets', label: 'Datasets', icon: Boxes },
       { href: '/transforms', label: 'Transforms', icon: SquareCode },
-    ],
-  },
-  {
-    label: 'Build',
-    items: [
       { href: '/pipelines', label: 'Pipelines', icon: GitBranch },
-      { href: '/orchestration', label: 'Orchestration', icon: CalendarClock },
-      { href: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
+      { href: '/lineage', label: 'Lineage', icon: GitFork },
     ],
   },
   {
@@ -105,7 +102,18 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/ontology', label: 'Ontology', icon: Network },
       { href: '/objects', label: 'Objects', icon: Compass },
-      { href: '/lineage', label: 'Lineage', icon: GitFork },
+    ],
+  },
+  {
+    label: 'Applications',
+    items: [
+      { href: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Operate',
+    items: [
+      { href: '/orchestration', label: 'Orchestration', icon: CalendarClock },
     ],
   },
   {
@@ -114,6 +122,13 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/governance', label: 'Governance', icon: ShieldCheck },
       { href: '/api-tokens', label: 'API tokens', icon: KeyRound },
       { href: '/api-docs', label: 'API docs', icon: Terminal },
+    ],
+  },
+  {
+    label: 'Learn',
+    items: [
+      { href: '/learn', label: 'Learning path', icon: BookOpen },
+      { href: '/data-sources', label: 'Sample data', icon: Database },
     ],
   },
   {

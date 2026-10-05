@@ -50,7 +50,11 @@ export function DashboardWidgetCard({
       : widget.type === 'stat'
         ? (widget.config.agg ?? 'count')
         : `${widget.config.agg ?? 'count'}${widget.config.groupBy ? ` by ${widget.config.groupBy}` : ''}`
-  const meta = `${widget.datasetName ?? widget.datasetId} · ${aggLabel}`
+  const sourceLabel = widget.sourceType === 'objectType'
+    ? (widget.objectTypeName ?? widget.objectTypeId ?? 'Ontology')
+    : (widget.datasetName ?? widget.datasetId ?? 'Dataset')
+  const sourceKind = widget.sourceType === 'objectType' ? 'object type' : 'dataset'
+  const meta = `${sourceLabel} · ${sourceKind} · ${aggLabel}`
 
   const isError = query.isError || query.data?.error
   const errorMessage =

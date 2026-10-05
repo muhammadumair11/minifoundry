@@ -11,8 +11,11 @@ export const widgetSchema = z.object({
   id: z.string().min(1),
   type: z.enum(['bar', 'line', 'pie', 'area', 'stat', 'table']),
   title: z.string().min(1).max(200),
-  datasetId: z.string().min(1),
+  sourceType: z.enum(['dataset', 'objectType']).optional(),
+  datasetId: z.string().min(1).optional(),
   datasetName: z.string().max(200).optional(),
+  objectTypeId: z.string().min(1).optional(),
+  objectTypeName: z.string().max(200).optional(),
   config: z
     .object({
       groupBy: z.string().max(200).optional(),
@@ -23,6 +26,14 @@ export const widgetSchema = z.object({
     })
     .default({}),
   span: z.union([z.literal(1), z.literal(2)]).optional(),
+}).superRefine((widget, ctx) => {
+  const sourceType = widget.sourceType ?? 'dataset'
+  if (sourceType === 'dataset' && !widget.datasetId) {
+    ctx.addIssue({ code: 'custom', path: ['datasetId'], message: 'datasetId is required for a dataset widget' })
+  }
+  if (sourceType === 'objectType' && !widget.objectTypeId) {
+    ctx.addIssue({ code: 'custom', path: ['objectTypeId'], message: 'objectTypeId is required for an Ontology widget' })
+  }
 })
 
 /** Dashboard row → DashboardInfo shape (layoutJson string → widgets array). */

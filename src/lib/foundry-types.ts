@@ -1363,8 +1363,12 @@ export interface DashboardWidget {
   id: string
   type: DashboardWidgetType
   title: string
-  datasetId: string
+  /** Legacy widgets omit sourceType and are treated as dataset-backed. */
+  sourceType?: 'dataset' | 'objectType'
+  datasetId?: string
   datasetName?: string
+  objectTypeId?: string
+  objectTypeName?: string
   config: {
     groupBy?: string
     valueColumn?: string
@@ -1399,6 +1403,8 @@ export interface WidgetDataResponse {
   /** bar/line/pie/area: [{ name, value }]; stat: [{ name: 'value', value }]; table: raw rows */
   rows: Record<string, unknown>[]
   datasetName: string
+  sourceName?: string
+  sourceType?: 'dataset' | 'objectType'
   rowCount: number
   error?: string
 }

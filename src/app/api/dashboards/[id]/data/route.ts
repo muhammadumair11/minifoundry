@@ -29,8 +29,11 @@ const widgetBodySchema = z.object({
   id: z.string().min(1),
   type: z.enum(['bar', 'line', 'pie', 'area', 'stat', 'table']),
   title: z.string().min(1).max(200),
-  datasetId: z.string().min(1),
+  sourceType: z.enum(['dataset', 'objectType']).optional(),
+  datasetId: z.string().min(1).optional(),
   datasetName: z.string().max(200).optional(),
+  objectTypeId: z.string().min(1).optional(),
+  objectTypeName: z.string().max(200).optional(),
   config: z
     .object({
       groupBy: z.string().max(200).optional(),
@@ -41,6 +44,14 @@ const widgetBodySchema = z.object({
     })
     .default({}),
   span: z.union([z.literal(1), z.literal(2)]).optional(),
+}).superRefine((widget, ctx) => {
+  const sourceType = widget.sourceType ?? 'dataset'
+  if (sourceType === 'dataset' && !widget.datasetId) {
+    ctx.addIssue({ code: 'custom', path: ['datasetId'], message: 'datasetId is required for a dataset widget' })
+  }
+  if (sourceType === 'objectType' && !widget.objectTypeId) {
+    ctx.addIssue({ code: 'custom', path: ['objectTypeId'], message: 'objectTypeId is required for an Ontology widget' })
+  }
 })
 
 const bodySchema = z.object({ widget: widgetBodySchema })
@@ -102,26 +113,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // Dashboards are consumers — P2: gated datasets reflect the last
     // PUBLISHED version (drafts stay studio-only), ungated ones the head.
-    const consumer = await resolveConsumerVersion(widget.datasetId)
+    const sourceType = widget.sourceType ?? 'dataset'
+    let sourceDatasetId = widget.datasetId
+    let sourceName: string | null = null
+    let ontologyProperties: string[] | null = null
+
+    if (sourceType === 'objectType') {
+      const objectType = await db.objectType.findFirst({
+        where: { OR: [{ id: widget.objectTypeId }, { apiName: widget.objectTypeId }] },
+        include: { properties: { orderBy: { id: 'asc' } } },
+      })
+      if (!objectType) return notFound(`Object type '${widget.objectTypeId}' not found`)
+      if (!objectType.sourceDatasetId) {
+        return badRequest(`Object type '${objectType.displayName}' has no backing dataset`)
+      }
+      sourceDatasetId = objectType.sourceDatasetId
+      sourceName = objectType.displayName
+      ontologyProperties = objectType.properties.map((property) => property.apiName)
+    }
+
+    if (!sourceDatasetId) return badRequest('Widget source is missing')
+
+    const consumer = await resolveConsumerVersion(sourceDatasetId)
     const version = consumer?.versionNumber
       ? await db.datasetVersion.findFirst({
-          where: { datasetId: widget.datasetId, versionNumber: consumer.versionNumber },
+          where: { datasetId: sourceDatasetId, versionNumber: consumer.versionNumber },
           select: { dataJson: true, rowCount: true },
         })
       : null
-    if (!version) return badRequest(`Dataset '${widget.datasetId}' has no versions`)
+    if (!version) return badRequest(`Source '${sourceName ?? sourceDatasetId}' has no published data`)
 
     const dataset = await db.dataset.findUnique({
-      where: { id: widget.datasetId },
+      where: { id: sourceDatasetId },
       select: { name: true },
     })
-    if (!dataset) return notFound(`Dataset '${widget.datasetId}' not found`)
+    if (!dataset) return notFound(`Dataset '${sourceDatasetId}' not found`)
+    sourceName ??= dataset.name
 
     // Phase 0: mask BEFORE aggregating — a marked column must not leak via
     // table rows, group labels, or as an aggregate value input. Masked cells
     // hold MASK_LITERAL ('------'), which toNumber() treats as non-numeric.
     const rawRows = parseJsonSafe<Record<string, unknown>[]>(version.dataJson, [])
-    const { rows: allRows, maskedColumns } = await applyMasking(widget.datasetId, rawRows, role)
+    const { rows: maskedRows, maskedColumns } = await applyMasking(sourceDatasetId, rawRows, role)
+    const allRows = ontologyProperties
+      ? maskedRows.map((row) => Object.fromEntries(ontologyProperties.map((name) => [name, row[name]])))
+      : maskedRows
     const rowCount = version.rowCount ?? allRows.length
     const cfg = widget.config
     const topN = cfg.topN ?? 10
@@ -130,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ─── stat: one aggregate over the whole dataset ────────────────────
     if (widget.type === 'stat') {
       if (agg === 'count') {
-        return NextResponse.json({ rows: [{ name: 'value', value: rowCount }], datasetName: dataset.name, rowCount, maskedColumns })
+        return NextResponse.json({ rows: [{ name: 'value', value: rowCount }], datasetName: dataset.name, sourceName, sourceType, rowCount, maskedColumns })
       }
       if (!cfg.valueColumn) {
         return badRequest(`stat widget with agg '${agg}' needs a valueColumn`)
@@ -141,6 +177,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({
         rows: [{ name: 'value', value: aggregate(agg, allRows.length, values) }],
         datasetName: dataset.name,
+        sourceName,
+        sourceType,
         rowCount,
         maskedColumns,
       })
@@ -148,7 +186,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // ─── table: first topN raw rows ────────────────────────────────────
     if (widget.type === 'table') {
-      return NextResponse.json({ rows: allRows.slice(0, topN), datasetName: dataset.name, rowCount, maskedColumns })
+      return NextResponse.json({ rows: allRows.slice(0, topN), datasetName: dataset.name, sourceName, sourceType, rowCount, maskedColumns })
     }
 
     // ─── bar/line/pie/area: groupBy + agg → [{ name, value }] ─────────
@@ -192,7 +230,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     rows.sort((a, b) => (a.value - b.value) * dir || a.name.localeCompare(b.name))
     rows = rows.slice(0, topN)
 
-    return NextResponse.json({ rows, datasetName: dataset.name, rowCount, maskedColumns })
+    return NextResponse.json({ rows, datasetName: dataset.name, sourceName, sourceType, rowCount, maskedColumns })
   } catch (err) {
     return serverError(err instanceof Error ? err.message : 'Failed to compute widget data')
   }

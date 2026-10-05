@@ -4,7 +4,7 @@
 // by POST …/data (source of truth). Edit mode (editor-gated) = local draft with
 // add / reorder / remove widgets + inline rename, committed by ONE Save PATCH
 // (consistent with the "Save button" pattern; no autosave). Refresh re-queries
-// live data — Foundry dashboards always reflect dataset heads.
+// live data — Ontology widgets resolve through their governed backing data.
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -31,6 +31,7 @@ import type {
   DashboardInfo,
   DashboardWidget,
   DatasetsListResponse,
+  OntologyListResponse,
   SessionResponse,
 } from '@/lib/foundry-types'
 import { DashboardWidgetCard } from '@/components/foundry/dashboard-widget-card'
@@ -77,6 +78,10 @@ export default function DashboardBuilderPage() {
   const datasetsQuery = useQuery<DatasetsListResponse>({
     queryKey: ['datasets'],
     queryFn: () => apiJson<DatasetsListResponse>('/api/datasets'),
+  })
+  const ontologyQuery = useQuery<OntologyListResponse>({
+    queryKey: ['ontology'],
+    queryFn: () => apiJson<OntologyListResponse>('/api/ontology'),
   })
 
   const [editing, setEditing] = useState(false)
@@ -237,7 +242,11 @@ export default function DashboardBuilderPage() {
           </Button>
           {editing && draft ? (
             <>
-              <AddWidgetDialog datasets={datasetsQuery.data?.datasets ?? []} onAdd={addWidget} />
+              <AddWidgetDialog
+                datasets={datasetsQuery.data?.datasets ?? []}
+                objectTypes={ontologyQuery.data?.objectTypes ?? []}
+                onAdd={addWidget}
+              />
               <Button
                 size="sm"
                 className="gap-1.5"
@@ -292,7 +301,7 @@ export default function DashboardBuilderPage() {
             <LayoutDashboard className="h-7 w-7 text-muted-foreground/70" aria-hidden />
             <p className="text-sm font-medium text-muted-foreground">Empty canvas</p>
             <p className="max-w-sm text-xs text-muted-foreground/80">
-              Use “Add widget” to place your first chart, stat or table over any dataset.
+              Use “Add widget” to visualize an Ontology object type or a dataset.
             </p>
           </div>
         )}

@@ -197,12 +197,12 @@ export default function DataSourcesPage() {
         <div>
           <div className="flex items-center gap-2">
             <Database className="size-4 text-muted-foreground" aria-hidden />
-            <h1 className="text-sm font-medium tracking-tight">Data sources</h1>
+            <h1 className="text-sm font-medium tracking-tight">Sample data &amp; sources</h1>
             <span className="font-mono text-xs text-muted-foreground">{SOURCES.length} platforms</span>
           </div>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Find public data to bring into MiniFoundry. These are links to external platforms;
-            this page does not create or import any data.
+            A learning gallery of public data you can bring into MiniFoundry. These are examples,
+            not connected or managed platform data; use Connectors to import your own data.
           </p>
         </div>
         <Button asChild variant="outline" size="sm" className="h-8 text-xs">
