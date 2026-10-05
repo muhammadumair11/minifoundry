@@ -27,6 +27,8 @@ For everyday local use, run `npm run local` from the project root. It builds
 the app when needed, then starts the production app, job worker, and scheduler
 together at `http://127.0.0.1:3000`. Press Ctrl+C to stop all three. The
 launcher uses `db/custom.db` automatically, so no environment setup is needed.
+It requires Node.js 22.5+ for the app's `node:sqlite` support and Bun for the
+worker and scheduler.
 Stop `npm run dev` first because both use port 3000. Use
 `npm run local:rebuild` to force a fresh build.
 

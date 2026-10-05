@@ -105,8 +105,8 @@ async function main() {
   process.on('SIGTERM', () => stop(0))
 
   console.log(`MiniFoundry: http://${host}:${port} (app, worker, scheduler)`)
-  function startService(name, file) {
-    const child = spawn('bun', [file], { cwd: root, env, stdio: 'inherit' })
+  function startService(name, executable, file) {
+    const child = spawn(executable, [file], { cwd: root, env, stdio: 'inherit' })
     children.push(child)
     child.on('error', (error) => {
       console.error(`${name} failed to start: ${error.message}`)
@@ -120,8 +120,8 @@ async function main() {
     })
   }
 
-  startService('app', serverFile)
-  startService('worker', path.join(root, 'scripts', 'job-worker.ts'))
+  startService('app', process.execPath, serverFile)
+  startService('worker', 'bun', path.join(root, 'scripts', 'job-worker.ts'))
   let ready = false
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline && !stopping) {
@@ -138,7 +138,7 @@ async function main() {
     stop(1)
     throw new Error('The app did not become ready within 30 seconds.')
   }
-  startService('scheduler', path.join(root, 'mini-services', 'scheduler-service', 'index.ts'))
+  startService('scheduler', 'bun', path.join(root, 'mini-services', 'scheduler-service', 'index.ts'))
 }
 
 main().catch((error) => {
