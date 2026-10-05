@@ -48,6 +48,10 @@ const SAMPLE_PACKS = [
   { key: 'inventory', name: 'Inventory', description: '40 rows · stock & reorder points' },
 ] as const
 
+type IngestRequest =
+  | { type: 'raw'; datasetName: string; raw: string }
+  | { type: 'sample'; datasetName: string; sampleKey: string }
+
 function nameFromFileName(fileName: string): string {
   const base = fileName.replace(/\.[^.]+$/, '')
   return base.length > 0 ? base : 'Uploaded dataset'
@@ -60,7 +64,7 @@ export default function ConnectorsPage() {
   const [pendingFile, setPendingFile] = useState<string | null>(null)
 
   const ingestMutation = useMutation({
-    mutationFn: async (body: Record<string, unknown>): Promise<IngestResponse> => {
+    mutationFn: async (body: IngestRequest): Promise<IngestResponse> => {
       const res = await fetch('/api/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,9 +77,9 @@ export default function ConnectorsPage() {
       return res.json()
     },
     onSuccess: (res) => {
-      const rows = res.ingestion.rowsIngested ?? res.dataset.currentVersion?.rowCount ?? 0
+      const rows = res.ingestion.rowsIngested ?? res.dataset.version.rowCount
       toast.success(`Ingested ${rows} rows into “${res.dataset.name}”`, {
-        description: `New dataset version v${res.dataset.currentVersion?.versionNumber ?? 1} created.`,
+        description: `New dataset version v${res.dataset.version.versionNumber} created.`,
       })
       queryClient.invalidateQueries()
     },
@@ -93,15 +97,18 @@ export default function ConnectorsPage() {
 
   const handleFile = async (file: File, type: 'csv_upload' | 'json_upload') => {
     setPendingFile(type)
+    let raw: string
     try {
-      const raw = await file.text()
-      ingestMutation.mutate({
-        type,
-        datasetName: nameFromFileName(file.name),
-        raw,
-      })
+      raw = await file.text()
     } catch {
       toast.error('Could not read the selected file')
+      setPendingFile(null)
+      return
+    }
+    try {
+      await ingestMutation.mutateAsync({ type: 'raw', datasetName: nameFromFileName(file.name), raw })
+    } catch {
+      // The mutation's onError handler displays the ingestion error.
     } finally {
       setPendingFile(null)
     }
@@ -153,11 +160,11 @@ export default function ConnectorsPage() {
             />
             <Button
               onClick={() => csvInputRef.current?.click()}
-              disabled={ingestMutation.isPending && pendingFile === 'csv_upload'}
+              disabled={ingestMutation.isPending || pendingFile !== null}
               variant="outline"
               className="w-full"
             >
-              {ingestMutation.isPending && pendingFile === 'csv_upload' ? (
+              {pendingFile === 'csv_upload' ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
                 <Upload className="h-4 w-4" aria-hidden />
@@ -196,11 +203,11 @@ export default function ConnectorsPage() {
             />
             <Button
               onClick={() => jsonInputRef.current?.click()}
-              disabled={ingestMutation.isPending && pendingFile === 'json_upload'}
+              disabled={ingestMutation.isPending || pendingFile !== null}
               variant="outline"
               className="w-full"
             >
-              {ingestMutation.isPending && pendingFile === 'json_upload' ? (
+              {pendingFile === 'json_upload' ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
                 <Upload className="h-4 w-4" aria-hidden />

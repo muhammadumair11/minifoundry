@@ -300,7 +300,10 @@ export interface IngestionsListResponse {
 
 export interface IngestResponse {
   ingestion: IngestionSummary
-  dataset: DatasetSummary
+  dataset: Pick<DatasetSummary, 'id' | 'name' | 'description' | 'projectId' | 'tags' | 'updatedAt'> & {
+    sourceConnectorId: string | null
+    version: DatasetCurrentVersion & { id: string; schema: ColumnDef[] }
+  }
 }
 
 // ─── M5 Orchestration (Task 2-a/2-b contract) ────────────────────────
