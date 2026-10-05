@@ -640,6 +640,21 @@ model Dashboard {
   updatedAt   DateTime @updatedAt
 }
 
+// ─── Applications (Workshop-style operational apps) ─────────────────
+
+model Application {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  // JSON AppConfig: { widgets: AppWidget[] (map|objectTable|actionButton|stat),
+  //   filters: AppFilter[] } — widgets bind to Ontology object types/actions
+  //   by apiName so apps stay portable across re-seeded workspaces.
+  configJson  String   @default("{}")
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // ─── R14: Saved object views ───────────────────────────────────────
 
 model ObjectView {

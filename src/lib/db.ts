@@ -7,11 +7,12 @@ import { PrismaClient } from '.prisma/client'
  * `next dev` picks up the new client on the next HMR recompile instead of
  * forever reusing the stale global instance.
  */
-const PRISMA_CLIENT_STAMP = 'gap-closure-20261004b'
+const PRISMA_CLIENT_STAMP = 'applications-20261005a'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
   prismaStamp?: string
+  prismaUrl?: string
 }
 
 /**
@@ -64,10 +65,15 @@ function resolveDatabaseUrl(): string {
 }
 
 function getClient(): PrismaClient {
-  if (globalForPrisma.prisma && globalForPrisma.prismaStamp === PRISMA_CLIENT_STAMP) {
+  const url = resolveDatabaseUrl()
+  if (
+    globalForPrisma.prisma &&
+    globalForPrisma.prismaStamp === PRISMA_CLIENT_STAMP &&
+    globalForPrisma.prismaUrl === url
+  ) {
     return globalForPrisma.prisma
   }
-  const datasources = { db: { url: resolveDatabaseUrl() } }
+  const datasources = { db: { url } }
   const client = new PrismaClient({
     log: process.env.MF_PRISMA_QUERY_LOG === '1' ? ['query'] : ['error', 'warn'],
     datasources,
@@ -75,8 +81,27 @@ function getClient(): PrismaClient {
   if (process.env.NODE_ENV !== 'production') {
     globalForPrisma.prisma = client
     globalForPrisma.prismaStamp = PRISMA_CLIENT_STAMP
+    globalForPrisma.prismaUrl = url
   }
   return client
 }
 
-export const db = getClient()
+export let db = getClient()
+
+/**
+ * Test-only hook: the integration tests each pin their own throwaway SQLite
+ * file by mutating DATABASE_URL at runtime, but bun runs every test file in
+ * ONE process — so this module (and its client) is cached from whichever test
+ * imported it first. Call this after changing DATABASE_URL: it re-resolves the
+ * URL and rebuilds the singleton when it moved, returning the fresh client.
+ * Cached importers of `db` pick it up through ESM live bindings.
+ * Never call this in production; the URL is fixed for the process lifetime.
+ */
+export async function reloadDbClientForTests(): Promise<PrismaClient> {
+  const previous = db
+  db = getClient()
+  if (previous !== db) {
+    await previous.$disconnect().catch(() => undefined)
+  }
+  return db
+}

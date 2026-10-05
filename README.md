@@ -2,8 +2,9 @@
 
 A learning-scale Palantir Foundry: ingest data, build versioned datasets,
 author SQL/Python/JavaScript transforms, orchestrate visual pipelines, model an
-Ontology with actions that write back, and explore lineage, quality, governance
-and dashboards — all in one Next.js app with a SQLite database.
+Ontology with actions that write back, and explore lineage, quality, governance,
+dashboards and Workshop-style applications (live maps over Ontology objects) —
+all in one Next.js app with a SQLite database.
 
 MiniFoundry is optimized for a **trustworthy end-to-end learning experience**,
 not a feature-for-feature Foundry clone. A learner should be able to build a
@@ -76,7 +77,7 @@ CSV / JSON / REST / sample data ─▶ ingestion routes ─▶ SQLite dataset ve
                                                           ▼
                               Ontology objects + actions (writeback)
                                                           │
-                                          dashboards · lineage · token API
+                                    applications (maps) · dashboards · lineage · token API
 mini-services/scheduler-service ──polls──▶ /api/schedules/due ─▶ execution jobs
 job worker ──leases jobs──▶ pinned pipeline versions ─▶ pipeline runs
 ```
@@ -133,6 +134,11 @@ These differ from real Foundry **on purpose** — they are teaching moments:
 - REST connectors enforce SSRF egress controls (public http(s) targets only,
   all DNS-resolved addresses checked, pinned destination sockets, and at most
   three re-validated redirects).
+- Applications render up to 200 objects per map layer/table page (the objects
+  API page cap). Maps use MapLibre GL with OpenStreetMap raster tiles (needs
+  internet at view time); objects without latitude/longitude columns are placed
+  through a built-in offline city/country centroid table with deterministic
+  jitter — coarse by design, no external geocoder is ever called.
 
 ## Roadmap (delivery order)
 

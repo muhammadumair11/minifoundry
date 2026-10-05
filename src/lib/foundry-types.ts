@@ -1409,6 +1409,136 @@ export interface WidgetDataResponse {
   error?: string
 }
 
+// ─── Applications (Workshop-style operational apps) ──────────────────
+//
+// Apps bind widgets to Ontology object types + actions BY apiName (stable
+// across re-seeded workspaces). The whole app definition lives in one JSON
+// config; widgets render over rows fetched from /api/objects with the app's
+// global filters applied, and object selection is shared app-wide (map
+// marker / table row → detail panel with links + actions).
+
+/** Grid span on large screens (3-column canvas). */
+export type AppWidgetSpan = 1 | 2 | 3
+export type AppMapMode = 'markers' | 'cluster' | 'heatmap'
+export type AppWidgetType = 'map' | 'objectTable' | 'stat' | 'actionButton'
+
+/** One object-type layer rendered on a map widget. */
+export interface AppMapLayerConfig {
+  id: string
+  objectTypeApiName: string
+  visible: boolean
+  /** Number property holding latitude; null = auto-detect by name. */
+  latProperty?: string | null
+  /** Number property holding longitude; null = auto-detect by name. */
+  lngProperty?: string | null
+  /** String property for offline centroid geocoding (e.g. 'city', 'country'); null = auto-detect. */
+  fallbackProperty?: string | null
+  /** Categorical property driving marker color; null = object-type accent. */
+  colorBy?: string | null
+  /** Numeric property driving marker size / heatmap weight. */
+  sizeBy?: string | null
+}
+
+export interface AppMapWidget {
+  id: string
+  type: 'map'
+  title: string
+  layers: AppMapLayerConfig[]
+  mapMode: AppMapMode
+  span: AppWidgetSpan
+}
+
+export interface AppTableWidget {
+  id: string
+  type: 'objectTable'
+  title: string
+  objectTypeApiName: string
+  /** Property apiNames to show; null/empty = sensible defaults. */
+  columns?: string[] | null
+  span: AppWidgetSpan
+}
+
+export interface AppStatWidget {
+  id: string
+  type: 'stat'
+  title: string
+  objectTypeApiName: string
+  agg: 'count' | 'sum' | 'avg' | 'min' | 'max'
+  /** Property aggregated by sum/avg/min/max; ignored for count. */
+  valueProperty?: string | null
+  span: AppWidgetSpan
+}
+
+export interface AppActionWidget {
+  id: string
+  type: 'actionButton'
+  title: string
+  actionApiName: string
+  /** Pre-fill the action's pk parameter from the app's selected object. */
+  useSelection: boolean
+  span: AppWidgetSpan
+}
+
+export type AppWidget = AppMapWidget | AppTableWidget | AppStatWidget | AppActionWidget
+
+export type AppFilterOp = 'eq' | 'neq' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte'
+
+/** App-level global filter definition; the runtime value lives in UI state. */
+export interface AppFilterDef {
+  id: string
+  /** Object type apiName this filter constrains; '*' = any type having `property`. */
+  objectTypeApiName: string
+  property: string
+  op: AppFilterOp
+  kind: 'text' | 'number' | 'select'
+  /** Options for kind='select' (stored on the definition, not fetched). */
+  options: string[]
+  label: string | null
+}
+
+export interface AppConfig {
+  widgets: AppWidget[]
+  filters: AppFilterDef[]
+}
+
+export interface ApplicationSummary {
+  id: string
+  name: string
+  description: string | null
+  widgetCount: number
+  /** Object type apiNames referenced by the app's widgets/layers/filters. */
+  objectTypeApiNames: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ApplicationsListResponse {
+  applications: ApplicationSummary[]
+}
+
+export interface ApplicationInfo {
+  id: string
+  name: string
+  description: string | null
+  config: AppConfig
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ApplicationResponse {
+  application: ApplicationInfo
+}
+
+/** Shared app-wide selection: which object the detail panel shows. */
+export interface AppObjectRef {
+  objectTypeApiName: string
+  pk: string
+}
+
+/** Template bodies accepted by POST /api/applications. */
+export type ApplicationTemplate = 'blank' | 'supply-chain'
+
 /** R14 saved object views. */
 export interface ObjectViewInfo {
   id: string

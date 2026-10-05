@@ -321,3 +321,64 @@
 .dark .react-flow__node.selected .react-flow__handle {
   border-color: oklch(0.696 0.17 162.48); /* emerald-500 */
 }
+
+/* ── Application maps (MapLibre GL over OSM raster) ──────────────────
+   Dark theme = inverted canvas filter (single style serves both themes);
+   controls/attribution sit outside the canvas element so they stay crisp. */
+.mf-map-shell .maplibregl-canvas {
+  outline: none;
+}
+.dark .mf-map-shell .maplibregl-canvas {
+  filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.88) saturate(0.8);
+}
+.mf-map-shell .maplibregl-ctrl-attrib {
+  background: oklch(1 0 0 / 75%) !important; /* white/75 */
+  color: oklch(0.552 0.016 285.938); /* zinc-500 */
+  font-size: 9px;
+}
+.mf-map-shell .maplibregl-ctrl-attrib a {
+  color: oklch(0.552 0.016 285.938);
+}
+.dark .mf-map-shell .maplibregl-ctrl-attrib {
+  background: oklch(0.21 0.006 285.885 / 80%) !important; /* zinc-900/80 */
+  color: oklch(0.713 0.019 286.067); /* zinc-400-ish */
+}
+.dark .mf-map-shell .maplibregl-ctrl-attrib a {
+  color: oklch(0.713 0.019 286.067);
+}
+.mf-map-shell .maplibregl-ctrl-group {
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dark .mf-map-shell .maplibregl-ctrl-group {
+  background: oklch(0.21 0.006 285.885); /* zinc-900 */
+}
+.dark .mf-map-shell .maplibregl-ctrl-group button + button {
+  border-top: 1px solid oklch(0.274 0.006 286.033); /* zinc-800 */
+}
+.dark .mf-map-shell .maplibregl-ctrl-group button {
+  filter: invert(1);
+}
+
+/* Hover popup themed to the card surface. */
+.mf-map-popup .maplibregl-popup-content {
+  background: oklch(1 0 0); /* white */
+  border: 1px solid oklch(0.922 0.004 286.32); /* zinc-200 */
+  border-radius: 6px;
+  box-shadow: 0 4px 14px oklch(0.2 0 0 / 14%);
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: oklch(0.274 0.006 286.033); /* zinc-800 */
+}
+.mf-map-popup .maplibregl-popup-tip {
+  border-top-color: oklch(1 0 0) !important;
+}
+.dark .mf-map-popup .maplibregl-popup-content {
+  background: oklch(0.21 0.006 285.885); /* zinc-900 */
+  border-color: oklch(0.274 0.006 286.033); /* zinc-800 */
+  color: oklch(0.92 0.004 286.32); /* zinc-100 */
+}
+.dark .mf-map-popup .maplibregl-popup-tip {
+  border-top-color: oklch(0.21 0.006 285.885) !important;
+}

@@ -11,31 +11,33 @@ export interface SamplePack {
 }
 
 // ─── Suppliers (12 rows) ─────────────────────────────────────────────
+// latitude/longitude feed Application maps directly; rows without coordinates
+// still map through the offline country/city centroid fallback in src/lib/geo.ts.
 
 const SUPPLIERS: SampleRow[] = [
-  { id: 'SUP-001', name: 'Nordwind Elektronik', country: 'Germany', region: 'EMEA', rating: 4.6, leadTimeDays: 12, onTimePct: 97.2 },
-  { id: 'SUP-002', name: 'Shenzhen BrightPath Electronics', country: 'China', region: 'APAC', rating: 4.2, leadTimeDays: 21, onTimePct: 94.8 },
-  { id: 'SUP-003', name: 'Osaka Precision Parts', country: 'Japan', region: 'APAC', rating: 4.8, leadTimeDays: 9, onTimePct: 98.6 },
-  { id: 'SUP-004', name: 'Austin Circuit Works', country: 'United States', region: 'NA', rating: 4.1, leadTimeDays: 14, onTimePct: 95.1 },
-  { id: 'SUP-005', name: 'Cheonan Display Co.', country: 'South Korea', region: 'APAC', rating: 4.5, leadTimeDays: 11, onTimePct: 96.4 },
-  { id: 'SUP-006', name: 'Penang MicroAssembly', country: 'Malaysia', region: 'APAC', rating: 3.9, leadTimeDays: 18, onTimePct: 92.7 },
-  { id: 'SUP-007', name: 'Torino Metalworks', country: 'Italy', region: 'EMEA', rating: 3.7, leadTimeDays: 16, onTimePct: 90.3 },
-  { id: 'SUP-008', name: 'Guadalajara Wiredev', country: 'Mexico', region: 'LATAM', rating: 3.8, leadTimeDays: 15, onTimePct: 91.5 },
-  { id: 'SUP-009', name: 'Hanoi FlexTech', country: 'Vietnam', region: 'APAC', rating: 3.6, leadTimeDays: 24, onTimePct: 88.9 },
-  { id: 'SUP-010', name: 'Eindhoven Photonix', country: 'Netherlands', region: 'EMEA', rating: 4.7, leadTimeDays: 10, onTimePct: 97.8 },
-  { id: 'SUP-011', name: 'Gdansk Cable Systems', country: 'Poland', region: 'EMEA', rating: 4.0, leadTimeDays: 13, onTimePct: 93.4 },
-  { id: 'SUP-012', name: 'Chennai VoltSource', country: 'India', region: 'APAC', rating: 3.5, leadTimeDays: 26, onTimePct: 87.2 },
+  { id: 'SUP-001', name: 'Nordwind Elektronik', country: 'Germany', region: 'EMEA', rating: 4.6, leadTimeDays: 12, onTimePct: 97.2, city: 'Munich', latitude: 48.14, longitude: 11.58 },
+  { id: 'SUP-002', name: 'Shenzhen BrightPath Electronics', country: 'China', region: 'APAC', rating: 4.2, leadTimeDays: 21, onTimePct: 94.8, city: 'Shenzhen', latitude: 22.54, longitude: 114.06 },
+  { id: 'SUP-003', name: 'Osaka Precision Parts', country: 'Japan', region: 'APAC', rating: 4.8, leadTimeDays: 9, onTimePct: 98.6, city: 'Osaka', latitude: 34.69, longitude: 135.5 },
+  { id: 'SUP-004', name: 'Austin Circuit Works', country: 'United States', region: 'NA', rating: 4.1, leadTimeDays: 14, onTimePct: 95.1, city: 'Austin', latitude: 30.27, longitude: -97.74 },
+  { id: 'SUP-005', name: 'Cheonan Display Co.', country: 'South Korea', region: 'APAC', rating: 4.5, leadTimeDays: 11, onTimePct: 96.4, city: 'Cheonan', latitude: 36.81, longitude: 127.11 },
+  { id: 'SUP-006', name: 'Penang MicroAssembly', country: 'Malaysia', region: 'APAC', rating: 3.9, leadTimeDays: 18, onTimePct: 92.7, city: 'Penang', latitude: 5.41, longitude: 100.34 },
+  { id: 'SUP-007', name: 'Torino Metalworks', country: 'Italy', region: 'EMEA', rating: 3.7, leadTimeDays: 16, onTimePct: 90.3, city: 'Torino', latitude: 45.07, longitude: 7.69 },
+  { id: 'SUP-008', name: 'Guadalajara Wiredev', country: 'Mexico', region: 'LATAM', rating: 3.8, leadTimeDays: 15, onTimePct: 91.5, city: 'Guadalajara', latitude: 20.67, longitude: -103.35 },
+  { id: 'SUP-009', name: 'Hanoi FlexTech', country: 'Vietnam', region: 'APAC', rating: 3.6, leadTimeDays: 24, onTimePct: 88.9, city: 'Hanoi', latitude: 21.03, longitude: 105.85 },
+  { id: 'SUP-010', name: 'Eindhoven Photonix', country: 'Netherlands', region: 'EMEA', rating: 4.7, leadTimeDays: 10, onTimePct: 97.8, city: 'Eindhoven', latitude: 51.44, longitude: 5.48 },
+  { id: 'SUP-011', name: 'Gdansk Cable Systems', country: 'Poland', region: 'EMEA', rating: 4.0, leadTimeDays: 13, onTimePct: 93.4, city: 'Gdansk', latitude: 54.35, longitude: 18.65 },
+  { id: 'SUP-012', name: 'Chennai VoltSource', country: 'India', region: 'APAC', rating: 3.5, leadTimeDays: 26, onTimePct: 87.2, city: 'Chennai', latitude: 13.08, longitude: 80.27 },
 ]
 
 // ─── Warehouses (6 rows) ─────────────────────────────────────────────
 
 const WAREHOUSES: SampleRow[] = [
-  { id: 'WH-01', name: 'Rotterdam Hub', city: 'Rotterdam', country: 'Netherlands', capacity: 42000 },
-  { id: 'WH-02', name: 'Singapore Central', city: 'Singapore', country: 'Singapore', capacity: 58000 },
-  { id: 'WH-03', name: 'Chicago Midway DC', city: 'Chicago', country: 'United States', capacity: 51000 },
-  { id: 'WH-04', name: 'Hamburg Nord Depot', city: 'Hamburg', country: 'Germany', capacity: 36000 },
-  { id: 'WH-05', name: 'Shenzhen South Bonded', city: 'Shenzhen', country: 'China', capacity: 64000 },
-  { id: 'WH-06', name: 'Monterrey Crossdock', city: 'Monterrey', country: 'Mexico', capacity: 28000 },
+  { id: 'WH-01', name: 'Rotterdam Hub', city: 'Rotterdam', country: 'Netherlands', capacity: 42000, latitude: 51.92, longitude: 4.48 },
+  { id: 'WH-02', name: 'Singapore Central', city: 'Singapore', country: 'Singapore', capacity: 58000, latitude: 1.35, longitude: 103.82 },
+  { id: 'WH-03', name: 'Chicago Midway DC', city: 'Chicago', country: 'United States', capacity: 51000, latitude: 41.88, longitude: -87.63 },
+  { id: 'WH-04', name: 'Hamburg Nord Depot', city: 'Hamburg', country: 'Germany', capacity: 36000, latitude: 53.55, longitude: 9.99 },
+  { id: 'WH-05', name: 'Shenzhen South Bonded', city: 'Shenzhen', country: 'China', capacity: 64000, latitude: 22.54, longitude: 114.06 },
+  { id: 'WH-06', name: 'Monterrey Crossdock', city: 'Monterrey', country: 'Mexico', capacity: 28000, latitude: 25.69, longitude: -100.32 },
 ]
 
 // ─── Product catalog (drives shipments + inventory) ──────────────────
