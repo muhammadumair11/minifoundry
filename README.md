@@ -106,6 +106,12 @@ curl -s localhost:3000/api/health | head -c 300
 curl -s localhost:3000/api/settings/overview | head -c 300
 ```
 
+## Create Ontology links
+
+Open **Ontology → Links → New link** after creating the object types. For a one to many link, choose the source type, target type, and a column on the target dataset containing source primary key values. For a many to many link, choose a relationship dataset and the columns containing each type's primary key. Links are resolved from the consumer-visible dataset versions and appear on object details in both directions. Editors can change or remove a link from its menu; deleting a link leaves the object types and datasets intact.
+
+When updating an existing installation, run `bun run db:push` to add the optional relationship key columns before starting the app. Older many to many links continue to read the relationship dataset's first two columns until edited.
+
 ## Deliberate learning-scale simplifications
 
 These differ from real Foundry **on purpose** — they are teaching moments:

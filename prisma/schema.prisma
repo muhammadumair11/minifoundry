@@ -374,6 +374,9 @@ model LinkType {
   // many-to-many: dataset with two columns holding both PKs
   linkDatasetId String?
   linkDataset   Dataset?   @relation("linkDataset", fields: [linkDatasetId], references: [id])
+  // Explicit key columns for new links; existing links fall back to the first two columns.
+  fromKeyColumn String?
+  toKeyColumn   String?
   createdAt     DateTime   @default(now())
 
   @@unique([fromTypeId, apiName])

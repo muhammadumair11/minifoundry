@@ -401,6 +401,11 @@ export interface OutgoingLinkSummary extends LinkSummary {
   toTypeId: string
   toTypeApiName: string
   toTypeDisplayName: string
+  fkProperty: string | null
+  linkDatasetId: string | null
+  linkDatasetName: string | null
+  fromKeyColumn: string | null
+  toKeyColumn: string | null
 }
 
 /** Incoming link: `fromType*` describes the other side (the link's source). */

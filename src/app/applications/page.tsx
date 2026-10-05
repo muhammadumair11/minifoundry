@@ -6,10 +6,12 @@
 // table + status action + global filters) resolved server-side by apiName.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Boxes, LayoutDashboard, LayoutTemplate, Loader2, Map as MapIcon, Plus, Sparkles } from 'lucide-react'
+import { Boxes, LayoutDashboard, LayoutTemplate, Loader2, Map as MapIcon, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,6 +20,7 @@ import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
 import { formatRelative } from '@/lib/foundry-types'
 import type {
   ApplicationInfo,
+  ApplicationSummary,
   ApplicationsListResponse,
   ApplicationTemplate,
   DashboardListResponse,
@@ -29,6 +32,7 @@ const canEditRole = (role: SessionResponse['role'] | undefined) => role === 'edi
 export default function ApplicationsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const [deletingApp, setDeletingApp] = useState<ApplicationSummary | null>(null)
 
   const sessionQuery = useQuery<SessionResponse>({
     queryKey: ['session'],
@@ -68,6 +72,15 @@ export default function ApplicationsPage() {
     onError: (err: Error) => toastApiError(err, 'Could not create sample application'),
   })
   const busy = blankMutation.isPending || sampleMutation.isPending
+  const deleteMutation = useMutation({
+    mutationFn: (app: ApplicationSummary) => apiJson<void>(`/api/applications/${app.id}`, { method: 'DELETE' }),
+    onSuccess: (_result, app) => {
+      toast.success('Application deleted', { description: app.name })
+      void queryClient.invalidateQueries({ queryKey: ['applications'] })
+      setDeletingApp(null)
+    },
+    onError: (error: Error) => toastApiError(error, 'Could not delete application'),
+  })
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
@@ -127,7 +140,9 @@ export default function ApplicationsPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button
+              <GatedButton
+                allowed={canEdit}
+                reason="requires editor role (current: viewer)"
                 size="sm"
                 variant="secondary"
                 className="gap-1.5"
@@ -140,7 +155,7 @@ export default function ApplicationsPage() {
                   <Sparkles className="h-4 w-4" aria-hidden />
                 )}
                 Create sample app
-              </Button>
+              </GatedButton>
               <GatedButton
                 allowed={canEdit}
                 reason="requires editor role (current: viewer)"
@@ -162,13 +177,12 @@ export default function ApplicationsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {applications.map((app) => (
-            <Link
+            <div
               key={app.id}
-              href={`/applications/${app.id}`}
-              className="group rounded-lg border border-border bg-card transition-colors hover:border-foreground/25"
-              aria-label={`Open application ${app.name}`}
+              className="group relative rounded-lg border border-border bg-card transition-colors hover:border-foreground/25"
             >
-              <CardContent className="flex h-full flex-col gap-3 p-4">
+              <Link href={`/applications/${app.id}`} className="block h-full rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" aria-label={`Open application ${app.name}`}>
+              <CardContent className="flex h-full flex-col gap-3 p-4 pr-12">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted/50">
                     <LayoutTemplate className="h-4 w-4 text-muted-foreground" aria-hidden />
@@ -198,7 +212,11 @@ export default function ApplicationsPage() {
                   <span>updated {formatRelative(app.updatedAt)}</span>
                 </div>
               </CardContent>
-            </Link>
+              </Link>
+              {canEdit && <Button type="button" variant="ghost" size="icon" className="absolute right-3 top-3 h-8 w-8 text-muted-foreground hover:text-rose-600" aria-label={`Delete application ${app.name}`} title="Delete application" onClick={() => setDeletingApp(app)}>
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </Button>}
+            </div>
           ))}
         </div>
       )}
@@ -220,6 +238,14 @@ export default function ApplicationsPage() {
           </div>
         </section>
       )}
+      <AlertDialog open={!!deletingApp} onOpenChange={(open) => { if (!open) setDeletingApp(null) }}>
+        <AlertDialogContent className="bg-card sm:max-w-sm"><AlertDialogHeader>
+          <AlertDialogTitle>Delete application?</AlertDialogTitle>
+          <AlertDialogDescription>Delete {deletingApp?.name}? Its pages and widgets will be removed. Ontology objects and datasets will stay in place.</AlertDialogDescription>
+        </AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleteMutation.isPending} onClick={() => deletingApp && deleteMutation.mutate(deletingApp)}>{deleteMutation.isPending ? 'Deleting…' : 'Delete application'}</AlertDialogAction>
+        </AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

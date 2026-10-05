@@ -51,6 +51,8 @@ export interface LinkTypeWithType {
   cardinality: string
   fkProperty: string | null
   linkDatasetId: string | null
+  fromKeyColumn?: string | null
+  toKeyColumn?: string | null
   fromTypeId: string
   toTypeId: string
   fromType?: ObjectTypeCore | null
@@ -142,7 +144,7 @@ export const OBJECT_TYPE_INCLUDE = {
   properties: { orderBy: { id: 'asc' as const } },
   outgoingLinks: {
     orderBy: { apiName: 'asc' as const },
-    include: { toType: { select: { id: true, apiName: true, displayName: true } } },
+    include: { toType: { select: { id: true, apiName: true, displayName: true } }, linkDataset: { select: { name: true } } },
   },
   incomingLinks: {
     orderBy: { apiName: 'asc' as const },
@@ -193,6 +195,11 @@ export function serializeObjectType(ot: ObjectTypeFull) {
       toTypeApiName: l.toType.apiName,
       toTypeDisplayName: l.toType.displayName,
       cardinality: l.cardinality,
+      fkProperty: l.fkProperty,
+      linkDatasetId: l.linkDatasetId,
+      linkDatasetName: l.linkDataset?.name ?? null,
+      fromKeyColumn: l.fromKeyColumn,
+      toKeyColumn: l.toKeyColumn,
     })),
     linksIn: ot.incomingLinks.map((l) => ({
       id: l.id,
@@ -504,13 +511,13 @@ async function resolveLinkTargets(
   const otherPkColumn = other.primaryKey
   if (!otherPkColumn) return { targets: [], total: 0 }
 
-  // many-to-many: link dataset holds [fromPk, toPk] in its first two columns.
+  // many-to-many: use explicit mapping, falling back for links created before it existed.
   if (link.cardinality === 'many-to-many') {
     if (!link.linkDatasetId) return { targets: [], total: 0 }
     const snap = await loadLatestDataset(link.linkDatasetId)
     if (!snap) return { targets: [], total: 0 }
-    const firstCol = snap.snapshot.schema[0]?.name
-    const secondCol = snap.snapshot.schema[1]?.name
+    const firstCol = link.fromKeyColumn ?? snap.snapshot.schema[0]?.name
+    const secondCol = link.toKeyColumn ?? snap.snapshot.schema[1]?.name
     if (!firstCol || !secondCol) return { targets: [], total: 0 }
     // outgoing: this type is the FROM side (firstCol); incoming: secondCol.
     const ownCol = direction === 'outgoing' ? firstCol : secondCol

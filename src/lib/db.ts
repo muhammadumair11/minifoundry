@@ -7,7 +7,7 @@ import { PrismaClient } from '.prisma/client'
  * `next dev` picks up the new client on the next HMR recompile instead of
  * forever reusing the stale global instance.
  */
-const PRISMA_CLIENT_STAMP = 'applications-20261005a'
+const PRISMA_CLIENT_STAMP = 'ontology-links-20261005a'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
