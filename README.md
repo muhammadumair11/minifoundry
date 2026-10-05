@@ -23,6 +23,13 @@ For a local Windows checkout, set `DATABASE_URL=file:../db/custom.db` in your
 environment before running Prisma or the app. The bundled `.env` may still
 contain a path from the original Linux workspace.
 
+For everyday local use, run `npm run local` from the project root. It builds
+the app when needed, then starts the production app, job worker, and scheduler
+together at `http://127.0.0.1:3000`. Press Ctrl+C to stop all three. The
+launcher uses `db/custom.db` automatically, so no environment setup is needed.
+Stop `npm run dev` first because both use port 3000. Use
+`npm run local:rebuild` to force a fresh build.
+
 The scheduler mini-service (optional, enables recurring schedules):
 
 ```bash

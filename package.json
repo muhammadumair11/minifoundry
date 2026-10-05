@@ -6,6 +6,8 @@
     "dev": "next dev -p 3000 --webpack",
     "build": "next build --webpack",
     "start": "bun .next/standalone/server.js",
+    "local": "node scripts/run-production-local.mjs",
+    "local:rebuild": "node scripts/run-production-local.mjs --rebuild",
     "lint": "eslint .",
     "test": "bun test",
     "jobs:worker": "bun scripts/job-worker.ts",
