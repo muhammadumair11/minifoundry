@@ -772,7 +772,13 @@ export default function OntologyPage() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         action={editingAction}
-        objectTypes={types.map((t) => ({ id: t.id, apiName: t.apiName, displayName: t.displayName }))}
+        objectTypes={types.map((t) => ({
+          id: t.id,
+          apiName: t.apiName,
+          displayName: t.displayName,
+          primaryKey: t.primaryKey,
+          sourceDatasetId: t.sourceDatasetId,
+        }))}
       />
 
       {/* Delete-action confirmation */}

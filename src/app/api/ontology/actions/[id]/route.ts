@@ -63,6 +63,18 @@ interface WritebackPatch {
   keyProperty: string | null
 }
 
+/**
+ * Normalize parameter definitions before persisting: an EMPTY oneOf list is
+ * dropped (undefined) so run dialogs never render a dropdown with zero
+ * options, and blank entries are filtered out.
+ */
+function normalizeParameters<T extends { oneOf?: string[] }>(parameters: T[]): T[] {
+  return parameters.map((p) => {
+    const oneOf = (p.oneOf ?? []).map((o) => String(o)).filter((o) => o.trim() !== '')
+    return oneOf.length > 0 ? { ...p, oneOf } : { ...p, oneOf: undefined }
+  })
+}
+
 /** Resolve the target dataset + validate write-back config (null = clear). */
 async function resolveWriteback(
   writeback: z.infer<typeof writebackSchema> | null,
@@ -160,7 +172,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.operation !== undefined ? { operation: input.operation } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-        ...(input.parameters !== undefined ? { parametersJson: JSON.stringify(input.parameters) } : {}),
+        ...(input.parameters !== undefined
+          ? { parametersJson: JSON.stringify(normalizeParameters(input.parameters)) }
+          : {}),
         ...(wb
           ? {
               targetDatasetId: wb.targetDatasetId,
