@@ -142,8 +142,12 @@ async function requestPinned(
   target: Awaited<ReturnType<typeof resolvePublicHttpUrl>>,
   init: { signal: AbortSignal; headers: Record<string, string> },
 ): Promise<Response> {
-  const pinnedLookup: LookupFunction = (_hostname, _options, callback) => {
-    callback(null, target.address, target.family as 4 | 6)
+  const pinnedLookup: LookupFunction = (_hostname, options, callback) => {
+    const family = target.family as 4 | 6
+    // Bun's HTTP client requests all addresses before sorting them. The
+    // callback must use the array form for that request, even with one pin.
+    if (options.all) callback(null, [{ address: target.address, family }])
+    else callback(null, target.address, family)
   }
   return new Promise<Response>((resolve, reject) => {
     const request = (target.url.protocol === 'https:' ? httpsRequest : httpRequest)(target.url, {
