@@ -108,9 +108,9 @@ curl -s localhost:3000/api/settings/overview | head -c 300
 
 ## Create Ontology links
 
-Open **Ontology → Links → New link** after creating the object types. For a one to many link, choose the source type, target type, and a column on the target dataset containing source primary key values. For a many to many link, choose a relationship dataset and the columns containing each type's primary key. Links are resolved from the consumer-visible dataset versions and appear on object details in both directions. Editors can change or remove a link from its menu; deleting a link leaves the object types and datasets intact.
+Open **Ontology → Links → New link** after creating the object types. For **Order → Customer**, choose **many to one** and the `customer_id` foreign key on Order; it matches Customer's primary key. One to many uses a foreign key on the target type, one to one can use either side, and many to many uses a relationship dataset with columns for both primary keys. Links are resolved from the consumer-visible dataset versions and appear on object details in both directions. Editors can change or remove a link from its menu; deleting a link leaves the object types and datasets intact.
 
-When updating an existing installation, run `bun run db:push` to add the optional relationship key columns before starting the app. Older many to many links continue to read the relationship dataset's first two columns until edited.
+When updating an existing installation, run `bun run db:push` to add the optional foreign key side and relationship key columns before starting the app. Older one to many links retain their target-side foreign key mapping; older many to many links continue to read the relationship dataset's first two columns until edited.
 
 ## Deliberate learning-scale simplifications
 

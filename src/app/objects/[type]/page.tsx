@@ -208,10 +208,9 @@ function LinkRow({ link, pk }: { link: ObjectLinkWithTotal; pk: string }) {
   const shown = link.targets.slice(0, 5)
   const hiddenCount = Math.max(0, total - shown.length)
   const targetColor = getObjectColorClasses(link.toTypeColor)
-  // "View all" deep-link: outgoing one-to-many links can filter the related
-  // type's list by its fk column (= this object's pk).
+  // When the linked type holds the FK, filter its list by this object's PK.
   const viewAllHref =
-    link.direction === 'outgoing' && link.fkProperty
+    link.fkProperty
       ? `/objects/${encodeURIComponent(link.toTypeApiName)}?filters=${encodeURIComponent(
           JSON.stringify([{ property: link.fkProperty, op: 'eq', value: pk }]),
         )}`

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { ArrowLeftRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,26 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+/** Prefer a key named after the source type; never suggest the target's own PK. */
+function suggestForeignKey(from?: OntologyObjectType, to?: OntologyObjectType) {
+  if (!from || !to) return null
+  const sourceName = from.apiName.replace(/-/g, '_')
+  const candidates = from.primaryKey === 'id'
+    ? [`${sourceName}_id`, `${sourceName}Id`]
+    : [from.primaryKey, `${sourceName}_id`, `${sourceName}Id`]
+  return candidates.map((name) => to.properties.find((property) =>
+    property.apiName.toLowerCase() === name.toLowerCase() && property.apiName !== to.primaryKey,
+  )).find(Boolean) ?? null
+}
+
+function fkSideFor(cardinality: LinkCardinality, oneToOneSide: 'from' | 'to'): 'from' | 'to' {
+  return cardinality === 'one-to-many' ? 'to' : cardinality === 'many-to-one' ? 'from' : oneToOneSide
+}
+
+function suggestFor(from: OntologyObjectType | undefined, to: OntologyObjectType | undefined, side: 'from' | 'to') {
+  return side === 'from' ? suggestForeignKey(to, from) : suggestForeignKey(from, to)
+}
+
 export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -33,7 +53,8 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
   const [apiNameTouched, setApiNameTouched] = useState(!!editing)
   const [fromTypeId, setFromTypeId] = useState(editing?.from.id ?? '')
   const [toTypeId, setToTypeId] = useState(editing?.link.toTypeId ?? '')
-  const [cardinality, setCardinality] = useState<LinkCardinality>(editing?.link.cardinality ?? 'one-to-many')
+  const [cardinality, setCardinality] = useState<LinkCardinality>(editing?.link.cardinality ?? 'many-to-one')
+  const [oneToOneFkSide, setOneToOneFkSide] = useState<'from' | 'to'>(editing?.link.fkSide ?? 'from')
   const [fkProperty, setFkProperty] = useState(editing?.link.fkProperty ?? '')
   const [linkDatasetId, setLinkDatasetId] = useState(editing?.link.linkDatasetId ?? '')
   const [fromKeyColumn, setFromKeyColumn] = useState(editing?.link.fromKeyColumn ?? '')
@@ -41,6 +62,16 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
 
   const from = types.find((type) => type.id === fromTypeId)
   const to = types.find((type) => type.id === toTypeId)
+  const fkSide = fkSideFor(cardinality, oneToOneFkSide)
+  const fkHolder = fkSide === 'from' ? from : to
+  const pkType = fkSide === 'from' ? to : from
+  const otherSide = fkSide === 'from' ? 'to' : 'from'
+  const otherSideSuggestion = suggestFor(from, to, otherSide)
+  const useOtherSide = () => {
+    if (cardinality === 'one-to-one') setOneToOneFkSide(otherSide)
+    else setCardinality(cardinality === 'many-to-one' ? 'one-to-many' : 'many-to-one')
+    setFkProperty(otherSideSuggestion?.apiName ?? '')
+  }
   const datasetsQuery = useQuery<DatasetsListResponse>({
     queryKey: ['datasets'], queryFn: () => apiJson('/api/datasets'), enabled: open,
   })
@@ -57,7 +88,8 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
       editing ? `/api/ontology/links/${editing.link.id}` : '/api/ontology/links',
       { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName: displayName.trim(), apiName: apiName.trim(),
-          fromTypeId, toTypeId, cardinality, fkProperty: cardinality === 'one-to-many' ? fkProperty : null,
+          fromTypeId, toTypeId, cardinality, fkProperty: cardinality === 'many-to-many' ? null : fkProperty,
+          fkSide: cardinality === 'many-to-many' ? null : fkSide,
           linkDatasetId: cardinality === 'many-to-many' ? linkDatasetId : null,
           fromKeyColumn: cardinality === 'many-to-many' ? fromKeyColumn : null,
           toKeyColumn: cardinality === 'many-to-many' ? toKeyColumn : null }) },
@@ -73,7 +105,9 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
 
   const canSave = !!displayName.trim() && /^[a-z][a-z0-9_-]{1,63}$/.test(apiName.trim()) &&
     !!from?.sourceDatasetId && !!from.primaryKey && !!to?.sourceDatasetId && !!to.primaryKey &&
-    (cardinality === 'one-to-many' ? !!fkProperty : !!linkDatasetId && !!fromKeyColumn && !!toKeyColumn && fromKeyColumn !== toKeyColumn) &&
+    (cardinality === 'many-to-many'
+      ? !!linkDatasetId && !!fromKeyColumn && !!toKeyColumn && fromKeyColumn !== toKeyColumn
+      : !!fkProperty && !!fkHolder?.properties.some((property) => property.apiName === fkProperty)) &&
     !mutation.isPending
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,29 +130,59 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5"><Label htmlFor="link-from">From object type</Label>
-            <Select value={fromTypeId || undefined} onValueChange={setFromTypeId}>
+            <Select value={fromTypeId || undefined} onValueChange={(value) => {
+              setFromTypeId(value)
+              if (cardinality !== 'many-to-many') setFkProperty(suggestFor(types.find((type) => type.id === value), to, fkSide)?.apiName ?? '')
+            }}>
               <SelectTrigger id="link-from" className="w-full"><SelectValue placeholder="Select source" /></SelectTrigger>
               <SelectContent>{types.map((type) => <SelectItem key={type.id} value={type.id}>{type.displayName}</SelectItem>)}</SelectContent>
             </Select></div>
           <div className="space-y-1.5"><Label htmlFor="link-to">To object type</Label>
-            <Select value={toTypeId || undefined} onValueChange={(value) => { setToTypeId(value); setFkProperty('') }}>
+            <Select value={toTypeId || undefined} onValueChange={(value) => {
+              setToTypeId(value)
+              if (cardinality !== 'many-to-many') setFkProperty(suggestFor(from, types.find((type) => type.id === value), fkSide)?.apiName ?? '')
+            }}>
               <SelectTrigger id="link-to" className="w-full"><SelectValue placeholder="Select target" /></SelectTrigger>
               <SelectContent>{types.map((type) => <SelectItem key={type.id} value={type.id}>{type.displayName}</SelectItem>)}</SelectContent>
             </Select></div>
         </div>
         <div className="space-y-1.5"><Label htmlFor="link-cardinality">Relationship</Label>
-          <Select value={cardinality} onValueChange={(value) => setCardinality(value as LinkCardinality)}>
+          <Select value={cardinality} onValueChange={(value) => {
+            const next = value as LinkCardinality
+            setCardinality(next)
+            if (next !== 'many-to-many') setFkProperty(suggestFor(from, to, fkSideFor(next, oneToOneFkSide))?.apiName ?? '')
+          }}>
             <SelectTrigger id="link-cardinality" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="one-to-many">One to many · foreign key on target</SelectItem>
+            <SelectContent><SelectItem value="many-to-one">Many to one · foreign key on source</SelectItem>
+              <SelectItem value="one-to-many">One to many · foreign key on target</SelectItem>
+              <SelectItem value="one-to-one">One to one · foreign key on either side</SelectItem>
               <SelectItem value="many-to-many">Many to many · relationship dataset</SelectItem></SelectContent>
           </Select></div>
-        {cardinality === 'one-to-many' ? <div className="space-y-1.5">
-          <Label htmlFor="link-fk">Foreign key on {to?.displayName ?? 'target type'}</Label>
+        {cardinality !== 'many-to-many' ? <div className="space-y-1.5">
+          {cardinality === 'one-to-one' && <div className="space-y-1.5"><Label htmlFor="link-fk-side">Foreign key lives on</Label>
+            <Select value={oneToOneFkSide} onValueChange={(value) => {
+              const side = value as 'from' | 'to'
+              setOneToOneFkSide(side)
+              setFkProperty(suggestFor(from, to, side)?.apiName ?? '')
+            }}>
+              <SelectTrigger id="link-fk-side" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="from">{from?.displayName ?? 'Source type'}</SelectItem><SelectItem value="to">{to?.displayName ?? 'Target type'}</SelectItem></SelectContent>
+            </Select></div>}
+          <Label htmlFor="link-fk">Foreign key on {fkHolder?.displayName ?? 'selected type'}</Label>
           <Select value={fkProperty || undefined} onValueChange={setFkProperty}>
             <SelectTrigger id="link-fk" className="w-full"><SelectValue placeholder="Select column" /></SelectTrigger>
-            <SelectContent>{to?.properties.map((property) => <SelectItem key={property.apiName} value={property.apiName}>{property.displayName} · {property.apiName}</SelectItem>)}</SelectContent>
+            <SelectContent>{fkHolder?.properties.map((property) => <SelectItem key={property.apiName} value={property.apiName}>{property.displayName} · {property.apiName}</SelectItem>)}</SelectContent>
           </Select>
-          {from?.primaryKey && <p className="text-xs text-muted-foreground">This column must contain {from.displayName} values from <code>{from.primaryKey}</code>.</p>}
+          {pkType?.primaryKey && <p className="text-xs text-muted-foreground">This column must contain {pkType.displayName} values from <code>{pkType.primaryKey}</code>.</p>}
+          {fkProperty && pkType?.primaryKey && fkHolder && <p className="text-xs text-muted-foreground">{fkHolder.displayName}.<code>{fkProperty}</code> → {pkType.displayName}.<code>{pkType.primaryKey}</code></p>}
+          {from && to && !fkProperty && from.id !== to.id && <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-foreground">
+            {otherSideSuggestion
+              ? <><p><strong>{otherSide === 'from' ? from.displayName : to.displayName}</strong> has <code>{otherSideSuggestion.apiName}</code>, which appears to reference {otherSide === 'from' ? to.displayName : from.displayName}.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-2 h-7 gap-1.5 text-xs" onClick={useOtherSide}>
+                  <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden /> Use foreign key on {otherSide === 'from' ? from.displayName : to.displayName}
+                </Button></>
+              : <p>Select a column on {fkHolder?.displayName} containing {pkType?.displayName} IDs. The foreign key does not need to be the holder&apos;s primary key.</p>}
+          </div>}
         </div> : <>
           <div className="space-y-1.5"><Label htmlFor="link-dataset">Relationship dataset</Label>
             <Select value={linkDatasetId || undefined} onValueChange={(value) => {

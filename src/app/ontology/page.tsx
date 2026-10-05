@@ -475,8 +475,8 @@ export default function OntologyPage() {
                       </TableCell>
                       <TableCell className="px-3 py-2 font-mono text-xs text-muted-foreground">
                         <span>{link.displayName}</span>
-                        <span className="block text-[10px]">{link.cardinality === 'one-to-many'
-                          ? `via ${link.fkProperty ?? 'foreign key'}`
+                        <span className="block text-[10px]">{link.cardinality !== 'many-to-many'
+                          ? `via ${link.fkSide === 'from' || (link.fkSide == null && link.cardinality === 'many-to-one') ? from.displayName : link.toTypeDisplayName}.${link.fkProperty ?? 'foreign key'}`
                           : `via ${link.linkDatasetName ?? 'relationship dataset'}${link.fromKeyColumn && link.toKeyColumn ? ` (${link.fromKeyColumn} → ${link.toKeyColumn})` : ''}`}</span>
                       </TableCell>
                       {canEdit && <TableCell className="px-2 py-2">

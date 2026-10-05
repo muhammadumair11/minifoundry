@@ -68,6 +68,29 @@ test('links can be created, traversed, edited and deleted without removing sourc
     expect(targets[0].total).toBe(1)
     expect(targets[0].targets[0].pk).toBe('o1')
 
+    const orderToCustomer = { ...base, displayName: 'Order customer', apiName: 'order-customer',
+      fromTypeId: order.id, toTypeId: customer.id, cardinality: 'many-to-one', fkSide: 'from', fkProperty: 'cid' }
+    expect((await itemRoute.PATCH(request(`http://localhost/api/ontology/links/${linkId}`, 'PATCH',
+      { ...orderToCustomer, fkSide: 'to' }), { params: Promise.resolve({ id: linkId }) })).status).toBe(400)
+    expect((await itemRoute.PATCH(request(`http://localhost/api/ontology/links/${linkId}`, 'PATCH', orderToCustomer),
+      { params: Promise.resolve({ id: linkId }) })).status).toBe(200)
+    const orderWithLink = await db.objectType.findUniqueOrThrow({ where: { id: order.id }, include: {
+      outgoingLinks: { include: { toType: { include: { properties: true } } } },
+    } })
+    expect((await getLinksFor(orderWithLink, 'o1'))[0].targets[0].pk).toBe('c1')
+    const customerWithIncoming = await db.objectType.findUniqueOrThrow({ where: { id: customer.id }, include: {
+      incomingLinks: { include: { fromType: { include: { properties: true } } } },
+    } })
+    const reverse = (await getLinksFor(customerWithIncoming, 'c1'))[0]
+    expect(reverse.targets[0].pk).toBe('o1')
+    expect(reverse.fkProperty).toBe('cid')
+
+    expect((await itemRoute.PATCH(request(`http://localhost/api/ontology/links/${linkId}`, 'PATCH',
+      { ...orderToCustomer, cardinality: 'one-to-one' }), { params: Promise.resolve({ id: linkId }) })).status).toBe(200)
+    expect((await getLinksFor(await db.objectType.findUniqueOrThrow({ where: { id: order.id }, include: {
+      outgoingLinks: { include: { toType: { include: { properties: true } } } },
+    } }), 'o1'))[0].targets[0].pk).toBe('c1')
+
     const many = { ...base, cardinality: 'many-to-many', fkProperty: null,
       linkDatasetId: relationData.id, fromKeyColumn: 'cid', toKeyColumn: 'oid' }
     expect((await itemRoute.PATCH(request(`http://localhost/api/ontology/links/${linkId}`, 'PATCH',

@@ -377,7 +377,7 @@ export interface HealthResponse {
 // ─── M7 Ontology & M8 Workshop-lite (Task 3-a/3-b contract) ──────────
 
 export type OntologyColorKey = 'emerald' | 'teal' | 'amber' | 'rose' | 'orange' | 'zinc'
-export type LinkCardinality = 'one-to-many' | 'many-to-many'
+export type LinkCardinality = 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many'
 export type LinkDirection = 'outgoing' | 'incoming'
 export type ActionOperation = 'create' | 'update' | 'delete'
 
@@ -402,6 +402,7 @@ export interface OutgoingLinkSummary extends LinkSummary {
   toTypeApiName: string
   toTypeDisplayName: string
   fkProperty: string | null
+  fkSide: 'from' | 'to' | null
   linkDatasetId: string | null
   linkDatasetName: string | null
   fromKeyColumn: string | null
