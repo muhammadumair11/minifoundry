@@ -31,8 +31,8 @@ export function inferPipelineSchemas(
       .map((edge) => visit(edge.source).output)
     const first = inputs[0] ?? null
     const missing: string[] = []
-    const check = (name: string | undefined, schema = first) => {
-      if (name && schema && !schema.some((column) => column.name === name)) missing.push(name)
+    const check = (name: string | undefined, schema = first, label?: string) => {
+      if (name && schema && !schema.some((column) => column.name === name)) missing.push(label ? `${label}: ${name}` : name)
     }
     let output: PipelineSchema = first
     const data = node.data
@@ -55,8 +55,8 @@ export function inferPipelineSchemas(
         if (first) output = unique(first.map((column) => ({ ...column, name: data.mapping?.[column.name] || column.name })))
         break
       case 'join': {
-        check(data.leftKey, inputs[0])
-        check(data.rightKey, inputs[1])
+        check(data.leftKey, inputs[0], 'Input 1')
+        check(data.rightKey, inputs[1], 'Input 2')
         if (inputs[0] && inputs[1]) {
           const left = inputs[0]
           const right = inputs[1]

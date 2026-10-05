@@ -29,6 +29,8 @@ test('column inference follows join handles and flags missing references', () =>
   expect(inferred.get('join')?.inputs[1]?.map((column) => column.name)).toEqual(['id', 'quantity'])
   expect(inferred.get('join')?.output?.map((column) => column.name)).toEqual(['id', 'name', 'right_id', 'quantity'])
   expect(inferred.get('select')?.missing).toEqual(['missing'])
+  graph.nodes[2].data.rightKey = 'product_id'
+  expect(inferPipelineSchemas(graph, sourceSchemas).get('join')?.missing).toEqual(['Input 2: product_id'])
 })
 
 test('run output cleanup protects consumers and removes only the selected latest output', async () => {

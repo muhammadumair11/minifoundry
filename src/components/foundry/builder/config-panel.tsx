@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -99,20 +101,57 @@ function ColumnPicker({
   onChange: (value: string) => void
   placeholder?: string
 }) {
-  return (
-    <>
+  const [open, setOpen] = useState(false)
+  if (!columns?.length) {
+    return (
       <Input
         id={id}
-        list={`${id}-options`}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className={inputCls}
       />
-      <datalist id={`${id}-options`}>
-        {(columns ?? []).map((column) => <option key={column.name} value={column.name} />)}
-      </datalist>
-    </>
+    )
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={id.replace(/^cfg-/, '').replace(/-/g, ' ')}
+          className="h-8 min-w-0 flex-1 justify-between gap-1 px-2 font-mono text-xs font-normal"
+        >
+          <span className={cn('truncate', !value && 'text-muted-foreground')}>{value || placeholder}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-52 p-0">
+        <Command>
+          <CommandInput placeholder="Search columns…" aria-label="Search columns" />
+          <CommandList>
+            <CommandEmpty>No matching columns.</CommandEmpty>
+            <CommandGroup>
+              {columns.map((column) => (
+                <CommandItem
+                  key={column.name}
+                  value={column.name}
+                  onSelect={() => { onChange(column.name); setOpen(false) }}
+                  className="font-mono text-xs"
+                >
+                  <Check className={cn('h-3.5 w-3.5', value === column.name ? 'opacity-100' : 'opacity-0')} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{column.name}</span>
+                  <span className="text-[10px] text-muted-foreground">{column.type}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
