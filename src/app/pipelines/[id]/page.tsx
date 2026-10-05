@@ -22,7 +22,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
-import { ChevronDown, Loader2, Maximize2, NotebookPen, Play, Save } from 'lucide-react'
+import { ChevronDown, History, Loader2, Maximize2, NotebookPen, Play, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useFocusMode } from '@/components/foundry/focus-mode'
 import { Input } from '@/components/ui/input'
@@ -622,6 +622,17 @@ function Builder() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRunPanelOpen((open) => !open)}
+              className="h-8 gap-1.5 text-xs"
+              aria-label={runPanelOpen ? 'Hide pipeline runs' : 'Show pipeline runs'}
+              aria-pressed={runPanelOpen}
+            >
+              <History className="h-3.5 w-3.5" aria-hidden />
+              Runs {runs.length}
+            </Button>
             <Button
               size="sm"
               onClick={() => void handleRun()}

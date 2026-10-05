@@ -93,11 +93,11 @@ export function RunPanel({
                     ? 'border-foreground/40 bg-accent text-foreground'
                     : 'border-border bg-muted text-muted-foreground hover:border-foreground/30 hover:text-foreground',
                 )}
-                aria-label={`Run ${shortId(run.id, 6)} — ${run.status}`}
+                aria-label={`Run ${shortId(run.id, 10)} — ${run.status}`}
                 aria-pressed={selectedRun?.id === run.id}
               >
                 <StatusDot status={run.status} className="h-1.5 w-1.5" />
-                {shortId(run.id, 6)}
+                {shortId(run.id, 10)}
                 {run.versionNumber != null && <VersionChip versionNumber={run.versionNumber} className="h-3.5 px-1 text-[9px]" title={`Executed pipeline version v${run.versionNumber}`} />}
                 <span className="text-muted-foreground/80">{format(parseISO(run.startedAt), 'HH:mm:ss')}</span>
               </button>
@@ -137,7 +137,7 @@ export function RunPanel({
                 : rowsQuery.data ? (
                   <>
                     <div className="flex items-center justify-between gap-2 text-xs">
-                      <span>{rowsQuery.data.total.toLocaleString()} rows · {rowsQuery.data.columns.length} columns · v{versionNumber}</span>
+                      <span>{cleanupQuery.data?.datasetName ?? 'Output'} · {rowsQuery.data.total.toLocaleString()} rows · {rowsQuery.data.columns.length} columns · v{versionNumber}</span>
                       <Link className="text-primary hover:underline" href={`/datasets/${datasetId}?version=${versionNumber}`}>Open dataset</Link>
                     </div>
                     <div className="foundry-scroll min-h-0 flex-1 overflow-auto rounded border border-border">
