@@ -118,6 +118,9 @@ export default function ConnectorsPage() {
         <span className="text-xs text-muted-foreground">
           every ingestion lands as a versioned dataset in the catalog
         </span>
+        <Button asChild variant="outline" size="sm" className="ml-auto h-8 text-xs">
+          <Link href="/data-sources">Find data sources</Link>
+        </Button>
       </div>
 
       {/* Connector cards */}

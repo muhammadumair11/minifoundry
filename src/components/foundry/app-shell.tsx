@@ -15,6 +15,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Compass,
+  Database,
   Eye,
   FolderKanban,
   GitBranch,
@@ -86,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/projects', label: 'Projects', icon: FolderKanban },
       { href: '/connectors', label: 'Connectors', icon: Plug },
+      { href: '/data-sources', label: 'Data sources', icon: Database },
       { href: '/datasets', label: 'Datasets', icon: Boxes },
       { href: '/transforms', label: 'Transforms', icon: SquareCode },
     ],
