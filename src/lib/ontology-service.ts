@@ -50,7 +50,10 @@ export interface LinkTypeWithType {
   displayName: string
   cardinality: string
   fkProperty: string | null
+  fkSide?: string | null
   linkDatasetId: string | null
+  fromKeyColumn?: string | null
+  toKeyColumn?: string | null
   fromTypeId: string
   toTypeId: string
   fromType?: ObjectTypeCore | null
@@ -88,7 +91,7 @@ export interface LinkEntry {
   toTypeColor: string
   /** R14.8: how many related instances exist in total (targets are a sample). */
   total: number
-  /** R14.8: fk column (one-to-many) so "view all" can deep-link a filtered list. */
+  /** FK column on the linked type, when the linked type holds the foreign key. */
   fkProperty: string | null
   targets: LinkTarget[]
 }
@@ -142,7 +145,7 @@ export const OBJECT_TYPE_INCLUDE = {
   properties: { orderBy: { id: 'asc' as const } },
   outgoingLinks: {
     orderBy: { apiName: 'asc' as const },
-    include: { toType: { select: { id: true, apiName: true, displayName: true } } },
+    include: { toType: { select: { id: true, apiName: true, displayName: true } }, linkDataset: { select: { name: true } } },
   },
   incomingLinks: {
     orderBy: { apiName: 'asc' as const },
@@ -193,6 +196,12 @@ export function serializeObjectType(ot: ObjectTypeFull) {
       toTypeApiName: l.toType.apiName,
       toTypeDisplayName: l.toType.displayName,
       cardinality: l.cardinality,
+      fkProperty: l.fkProperty,
+      fkSide: l.fkSide,
+      linkDatasetId: l.linkDatasetId,
+      linkDatasetName: l.linkDataset?.name ?? null,
+      fromKeyColumn: l.fromKeyColumn,
+      toKeyColumn: l.toKeyColumn,
     })),
     linksIn: ot.incomingLinks.map((l) => ({
       id: l.id,
@@ -454,6 +463,13 @@ function titlePropertyOf(type: ObjectTypeCore | null | undefined): string | null
   return type.properties?.find((p) => p.isTitle)?.apiName ?? type.primaryKey ?? null
 }
 
+function foreignKeySide(link: LinkTypeWithType): 'from' | 'to' {
+  // Older one-to-many links have no fkSide value.
+  return link.fkSide === 'from' || link.fkSide === 'to'
+    ? link.fkSide
+    : link.cardinality === 'many-to-one' ? 'from' : 'to'
+}
+
 function toLinkEntry(
   link: LinkTypeWithType,
   other: ObjectTypeCore,
@@ -473,7 +489,9 @@ function toLinkEntry(
     toTypeIcon: other.icon ?? 'box',
     toTypeColor: other.color ?? 'emerald',
     total,
-    fkProperty: link.cardinality === 'one-to-many' ? link.fkProperty : null,
+    fkProperty: link.cardinality !== 'many-to-many' &&
+      foreignKeySide(link) !== (direction === 'outgoing' ? 'from' : 'to')
+      ? link.fkProperty : null,
     targets,
   }
 }
@@ -504,13 +522,13 @@ async function resolveLinkTargets(
   const otherPkColumn = other.primaryKey
   if (!otherPkColumn) return { targets: [], total: 0 }
 
-  // many-to-many: link dataset holds [fromPk, toPk] in its first two columns.
+  // many-to-many: use explicit mapping, falling back for links created before it existed.
   if (link.cardinality === 'many-to-many') {
     if (!link.linkDatasetId) return { targets: [], total: 0 }
     const snap = await loadLatestDataset(link.linkDatasetId)
     if (!snap) return { targets: [], total: 0 }
-    const firstCol = snap.snapshot.schema[0]?.name
-    const secondCol = snap.snapshot.schema[1]?.name
+    const firstCol = link.fromKeyColumn ?? snap.snapshot.schema[0]?.name
+    const secondCol = link.toKeyColumn ?? snap.snapshot.schema[1]?.name
     if (!firstCol || !secondCol) return { targets: [], total: 0 }
     // outgoing: this type is the FROM side (firstCol); incoming: secondCol.
     const ownCol = direction === 'outgoing' ? firstCol : secondCol
@@ -531,9 +549,8 @@ async function resolveLinkTargets(
     return { targets, total: otherPks.length }
   }
 
-  // one-to-many
-  if (direction === 'outgoing') {
-    // fk column lives on the TO type's dataset and holds FROM (this) pk values.
+  // The linked type holds the FK and may have multiple matching rows.
+  if (foreignKeySide(link) !== (direction === 'outgoing' ? 'from' : 'to')) {
     if (!other.sourceDatasetId || !link.fkProperty) return { targets: [], total: 0 }
     const snap = await loadLatestDataset(other.sourceDatasetId)
     if (!snap) return { targets: [], total: 0 }
@@ -547,8 +564,7 @@ async function resolveLinkTargets(
     return { targets: all.slice(0, SAMPLE_LINK_TARGETS), total: all.length }
   }
 
-  // incoming one-to-many: the fk column lives on THIS type's dataset and holds
-  // the OTHER (from) type's pk values — follow this row's fk to the other side.
+  // The viewed object holds the other type's primary key in its FK column.
   if (!viewedRow || !link.fkProperty) return { targets: [], total: 0 }
   const fkValue = viewedRow[link.fkProperty]
   if (fkValue === null || fkValue === undefined || fkValue === '') return { targets: [], total: 0 }

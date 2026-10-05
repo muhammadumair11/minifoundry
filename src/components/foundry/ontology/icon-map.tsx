@@ -145,7 +145,10 @@ export function getCardinalityClasses(cardinality: string | null | undefined): s
 }
 
 export function getCardinalityLabel(cardinality: string | null | undefined): string {
-  return cardinality === 'many-to-many' ? 'N—N' : '1—N'
+  if (cardinality === 'many-to-many') return 'N—N'
+  if (cardinality === 'many-to-one') return 'N—1'
+  if (cardinality === 'one-to-one') return '1—1'
+  return '1—N'
 }
 
 // ─── Action operations (create emerald / update amber / delete rose) ──

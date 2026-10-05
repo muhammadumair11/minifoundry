@@ -466,15 +466,6 @@ export default function ApplicationCanvasPage() {
                 <X className="h-3.5 w-3.5" aria-hidden />
                 Discard
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-muted-foreground hover:text-rose-600"
-                onClick={() => setDeleteOpen(true)}
-                title="Delete application"
-              >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              </Button>
             </>
           ) : (
             <Button
@@ -489,6 +480,9 @@ export default function ApplicationCanvasPage() {
               Edit
             </Button>
           )}
+          {canEdit && <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-rose-600" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-3.5 w-3.5" aria-hidden /> Delete application
+          </Button>}
         </div>
       </div>
 

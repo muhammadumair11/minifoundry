@@ -57,8 +57,10 @@ import type {
   OntologyListResponse,
   OutgoingLinkSummary,
   SeedOntologyResponse,
+  SessionResponse,
 } from '@/lib/foundry-types'
 import { NewObjectTypeDialog } from '@/components/foundry/ontology/new-object-type-dialog'
+import { LinkTypeEditor, type EditingLink } from '@/components/foundry/ontology/link-type-editor'
 import { ActionTypeEditor, type OntologyActionFull } from '@/components/foundry/ontology/action-type-editor'
 import {
   getCardinalityClasses,
@@ -224,6 +226,13 @@ export default function OntologyPage() {
   const [deletingAction, setDeletingAction] = useState<OntologyActionFull | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingAction, setEditingAction] = useState<OntologyActionFull | null>(null)
+  const [linkEditorOpen, setLinkEditorOpen] = useState(false)
+  const [editingLink, setEditingLink] = useState<EditingLink | null>(null)
+  const [deletingLink, setDeletingLink] = useState<EditingLink | null>(null)
+  const sessionQuery = useQuery<SessionResponse>({
+    queryKey: ['session'], queryFn: () => apiJson<SessionResponse>('/api/session'), staleTime: 30_000,
+  })
+  const canEdit = sessionQuery.data?.role === 'editor' || sessionQuery.data?.role === 'admin'
 
   const ontologyQuery = useQuery<OntologyListResponse>({
     queryKey: ['ontology'],
@@ -321,6 +330,17 @@ export default function OntologyPage() {
     },
   })
 
+  const deleteLinkMutation = useMutation({
+    mutationFn: (item: EditingLink) => apiJson<void>(`/api/ontology/links/${item.link.id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Link deleted')
+      void queryClient.invalidateQueries({ queryKey: ['ontology'] })
+      void queryClient.invalidateQueries({ queryKey: ['object'] })
+      setDeletingLink(null)
+    },
+    onError: (error: Error) => toast.error('Could not delete link', { description: error.message }),
+  })
+
   const loading = ontologyQuery.isLoading
 
   return (
@@ -408,6 +428,10 @@ export default function OntologyPage() {
               </span>
             )}
           </div>
+          {canEdit && <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs"
+            disabled={types.length < 1} onClick={() => { setEditingLink(null); setLinkEditorOpen(true) }}>
+            <Plus className="h-3.5 w-3.5" aria-hidden /> New link
+          </Button>}
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -418,8 +442,7 @@ export default function OntologyPage() {
             </div>
           ) : allLinks.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              No links yet — links connect object types (e.g. supplier → shipment via a foreign
-              key) and are created in the ontology backend.
+              No links yet. Create one to connect objects through a foreign key or relationship dataset.
             </div>
           ) : (
             <div className="foundry-scroll max-h-96 overflow-auto">
@@ -429,6 +452,7 @@ export default function OntologyPage() {
                     <TableHead className="h-9 px-4 text-xs text-muted-foreground">From → To</TableHead>
                     <TableHead className="h-9 px-3 text-xs text-muted-foreground">Cardinality</TableHead>
                     <TableHead className="h-9 px-3 text-xs text-muted-foreground">Link</TableHead>
+                    {canEdit && <TableHead className="h-9 w-12 px-2"><span className="sr-only">Actions</span></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -450,8 +474,19 @@ export default function OntologyPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                        {link.apiName}
+                        <span>{link.displayName}</span>
+                        <span className="block text-[10px]">{link.cardinality !== 'many-to-many'
+                          ? `via ${link.fkSide === 'from' || (link.fkSide == null && link.cardinality === 'many-to-one') ? from.displayName : link.toTypeDisplayName}.${link.fkProperty ?? 'foreign key'}`
+                          : `via ${link.linkDatasetName ?? 'relationship dataset'}${link.fromKeyColumn && link.toKeyColumn ? ` (${link.fromKeyColumn} → ${link.toKeyColumn})` : ''}`}</span>
                       </TableCell>
+                      {canEdit && <TableCell className="px-2 py-2">
+                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Manage ${link.displayName}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => { setEditingLink({ from, link }); setLinkEditorOpen(true) }}><Pencil className="mr-2 h-3.5 w-3.5" />Edit link</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onClick={() => setDeletingLink({ from, link })}><Trash2 className="mr-2 h-3.5 w-3.5" />Delete link</DropdownMenuItem>
+                          </DropdownMenuContent></DropdownMenu>
+                      </TableCell>}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -460,6 +495,16 @@ export default function OntologyPage() {
           )}
         </CardContent>
       </Card>
+
+      {linkEditorOpen && <LinkTypeEditor key={editingLink?.link.id ?? 'new'} open={linkEditorOpen} onOpenChange={setLinkEditorOpen} types={types} editing={editingLink} />}
+      <AlertDialog open={!!deletingLink} onOpenChange={(open) => { if (!open) setDeletingLink(null) }}>
+        <AlertDialogContent className="sm:max-w-sm"><AlertDialogHeader>
+          <AlertDialogTitle>Delete link?</AlertDialogTitle>
+          <AlertDialogDescription>Remove {deletingLink?.link.displayName} from both object types? The objects and datasets stay in place.</AlertDialogDescription>
+        </AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction disabled={deleteLinkMutation.isPending} onClick={() => deletingLink && deleteLinkMutation.mutate(deletingLink)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete link</AlertDialogAction>
+        </AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
 
       {/* d) Actions — with R14.6 write-back config + editor */}
       <Card className="mt-4 border-border bg-card">
@@ -727,7 +772,13 @@ export default function OntologyPage() {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         action={editingAction}
-        objectTypes={types.map((t) => ({ id: t.id, apiName: t.apiName, displayName: t.displayName }))}
+        objectTypes={types.map((t) => ({
+          id: t.id,
+          apiName: t.apiName,
+          displayName: t.displayName,
+          primaryKey: t.primaryKey,
+          sourceDatasetId: t.sourceDatasetId,
+        }))}
       />
 
       {/* Delete-action confirmation */}

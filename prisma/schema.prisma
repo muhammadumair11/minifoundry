@@ -367,13 +367,17 @@ model LinkType {
   fromType      ObjectType @relation("fromType", fields: [fromTypeId], references: [id], onDelete: Cascade)
   toTypeId      String
   toType        ObjectType @relation("toType", fields: [toTypeId], references: [id], onDelete: Cascade)
-  // one-to-many (fk on to-type dataset) | many-to-many (link dataset)
+  // one-to-one | one-to-many | many-to-one | many-to-many
   cardinality   String     @default("one-to-many")
-  // one-to-many: column in the TO type's backing dataset holding FROM type PK values
+  // Foreign key column on the side indicated by fkSide. Legacy null means "to".
   fkProperty    String?
+  fkSide        String?
   // many-to-many: dataset with two columns holding both PKs
   linkDatasetId String?
   linkDataset   Dataset?   @relation("linkDataset", fields: [linkDatasetId], references: [id])
+  // Explicit key columns for new links; existing links fall back to the first two columns.
+  fromKeyColumn String?
+  toKeyColumn   String?
   createdAt     DateTime   @default(now())
 
   @@unique([fromTypeId, apiName])

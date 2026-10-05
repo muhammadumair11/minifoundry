@@ -98,6 +98,18 @@ const createSchema = z.object({
   writeback: writebackSchema.nullish(),
 })
 
+/**
+ * Normalize parameter definitions before persisting: an EMPTY oneOf list is
+ * dropped (undefined) so run dialogs never render a dropdown with zero
+ * options, and blank entries are filtered out.
+ */
+function normalizeParameters<T extends { oneOf?: string[] }>(parameters: T[]): T[] {
+  return parameters.map((p) => {
+    const oneOf = (p.oneOf ?? []).map((o) => String(o)).filter((o) => o.trim() !== '')
+    return oneOf.length > 0 ? { ...p, oneOf } : { ...p, oneOf: undefined }
+  })
+}
+
 function slugify(name: string): string {
   return name
     .trim()
@@ -189,7 +201,7 @@ export async function POST(req: NextRequest) {
         objectTypeId: objectType.id,
         operation: input.operation,
         enabled: input.enabled ?? true,
-        parametersJson: JSON.stringify(input.parameters),
+        parametersJson: JSON.stringify(normalizeParameters(input.parameters)),
         targetDatasetId,
         writeMode,
         keyProperty,

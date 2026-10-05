@@ -3,11 +3,20 @@
 // R14.6 — ontology action-type editor. Create or edit an action type,
 // including the optional "Write-back" section: target dataset + write mode
 // (append / upsert by key) + key property. Used from the /ontology page.
+//
+// UX notes (action-flow rework):
+//  - parameter fields carry visible labels and column suggestions come from
+//    the EFFECTIVE target dataset (write-back target, else the object type's
+//    backing dataset), so mapsTo is never typed blind;
+//  - "suggest values" fills allowed values (oneOf) from distinct column values
+//    already present in that dataset, so run dialogs get real options;
+//  - empty allowed-value lists are omitted on save (an empty array used to be
+//    persisted and rendered as a dropdown with zero options).
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Database, Loader2, Plus, Trash2, Zap } from 'lucide-react'
+import { Database, KeyRound, Loader2, Plus, Sparkles, Trash2, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -31,7 +40,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { apiJson, apiSend } from '@/lib/foundry-api'
-import type { DatasetDetailResponse, DatasetsListResponse, OntologyListResponse } from '@/lib/foundry-types'
+import type { DatasetDetailResponse, DatasetsListResponse } from '@/lib/foundry-types'
 
 // ─── Local contract shapes (foundry-types.ts is frozen) ─────────────
 
@@ -77,6 +86,20 @@ interface ActionCreatedResponse {
   action: OntologyActionFull
 }
 
+/** Rows endpoint returns raw row records (masked per role). */
+interface DatasetRowsResponse {
+  rows: Record<string, unknown>[]
+  total: number
+}
+
+export interface EditorObjectType {
+  id: string
+  apiName: string
+  displayName: string
+  primaryKey?: string | null
+  sourceDatasetId?: string | null
+}
+
 interface ParamDraft {
   uid: number
   apiName: string
@@ -106,6 +129,13 @@ function draftFromParam(p: ActionParamDefLite): ParamDraft {
   }
 }
 
+function parseOneOf(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+}
+
 function slugify(name: string): string {
   return name
     .trim()
@@ -120,7 +150,7 @@ interface ActionTypeEditorProps {
   onOpenChange: (open: boolean) => void
   /** null → create mode. */
   action: OntologyActionFull | null
-  objectTypes: { id: string; apiName: string; displayName: string }[]
+  objectTypes: EditorObjectType[]
 }
 
 export function ActionTypeEditor({ open, onOpenChange, action, objectTypes }: ActionTypeEditorProps) {
@@ -149,7 +179,7 @@ function EditorForm({
   onClose,
 }: {
   action: OntologyActionFull | null
-  objectTypes: { id: string; apiName: string; displayName: string }[]
+  objectTypes: EditorObjectType[]
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -180,6 +210,16 @@ function EditorForm({
   const [wbTarget, setWbTarget] = useState(action?.writeback?.targetDatasetId ?? '')
   const [wbMode, setWbMode] = useState<'append' | 'upsert'>(action?.writeback?.writeMode ?? 'append')
   const [wbKey, setWbKey] = useState(action?.writeback?.keyProperty ?? '')
+  const [suggestingUid, setSuggestingUid] = useState<number | null>(null)
+
+  const selectedType = useMemo(
+    () => objectTypes.find((t) => t.id === objectTypeId) ?? null,
+    [objectTypes, objectTypeId],
+  )
+  // Effective target of the write: the write-back dataset when configured,
+  // otherwise the object type's backing dataset. Columns + value suggestions
+  // always describe THIS dataset.
+  const effectiveTargetId = wbTarget || selectedType?.sourceDatasetId || ''
 
   // Datasets catalog for the write-back target select.
   const datasetsQuery = useQuery<DatasetsListResponse>({
@@ -188,35 +228,106 @@ function EditorForm({
   })
   const datasets = useMemo(() => datasetsQuery.data?.datasets ?? [], [datasetsQuery.data])
 
-  // Schema columns of the chosen target (key property select + mapsTo hints).
+  // Schema columns of the effective target (mapsTo suggestions + validation).
   const targetSchemaQuery = useQuery<DatasetDetailResponse>({
-    queryKey: ['dataset', wbTarget],
-    queryFn: () => apiJson<DatasetDetailResponse>(`/api/datasets/${encodeURIComponent(wbTarget)}`),
-    enabled: !!wbTarget,
+    queryKey: ['dataset', effectiveTargetId],
+    queryFn: () => apiJson<DatasetDetailResponse>(`/api/datasets/${encodeURIComponent(effectiveTargetId)}`),
+    enabled: !!effectiveTargetId,
   })
   const targetSchema = targetSchemaQuery.data?.current?.schema
   const targetColumns = useMemo(() => (targetSchema ?? []).map((c) => c.name), [targetSchema])
+  const effectiveTargetName =
+    datasets.find((d) => d.id === effectiveTargetId)?.name ??
+    (effectiveTargetId === selectedType?.sourceDatasetId ? 'backing dataset' : 'target dataset')
 
   const setParam = (uid: number, patch: Partial<ParamDraft>) => {
     setParams((prev) => prev.map((p) => (p.uid === uid ? { ...p, ...patch } : p)))
+  }
+
+  /** Fill a parameter's allowed values from distinct values already in the data. */
+  const suggestValues = async (uid: number, column: string) => {
+    if (!effectiveTargetId || !column || suggestingUid !== null) return
+    setSuggestingUid(uid)
+    try {
+      const res = await apiJson<DatasetRowsResponse>(
+        `/api/datasets/${encodeURIComponent(effectiveTargetId)}/rows?pageSize=200`,
+      )
+      const seen: string[] = []
+      const set = new Set<string>()
+      for (const row of res.rows ?? []) {
+        const raw = row[column]
+        if (raw === null || raw === undefined || raw === '') continue
+        const text = typeof raw === 'string' ? raw : String(raw)
+        if (set.has(text)) continue
+        set.add(text)
+        seen.push(text)
+        if (seen.length >= 50) break
+      }
+      if (seen.length === 0) {
+        toast.info(`No values found in column '${column}' yet`, {
+          description: `Looked at the latest version of ${effectiveTargetName}.`,
+        })
+      } else {
+        setParam(uid, { oneOf: seen.join(', ') })
+        toast.success(`Suggested ${seen.length} allowed value${seen.length === 1 ? '' : 's'}`, {
+          description: `Distinct values of '${column}' in ${effectiveTargetName} — edit the list before saving.`,
+        })
+      }
+    } catch (err) {
+      toast.error('Could not read dataset values', {
+        description: err instanceof Error ? err.message : 'Unknown error.',
+      })
+    } finally {
+      setSuggestingUid(null)
+    }
+  }
+
+  /** Quick-add the object-key parameter pre-filled from the object type's pk. */
+  const addKeyParam = () => {
+    const pk = selectedType?.primaryKey
+    if (!pk) return
+    if (params.some((p) => p.isPk)) {
+      toast.info('A parameter is already marked as the object key')
+      return
+    }
+    const existing = params.find((p) => p.apiName.trim() === pk || p.mapsTo.trim() === pk)
+    if (existing) {
+      setParam(existing.uid, { isPk: true, required: true })
+      toast.success(`Marked '${existing.apiName || pk}' as the object key`)
+      return
+    }
+    setParams((prev) => [
+      ...prev,
+      {
+        uid: nextUid(),
+        apiName: pk,
+        displayName: pk,
+        dataType: 'string',
+        mapsTo: pk,
+        required: true,
+        isPk: true,
+        oneOf: '',
+      },
+    ])
   }
 
   const applyMutation = useMutation({
     mutationFn: async () => {
       const parameters = params
         .filter((p) => p.apiName.trim() !== '' || p.mapsTo.trim() !== '')
-        .map((p) => ({
-          apiName: p.apiName.trim(),
-          displayName: p.displayName.trim() || p.apiName.trim(),
-          dataType: p.dataType,
-          required: p.required,
-          mapsTo: p.mapsTo.trim(),
-          ...(p.isPk ? { isPk: true } : {}),
-          oneOf: p.oneOf
-            .split(',')
-            .map((s) => s.trim())
-            .filter((s) => s !== ''),
-        }))
+        .map((p) => {
+          const oneOf = parseOneOf(p.oneOf)
+          return {
+            apiName: p.apiName.trim(),
+            displayName: p.displayName.trim() || p.apiName.trim(),
+            dataType: p.dataType,
+            required: p.required,
+            mapsTo: p.mapsTo.trim(),
+            ...(p.isPk ? { isPk: true } : {}),
+            // Omit empty lists — an empty oneOf must never be persisted.
+            ...(oneOf.length > 0 ? { oneOf } : {}),
+          }
+        })
       const writeback = wbTarget
         ? {
             targetDatasetId: wbTarget,
@@ -293,10 +404,23 @@ function EditorForm({
       toast.error('Upsert write-back needs a key property')
       return
     }
+    // Client-side column check against the effective target (the server only
+    // validates write-back targets; this catches backing-dataset typos early).
+    if (targetColumns.length > 0) {
+      const bad = filled.find((p) => !targetColumns.includes(p.mapsTo.trim()))
+      if (bad) {
+        toast.error(`Parameter '${bad.apiName}' maps to '${bad.mapsTo}' which is not a column of ${effectiveTargetName}`, {
+          description: `Columns: ${targetColumns.join(', ')}`,
+        })
+        return
+      }
+    }
     applyMutation.mutate()
   }
 
   const inputCls = 'h-8 text-xs'
+  const pkColumn = selectedType?.primaryKey ?? null
+  const hasPkParam = params.some((p) => p.isPk)
 
   return (
     <form
@@ -353,6 +477,12 @@ function EditorForm({
               ))}
             </SelectContent>
           </Select>
+          {selectedType && (
+            <p className="font-mono text-[10px] text-muted-foreground/80">
+              pk {selectedType.primaryKey ?? '—'} · backing dataset{' '}
+              {selectedType.sourceDatasetId ? 'linked' : '—'}
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Operation</Label>
@@ -366,6 +496,11 @@ function EditorForm({
               <SelectItem value="delete" className="text-xs">delete</SelectItem>
             </SelectContent>
           </Select>
+          {(operation === 'update' || operation === 'delete') && !hasPkParam && (
+            <p className="text-[10px] text-amber-700 dark:text-amber-400">
+              needs a parameter marked “object key”
+            </p>
+          )}
         </div>
       </div>
 
@@ -393,96 +528,188 @@ function EditorForm({
 
       {/* Parameters */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <Label className="text-xs font-medium text-foreground">Parameters</Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2 text-[11px]"
-            onClick={() =>
-              setParams((prev) => [
-                ...prev,
-                { uid: nextUid(), apiName: '', displayName: '', dataType: 'string', mapsTo: '', required: true, isPk: false, oneOf: '' },
-              ])
-            }
-          >
-            <Plus className="h-3 w-3" aria-hidden />
-            Add parameter
-          </Button>
-        </div>
-        {params.map((p, i) => (
-          <div key={p.uid} className="space-y-2 rounded-md border border-border p-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Input
-                value={p.apiName}
-                onChange={(e) => setParam(p.uid, { apiName: e.target.value, displayName: p.displayName || e.target.value })}
-                placeholder="apiName"
-                aria-label={`Parameter ${i + 1} apiName`}
-                className={cn(inputCls, 'w-24 font-mono')}
-              />
-              <Input
-                value={p.displayName}
-                onChange={(e) => setParam(p.uid, { displayName: e.target.value })}
-                placeholder="Label"
-                aria-label={`Parameter ${i + 1} label`}
-                className={cn(inputCls, 'w-28')}
-              />
-              <Select value={p.dataType} onValueChange={(v) => setParam(p.uid, { dataType: v as ParamDraft['dataType'] })}>
-                <SelectTrigger className={cn('w-20', inputCls)} aria-label={`Parameter ${i + 1} data type`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="string" className="text-xs">string</SelectItem>
-                  <SelectItem value="number" className="text-xs">number</SelectItem>
-                  <SelectItem value="boolean" className="text-xs">boolean</SelectItem>
-                </SelectContent>
-              </Select>
-              <Input
-                value={p.mapsTo}
-                onChange={(e) => setParam(p.uid, { mapsTo: e.target.value })}
-                placeholder="column (mapsTo)"
-                aria-label={`Parameter ${i + 1} target column`}
-                list={wbTarget ? 'wb-target-columns' : undefined}
-                className={cn(inputCls, 'w-32 font-mono')}
-              />
+          <div className="flex items-center gap-1.5">
+            {pkColumn && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400"
-                onClick={() => setParams((prev) => prev.filter((q) => q.uid !== p.uid))}
-                aria-label={`Remove parameter ${i + 1}`}
+                className="h-7 gap-1 px-2 text-[11px]"
+                onClick={addKeyParam}
+                disabled={hasPkParam}
+                title={`Add a parameter pre-filled from the object key column '${pkColumn}'`}
               >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                <KeyRound className="h-3 w-3" aria-hidden />
+                Key param
               </Button>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Checkbox checked={p.required} onCheckedChange={(v) => setParam(p.uid, { required: v === true })} />
-                required
-              </label>
-              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Checkbox
-                  checked={p.isPk}
-                  onCheckedChange={(v) =>
-                    setParams((prev) => prev.map((q) => ({ ...q, isPk: q.uid === p.uid ? v === true : false })))
-                  }
-                />
-                object key (isPk)
-              </label>
-              <Input
-                value={p.oneOf}
-                onChange={(e) => setParam(p.uid, { oneOf: e.target.value })}
-                placeholder="allowed values, comma separated (optional)"
-                aria-label={`Parameter ${i + 1} allowed values`}
-                className={cn(inputCls, 'h-7 min-w-40 flex-1 text-[11px]')}
-              />
-            </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[11px]"
+              onClick={() =>
+                setParams((prev) => [
+                  ...prev,
+                  { uid: nextUid(), apiName: '', displayName: '', dataType: 'string', mapsTo: '', required: true, isPk: false, oneOf: '' },
+                ])
+              }
+            >
+              <Plus className="h-3 w-3" aria-hidden />
+              Add parameter
+            </Button>
           </div>
-        ))}
-        {wbTarget && targetColumns.length > 0 && (
-          <datalist id="wb-target-columns">
+        </div>
+        {targetColumns.length > 0 && (
+          <p className="font-mono text-[10px] text-muted-foreground/80">
+            columns of {effectiveTargetName}: {targetColumns.join(', ')}
+          </p>
+        )}
+        {params.map((p, i) => {
+          const looksLikePk =
+            !p.isPk && !!pkColumn && p.mapsTo.trim() === pkColumn && !hasPkParam
+          const unknownColumn =
+            targetColumns.length > 0 && p.mapsTo.trim() !== '' && !targetColumns.includes(p.mapsTo.trim())
+          return (
+            <div key={p.uid} className="space-y-2 rounded-md border border-border p-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-[1fr_1fr_88px_1fr_auto]">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                    apiName
+                  </Label>
+                  <Input
+                    value={p.apiName}
+                    onChange={(e) => setParam(p.uid, { apiName: e.target.value, displayName: p.displayName || e.target.value })}
+                    placeholder="order_id"
+                    aria-label={`Parameter ${i + 1} apiName`}
+                    className={cn(inputCls, 'font-mono')}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                    Label
+                  </Label>
+                  <Input
+                    value={p.displayName}
+                    onChange={(e) => setParam(p.uid, { displayName: e.target.value })}
+                    placeholder="Order Id"
+                    aria-label={`Parameter ${i + 1} label`}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                    Type
+                  </Label>
+                  <Select value={p.dataType} onValueChange={(v) => setParam(p.uid, { dataType: v as ParamDraft['dataType'] })}>
+                    <SelectTrigger className={cn('w-full', inputCls)} aria-label={`Parameter ${i + 1} data type`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="string" className="text-xs">string</SelectItem>
+                      <SelectItem value="number" className="text-xs">number</SelectItem>
+                      <SelectItem value="boolean" className="text-xs">boolean</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                    Column (mapsTo)
+                  </Label>
+                  <Input
+                    value={p.mapsTo}
+                    onChange={(e) => setParam(p.uid, { mapsTo: e.target.value })}
+                    placeholder="order_id"
+                    aria-label={`Parameter ${i + 1} target column`}
+                    list={targetColumns.length > 0 ? 'target-columns' : undefined}
+                    className={cn(inputCls, 'font-mono', unknownColumn && 'border-amber-500/60')}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400"
+                    onClick={() => setParams((prev) => prev.filter((q) => q.uid !== p.uid))}
+                    aria-label={`Remove parameter ${i + 1}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </Button>
+                </div>
+              </div>
+              {unknownColumn && (
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                  ‘{p.mapsTo.trim()}’ is not a column of {effectiveTargetName}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Checkbox checked={p.required} onCheckedChange={(v) => setParam(p.uid, { required: v === true })} />
+                  required
+                </label>
+                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Checkbox
+                    checked={p.isPk}
+                    onCheckedChange={(v) =>
+                      setParams((prev) => prev.map((q) => ({ ...q, isPk: q.uid === p.uid ? v === true : false })))
+                    }
+                  />
+                  object key (isPk)
+                </label>
+                {looksLikePk && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-sky-700 underline underline-offset-2 dark:text-sky-400"
+                    onClick={() =>
+                      setParams((prev) => prev.map((q) => ({ ...q, isPk: q.uid === p.uid ? true : false })))
+                    }
+                  >
+                    maps to the object key — mark as isPk
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                  Allowed values <span className="normal-case text-muted-foreground/70">(comma separated, optional)</span>
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={p.oneOf}
+                    onChange={(e) => setParam(p.uid, { oneOf: e.target.value })}
+                    placeholder="e.g. pending, completed, cancelled — leave empty for free text"
+                    aria-label={`Parameter ${i + 1} allowed values`}
+                    className={cn(inputCls, 'h-8 flex-1 text-[11px]')}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1 px-2 text-[11px]"
+                    disabled={!p.mapsTo.trim() || !effectiveTargetId || suggestingUid !== null}
+                    onClick={() => suggestValues(p.uid, p.mapsTo.trim())}
+                    title={`Fill with distinct values of '${p.mapsTo || '…'}' from ${effectiveTargetName}`}
+                  >
+                    {suggestingUid === p.uid ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    ) : (
+                      <Sparkles className="h-3 w-3" aria-hidden />
+                    )}
+                    Suggest
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground/80">
+                  With allowed values the run form shows a dropdown; empty means free text with
+                  suggestions from existing rows.
+                </p>
+              </div>
+            </div>
+          )
+        })}
+        {targetColumns.length > 0 && (
+          <datalist id="target-columns">
             {targetColumns.map((c) => (
               <option key={c} value={c} />
             ))}
@@ -574,7 +801,8 @@ function EditorForm({
           </p>
         ) : (
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Without a target, the action performs its operation on the object type&apos;s backing dataset.
+            Without a target, the action performs its operation on the object type&apos;s backing
+            dataset{selectedType?.sourceDatasetId ? ' (columns and suggestions above come from it)' : ''}.
           </p>
         )}
       </div>
