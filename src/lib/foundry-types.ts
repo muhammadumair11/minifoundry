@@ -191,6 +191,7 @@ export interface GraphEdge {
   id: string
   source: string
   target: string
+  targetHandle?: string | null
 }
 
 export interface PipelineGraph {
@@ -212,6 +213,8 @@ export interface RunSummary {
   status: string
   /** M3.1 (additive): pipeline version this run executed; null for pre-versioning runs. */
   versionNumber?: number | null
+  outputDatasetId?: string | null
+  outputVersionNumber?: number | null
   startedAt: string
   finishedAt: string | null
   logs?: RunLog[]

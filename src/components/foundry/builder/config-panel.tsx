@@ -17,11 +17,13 @@ import { CodeEditor } from '@/components/foundry/code-editor'
 import type {
   AggregateOp,
   AggregateOpSpec,
+  ColumnDef,
   DatasetSummary,
   GraphNodeData,
   NodeTypeName,
   SortSpec,
 } from '@/lib/foundry-types'
+import type { NodeSchema } from '@/lib/pipeline-schema'
 import type { AppNode } from './flow-node'
 import { NODE_META } from './node-meta'
 
@@ -84,8 +86,95 @@ function CommaListInput({
   )
 }
 
+function ColumnPicker({
+  id,
+  value,
+  columns,
+  onChange,
+  placeholder = 'Choose a column',
+}: {
+  id: string
+  value: string
+  columns: ColumnDef[] | null
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  return (
+    <>
+      <Input
+        id={id}
+        list={`${id}-options`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={inputCls}
+      />
+      <datalist id={`${id}-options`}>
+        {(columns ?? []).map((column) => <option key={column.name} value={column.name} />)}
+      </datalist>
+    </>
+  )
+}
+
+function ColumnChecklist({
+  id,
+  value,
+  columns,
+  onChange,
+  emptyHint,
+}: {
+  id: string
+  value: string[]
+  columns: ColumnDef[] | null
+  onChange: (value: string[]) => void
+  emptyHint: string
+}) {
+  const [search, setSearch] = useState('')
+  if (!columns) {
+    return <CommaListInput id={id} value={value} onChange={onChange} placeholder="Connect a source to choose columns" />
+  }
+  const visible = columns.filter((column) => column.name.toLowerCase().includes(search.toLowerCase()))
+  return (
+    <div className="grid gap-2">
+      <Input
+        id={id}
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search columns"
+        aria-label="Search columns"
+        className={inputCls}
+      />
+      <div className="flex gap-2 text-[11px]">
+        <button type="button" className="text-primary hover:underline" onClick={() => onChange(columns.map((column) => column.name))}>Select all</button>
+        <button type="button" className="text-muted-foreground hover:underline" onClick={() => onChange([])}>Clear</button>
+      </div>
+      <div className="foundry-scroll max-h-44 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+        {visible.map((column) => (
+          <label key={column.name} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
+            <input
+              type="checkbox"
+              checked={value.includes(column.name)}
+              onChange={(event) => onChange(event.target.checked
+                ? [...value, column.name]
+                : value.filter((name) => name !== column.name))}
+              className="accent-primary"
+            />
+            <span className="min-w-0 flex-1 truncate font-mono">{column.name}</span>
+            <span className="text-[10px] text-muted-foreground">{column.type}</span>
+          </label>
+        ))}
+        {visible.length === 0 && <p className="text-xs text-muted-foreground">No matching columns.</p>}
+      </div>
+      {value.length === 0 && <p className="text-[10px] text-muted-foreground">{emptyHint}</p>}
+    </div>
+  )
+}
+
 export function ConfigPanel({
   node,
+  selectedEdge,
+  onDeleteEdge,
+  schema,
   datasets,
   onPatchData,
   onDelete,
@@ -93,12 +182,27 @@ export function ConfigPanel({
   edgeCount,
 }: {
   node: AppNode | null
+  selectedEdge?: { id: string; source: string; target: string } | null
+  onDeleteEdge?: (id: string) => void
+  schema?: NodeSchema | null
   datasets: DatasetSummary[]
   onPatchData: (id: string, patch: Partial<GraphNodeData>) => void
   onDelete: (id: string) => void
   nodeCount: number
   edgeCount: number
 }) {
+  if (selectedEdge) {
+    return (
+      <div className="flex h-full flex-col gap-3 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Connection</p>
+        <p className="break-all font-mono text-xs">{selectedEdge.source} → {selectedEdge.target}</p>
+        <Button variant="outline" size="sm" className="gap-2 text-rose-600" onClick={() => onDeleteEdge?.(selectedEdge.id)}>
+          <Trash2 className="h-3.5 w-3.5" /> Remove connection
+        </Button>
+        <p className="text-xs text-muted-foreground">The connected nodes remain in the pipeline.</p>
+      </div>
+    )
+  }
   if (!node) {
     return (
       <div className="foundry-scroll flex h-full flex-col gap-3 overflow-y-auto p-4">
@@ -123,8 +227,7 @@ export function ConfigPanel({
             <li>Hit Save, then Run. Each run writes a new dataset version.</li>
           </ol>
           <p className="mt-2 text-muted-foreground/80">
-            Select a node on the canvas to edit its configuration. Press Backspace/Delete to remove
-            the selected node.
+            Select a node or connection to edit it. Press Backspace/Delete to remove the selection.
           </p>
         </div>
       </div>
@@ -134,6 +237,7 @@ export function ConfigPanel({
   const meta = NODE_META[(node.type as NodeTypeName) ?? 'select'] ?? NODE_META.select
   const d = node.data
   const patch = (p: Partial<GraphNodeData>) => onPatchData(node.id, p)
+  const inputColumns = schema?.inputs[0] ?? null
 
   return (
     <div className="foundry-scroll flex h-full flex-col gap-3 overflow-y-auto p-4">
@@ -153,6 +257,18 @@ export function ConfigPanel({
           Delete
         </Button>
       </div>
+
+      {node.type !== 'source' && (
+        <div className="rounded-md border border-border bg-muted/40 p-2 text-[11px] text-muted-foreground">
+          <p className="font-medium text-foreground">Incoming columns</p>
+          {schema?.inputs.some((columns) => columns !== null)
+            ? schema.inputs.map((columns, index) => (
+                <p key={index} className="mt-1 break-words font-mono">{schema.inputs.length > 1 ? `Input ${index + 1}: ` : ''}{columns?.map((column) => column.name).join(', ') || 'No columns'}</p>
+              ))
+            : <p className="mt-1">Connect a source to see its columns.</p>}
+          {schema?.missing.length ? <p className="mt-2 text-rose-600">Missing: {schema.missing.join(', ')}</p> : null}
+        </div>
+      )}
 
       {/* ── source ── */}
       {node.type === 'source' && (
@@ -188,12 +304,12 @@ export function ConfigPanel({
       {node.type === 'filter' && (
         <>
           <Field label="Column" htmlFor="cfg-filter-col" hint="Column to compare on.">
-            <Input
+            <ColumnPicker
               id="cfg-filter-col"
               value={d.column ?? ''}
-              onChange={(e) => patch({ column: e.target.value })}
+              columns={inputColumns}
+              onChange={(column) => patch({ column })}
               placeholder="status"
-              className={inputCls}
             />
           </Field>
           <Field label="Operator" hint="contains is case-insensitive.">
@@ -224,13 +340,24 @@ export function ConfigPanel({
             </Select>
           </Field>
           <Field label="Value" htmlFor="cfg-filter-val" hint="Numbers compare numerically; otherwise string compare.">
-            <Input
-              id="cfg-filter-val"
-              value={d.value ?? ''}
-              onChange={(e) => patch({ value: e.target.value })}
-              placeholder="delivered"
-              className={inputCls}
-            />
+            {inputColumns?.find((column) => column.name === d.column)?.type === 'boolean' ? (
+              <Select value={d.value ?? ''} onValueChange={(value) => patch({ value })}>
+                <SelectTrigger id="cfg-filter-val" className={inputCls}><SelectValue placeholder="Choose true or false" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">true</SelectItem>
+                  <SelectItem value="false">false</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="cfg-filter-val"
+                type={inputColumns?.find((column) => column.name === d.column)?.type === 'number' ? 'number' : 'text'}
+                value={d.value ?? ''}
+                onChange={(e) => patch({ value: e.target.value })}
+                placeholder="delivered"
+                className={inputCls}
+              />
+            )}
           </Field>
         </>
       )}
@@ -262,6 +389,20 @@ export function ConfigPanel({
               className="h-[96px] shrink-0 rounded-md border border-border"
             />
           </Field>
+          {inputColumns && inputColumns.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {inputColumns.slice(0, 12).map((column) => (
+                <button
+                  key={column.name}
+                  type="button"
+                  className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-accent"
+                  onClick={() => patch({ expression: `${d.expression ?? ''}${d.expression ? ' ' : ''}row[${JSON.stringify(column.name)}]` })}
+                >
+                  + {column.name}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -270,13 +411,14 @@ export function ConfigPanel({
         <Field
           label="Columns to keep"
           htmlFor="cfg-select-cols"
-          hint="Comma-separated, order preserved."
+          hint="Choose the columns to include. Selection order is preserved."
         >
-          <CommaListInput
+          <ColumnChecklist
             id="cfg-select-cols"
             value={d.columns ?? []}
+            columns={inputColumns}
             onChange={(columns) => patch({ columns })}
-            placeholder="id, sku, quantity"
+            emptyHint="Select at least one column."
           />
         </Field>
       )}
@@ -287,16 +429,16 @@ export function ConfigPanel({
           <p className="text-[11px] font-medium text-muted-foreground">Column mappings (old → new)</p>
           {Object.entries(d.mapping ?? {}).map(([oldName, newName], i) => (
             <div key={i} className="flex items-center gap-1.5">
-              <Input
+              <ColumnPicker
+                id={`cfg-rename-old-${i}`}
                 value={oldName}
-                aria-label="Old column name"
-                onChange={(e) => {
+                columns={inputColumns}
+                onChange={(value) => {
                   const entries = Object.entries(d.mapping ?? {}).map(([k, v], j) =>
-                    j === i ? [e.target.value, v] : [k, v],
+                    j === i ? [value, v] : [k, v],
                   )
                   patch({ mapping: Object.fromEntries(entries) })
                 }}
-                className={cn(inputCls, 'w-[42%]')}
                 placeholder="old"
               />
               <span className="shrink-0 text-muted-foreground" aria-hidden>
@@ -359,22 +501,22 @@ export function ConfigPanel({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Left key" htmlFor="cfg-join-left" hint="Column on in-0 (upper handle).">
-            <Input
+          <Field label="Left key" htmlFor="cfg-join-left" hint="Column on input 1 (upper handle).">
+            <ColumnPicker
               id="cfg-join-left"
               value={d.leftKey ?? ''}
-              onChange={(e) => patch({ leftKey: e.target.value })}
+              columns={schema?.inputs[0] ?? null}
+              onChange={(leftKey) => patch({ leftKey })}
               placeholder="supplierId"
-              className={inputCls}
             />
           </Field>
-          <Field label="Right key" htmlFor="cfg-join-right" hint="Column on in-1 (lower handle).">
-            <Input
+          <Field label="Right key" htmlFor="cfg-join-right" hint="Column on input 2 (lower handle).">
+            <ColumnPicker
               id="cfg-join-right"
               value={d.rightKey ?? ''}
-              onChange={(e) => patch({ rightKey: e.target.value })}
+              columns={schema?.inputs[1] ?? null}
+              onChange={(rightKey) => patch({ rightKey })}
               placeholder="id"
-              className={inputCls}
             />
           </Field>
         </>
@@ -383,12 +525,13 @@ export function ConfigPanel({
       {/* ── aggregate ── */}
       {node.type === 'aggregate' && (
         <>
-          <Field label="Group by" htmlFor="cfg-agg-group" hint="Comma-separated keys. Empty = single global row.">
-            <CommaListInput
+          <Field label="Group by" htmlFor="cfg-agg-group" hint="Empty = single global row.">
+            <ColumnChecklist
               id="cfg-agg-group"
               value={d.groupBy ?? []}
+              columns={inputColumns}
               onChange={(groupBy) => patch({ groupBy })}
-              placeholder="warehouseId, category"
+              emptyHint="No grouping columns: one global row."
             />
           </Field>
           <div className="grid gap-1.5">
@@ -426,16 +569,16 @@ export function ConfigPanel({
                   </Button>
                 </div>
                 <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                  <Input
+                  <ColumnPicker
+                    id={`cfg-agg-col-${i}`}
                     value={spec.column ?? ''}
-                    aria-label={`Aggregation ${i + 1} column`}
-                    onChange={(e) => {
+                    columns={inputColumns}
+                    onChange={(column) => {
                       const ops = [...(d.ops ?? [])]
-                      ops[i] = { ...ops[i], column: e.target.value }
+                      ops[i] = { ...ops[i], column }
                       patch({ ops })
                     }}
                     placeholder="column"
-                    className={cn(inputCls, 'h-7')}
                   />
                   <Input
                     value={spec.alias ?? ''}
@@ -469,16 +612,16 @@ export function ConfigPanel({
           <p className="text-[11px] font-medium text-muted-foreground">Sort keys (applied in order)</p>
           {(d.by ?? []).map((spec: SortSpec, i) => (
             <div key={i} className="flex items-center gap-1.5">
-              <Input
+              <ColumnPicker
+                id={`cfg-sort-col-${i}`}
                 value={spec.column}
-                aria-label={`Sort column ${i + 1}`}
-                onChange={(e) => {
+                columns={inputColumns}
+                onChange={(column) => {
                   const by = [...(d.by ?? [])]
-                  by[i] = { ...by[i], column: e.target.value }
+                  by[i] = { ...by[i], column }
                   patch({ by })
                 }}
                 placeholder="column"
-                className={cn(inputCls, 'flex-1')}
               />
               <Select
                 value={spec.dir}
@@ -529,11 +672,12 @@ export function ConfigPanel({
           htmlFor="cfg-dedupe-keys"
           hint="Optional. Empty = dedupe on the full row."
         >
-          <CommaListInput
+          <ColumnChecklist
             id="cfg-dedupe-keys"
             value={d.keys ?? []}
+            columns={inputColumns}
             onChange={(keys) => patch({ keys })}
-            placeholder="sku, warehouseId"
+            emptyHint="No keys: use the full row."
           />
         </Field>
       )}
@@ -553,6 +697,7 @@ export function ConfigPanel({
             id="cfg-limit-n"
             type="number"
             min={0}
+            step={1}
             value={d.n ?? ''}
             onChange={(e) =>
               patch({ n: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })
@@ -571,11 +716,13 @@ export function ConfigPanel({
         >
           <Input
             id="cfg-output-name"
+            list="cfg-output-datasets"
             value={d.name ?? ''}
             onChange={(e) => patch({ name: e.target.value })}
             placeholder="Active Shipments"
             className={inputCls}
           />
+          <datalist id="cfg-output-datasets">{datasets.map((dataset) => <option key={dataset.id} value={dataset.name} />)}</datalist>
         </Field>
       )}
     </div>

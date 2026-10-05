@@ -51,7 +51,9 @@ import { VersionsControl } from '@/components/foundry/builder/versions-panel'
 import { PipelineAutomation } from '@/components/foundry/pipeline-automation-card'
 import { defaultNodeData, NODE_META } from '@/components/foundry/builder/node-meta'
 import { formatDuration, shortId } from '@/lib/foundry-types'
+import { inferPipelineSchemas } from '@/lib/pipeline-schema'
 import type {
+  ColumnDef,
   DatasetSummary,
   DatasetsListResponse,
   GraphNodeData,
@@ -109,7 +111,7 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
 function canonicalGraph(nodes: AppNode[], edges: AppEdge[]) {
   return {
     nodes: nodes.map((n) => ({ id: n.id, type: n.type, data: n.data, position: n.position })),
-    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, ...(e.targetHandle ? { targetHandle: e.targetHandle } : {}) })),
   }
 }
 
@@ -121,7 +123,7 @@ function canonicalGraphFromApi(graph: PipelineGraph | null | undefined) {
       data: n.data ?? {},
       position: n.position ?? { x: 0, y: 0 },
     })),
-    edges: (graph?.edges ?? []).map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    edges: (graph?.edges ?? []).map((e) => ({ id: e.id, source: e.source, target: e.target, ...(e.targetHandle ? { targetHandle: e.targetHandle } : {}) })),
   }
 }
 
@@ -150,6 +152,32 @@ function Builder() {
   const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<AppEdge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const sourceDatasetIds = useMemo(() => [...new Set(nodes
+    .filter((node) => node.type === 'source' && node.data.datasetId)
+    .map((node) => node.data.datasetId as string))].sort(), [nodes])
+  const sourceSchemasQuery = useQuery({
+    queryKey: ['pipeline-source-schemas', ...sourceDatasetIds],
+    queryFn: async () => {
+      const entries = await Promise.all(sourceDatasetIds.map(async (datasetId) => {
+        const detail = await apiJson<{
+          dataset: { qualityGate: boolean; publishedVersion: number | null }
+          current: { versionNumber: number; schema: ColumnDef[] } | null
+        }>(`/api/datasets/${datasetId}`)
+        const published = detail.dataset.qualityGate ? detail.dataset.publishedVersion : null
+        if (published && published !== detail.current?.versionNumber) {
+          const rows = await apiJson<{ columns: ColumnDef[] }>(`/api/datasets/${datasetId}/rows?version=${published}&pageSize=1`)
+          return [datasetId, rows.columns] as const
+        }
+        return [datasetId, detail.current?.schema ?? []] as const
+      }))
+      return new Map<string, ColumnDef[]>(entries)
+    },
+    enabled: sourceDatasetIds.length > 0,
+  })
+  const schemas = useMemo(() => inferPipelineSchemas(
+    canonicalGraph(nodes, edges), sourceSchemasQuery.data ?? new Map(),
+  ), [nodes, edges, sourceSchemasQuery.data])
   const [nameInput, setNameInput] = useState('')
   const [runPanelOpen, setRunPanelOpen] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
@@ -185,6 +213,7 @@ function Builder() {
       queryClient.invalidateQueries({ queryKey: ['runs'] }),
       queryClient.invalidateQueries({ queryKey: ['health'] }),
       queryClient.invalidateQueries({ queryKey: ['pipeline-versions', id] }),
+      queryClient.invalidateQueries({ queryKey: ['pipeline-source-schemas'] }),
     ])
     if (job.lastRunId) {
       setSelectedRunId(job.lastRunId)
@@ -219,6 +248,7 @@ function Builder() {
           id: e.id,
           source: e.source,
           target: e.target,
+          targetHandle: e.targetHandle,
           animated: true,
           style: { ...EDGE_STYLE },
         })),
@@ -258,11 +288,15 @@ function Builder() {
     [setEdges],
   )
 
-  const onSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
+  const onSelectionChange = useCallback(({ nodes: selected, edges: selectedEdges }: OnSelectionChangeParams) => {
     setSelectedNodeId(selected[0]?.id ?? null)
+    setSelectedEdgeId(selectedEdges[0]?.id ?? null)
   }, [])
 
-  const onPaneClick = useCallback(() => setSelectedNodeId(null), [])
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null)
+    setSelectedEdgeId(null)
+  }, [])
 
   const addNode = useCallback(
     (type: NodeTypeName) => {
@@ -274,6 +308,7 @@ function Builder() {
       }
       setNodes((nds) => [...nds, newNode])
       setSelectedNodeId(newNode.id)
+      setSelectedEdgeId(null)
       toast.info(`${NODE_META[type].label} node added`, {
         description: NODE_META[type].hint,
       })
@@ -300,10 +335,23 @@ function Builder() {
     [setNodes, setEdges],
   )
 
+  const deleteEdgeById = useCallback((edgeId: string) => {
+    setEdges((current) => current.filter((edge) => edge.id !== edgeId))
+    setSelectedEdgeId(null)
+    toast.info('Connection removed')
+  }, [setEdges])
+
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId) ?? null,
     [nodes, selectedNodeId],
   )
+  const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId) ?? null
+  const visibleEdges = useMemo(() => edges.map((edge) => ({
+    ...edge,
+    style: edge.id === selectedEdgeId
+      ? { stroke: 'var(--primary)', strokeWidth: 2.5 }
+      : EDGE_STYLE,
+  })), [edges, selectedEdgeId])
 
   // M3.1: canvas differs from the last loaded/saved graph?
   const isDirty = useMemo(() => {
@@ -328,6 +376,19 @@ function Builder() {
         description: `Found ${outputs.length} output node${outputs.length === 1 ? '' : 's'}.`,
       })
       return false
+    }
+    return true
+  }
+
+  const validateColumns = (): boolean => {
+    for (const node of nodes) {
+      const missing = schemas.get(node.id)?.missing ?? []
+      if (missing.length > 0) {
+        setSelectedNodeId(node.id)
+        setSelectedEdgeId(null)
+        toast.error(`Missing columns in ${node.type}`, { description: missing.join(', ') })
+        return false
+      }
     }
     return true
   }
@@ -422,6 +483,13 @@ function Builder() {
   }, [id, nameInput, pipelineQuery.data, queryClient])
 
   const handleRun = useCallback(async () => {
+    if (sourceDatasetIds.length > 0 && (sourceSchemasQuery.isPending || sourceSchemasQuery.isError)) {
+      toast.error('Source columns are not ready', {
+        description: sourceSchemasQuery.isError ? 'Check that the source datasets still exist.' : 'Wait for the source schemas to load.',
+      })
+      return
+    }
+    if (!validateColumns()) return
     if (isDirty) {
       const saved = await savePipeline({ silent: true })
       if (!saved) return
@@ -437,7 +505,7 @@ function Builder() {
         description: err instanceof Error ? err.message : 'Unknown error',
       })
     }
-  }, [id, savePipeline, isDirty])
+  }, [id, savePipeline, isDirty, schemas, nodes, sourceDatasetIds.length, sourceSchemasQuery.isPending, sourceSchemasQuery.isError])
 
   if (pipelineQuery.isLoading) {
     return (
@@ -590,11 +658,15 @@ function Builder() {
             <div className="relative min-w-0 flex-1 overflow-hidden">
               <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={visibleEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onSelectionChange={onSelectionChange}
+                onEdgeClick={(_, edge) => {
+                  setSelectedEdgeId(edge.id)
+                  setSelectedNodeId(null)
+                }}
                 onPaneClick={onPaneClick}
                 nodeTypes={nodeTypes}
                 colorMode={isDark ? 'dark' : 'light'}
@@ -618,6 +690,9 @@ function Builder() {
             <aside className="hidden w-80 shrink-0 overflow-hidden border-l border-border bg-muted/30 lg:block">
               <ConfigPanel
                 node={selectedNode}
+                selectedEdge={selectedEdge}
+                onDeleteEdge={deleteEdgeById}
+                schema={selectedNode ? schemas.get(selectedNode.id) : null}
                 datasets={datasets}
                 onPatchData={updateNodeData}
                 onDelete={deleteNodeById}
@@ -628,10 +703,13 @@ function Builder() {
           </div>
 
           {/* Mobile config panel */}
-          {selectedNode && (
+          {(selectedNode || selectedEdge) && (
             <div className="h-0 flex-1 overflow-hidden border-t border-border bg-muted/30 lg:hidden">
               <ConfigPanel
                 node={selectedNode}
+                selectedEdge={selectedEdge}
+                onDeleteEdge={deleteEdgeById}
+                schema={selectedNode ? schemas.get(selectedNode.id) : null}
                 datasets={datasets}
                 onPatchData={updateNodeData}
                 onDelete={deleteNodeById}

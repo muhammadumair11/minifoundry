@@ -150,7 +150,11 @@ export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
 
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
+  const searchParams = useSearchParams()
+  const linkedVersion = Number(searchParams.get('version'))
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(
+    Number.isInteger(linkedVersion) && linkedVersion > 0 ? linkedVersion : null,
+  )
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
   const searchQuery = useDebouncedValue(searchInput, 400)
@@ -159,7 +163,6 @@ export default function DatasetDetailPage() {
   // the ?branch= query param via shallow history.replaceState (no navigation).
   // URL param is the source of truth on first render; switches set a local
   // override so no effect/extra render pass is needed.
-  const searchParams = useSearchParams()
   const urlBranch = searchParams.get('branch')
   const [branchOverride, setBranchOverride] = useState<string | null>(null)
   const branch = branchOverride ?? urlBranch ?? 'main'
@@ -171,6 +174,7 @@ export default function DatasetDetailPage() {
       const url = new URL(window.location.href)
       if (next === 'main') url.searchParams.delete('branch')
       else url.searchParams.set('branch', next)
+      url.searchParams.delete('version')
       window.history.replaceState(null, '', url.toString())
     } catch {
       /* ignore */
@@ -444,6 +448,9 @@ export default function DatasetDetailPage() {
             onValueChange={(v) => {
               setSelectedVersion(Number(v))
               setPage(1)
+              const url = new URL(window.location.href)
+              url.searchParams.set('version', v)
+              window.history.replaceState(null, '', url.toString())
             }}
           >
             <SelectTrigger

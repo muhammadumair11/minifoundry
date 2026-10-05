@@ -27,6 +27,7 @@ export interface GraphEdge {
   id: string
   source: string
   target: string
+  targetHandle?: string | null
 }
 
 export interface PipelineGraph {
@@ -487,6 +488,7 @@ async function executeGraph(
 
     const inputs = graph.edges
       .filter((e) => e.target === node.id)
+      .sort((a, b) => Number(a.targetHandle === 'in-1') - Number(b.targetHandle === 'in-1'))
       .map((e) => {
         const rows = outputs.get(e.source)
         if (!rows) {
@@ -534,6 +536,7 @@ function parseGraph(graphJson: string): PipelineGraph {
       id: typeof e.id === 'string' ? e.id : `edge-${i}`,
       source: e.source,
       target: e.target,
+      targetHandle: typeof e.targetHandle === 'string' ? e.targetHandle : undefined,
     }))
   return { nodes, edges }
 }
@@ -650,6 +653,7 @@ function keyOf(v: unknown): string {
 
 function numericEquals(a: unknown, b: unknown): boolean {
   if (a === b) return true
+  if (typeof a === 'boolean' && (b === 'true' || b === 'false')) return a === (b === 'true')
   const x = toNumber(a)
   const y = toNumber(b)
   if (!Number.isNaN(x) && !Number.isNaN(y)) return x === y
