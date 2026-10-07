@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::fanout::service_admin_actor;
-use crate::state::{audit_local, serialize_acl, AuditOptions, AppState, AclRow, ACL_COLS};
+use crate::state::{audit_local, serialize_acl, AclRow, AppState, AuditOptions, ACL_COLS};
 
 const RESOURCE_TYPES: [&str; 3] = ["dataset", "pipeline", "dashboard"];
 const LEVELS: [&str; 3] = ["viewer", "editor", "owner"];
@@ -159,11 +159,12 @@ pub async fn revoke_acl(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let acl: Option<AclRow> =
-        sqlx::query_as(&format!("SELECT {ACL_COLS} FROM resource_acls WHERE id = $1"))
-            .bind(&acl_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let acl: Option<AclRow> = sqlx::query_as(&format!(
+        "SELECT {ACL_COLS} FROM resource_acls WHERE id = $1"
+    ))
+    .bind(&acl_id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(acl) = acl else {
         return Err(ApiError::not_found(format!(
             "ACL grant '{acl_id}' not found"
@@ -205,7 +206,8 @@ pub async fn check_acl(
         return Ok(json_ok(serde_json::json!({ "level": level })));
     }
 
-    let acl_level = stored_level(&state, &resource_type, &resource_id, actor.email.as_deref()).await;
+    let acl_level =
+        stored_level(&state, &resource_type, &resource_id, actor.email.as_deref()).await;
     let level = effective_level(&actor.role, actor.email.as_deref(), acl_level.as_deref());
     Ok(json_ok(serde_json::json!({ "level": level })))
 }
@@ -281,17 +283,29 @@ mod tests {
     fn effective_level_matches_legacy() {
         // admin bypasses to owner regardless of rows
         assert_eq!(effective_level("admin", None, None), "owner");
-        assert_eq!(effective_level("admin", Some("a@b.c"), Some("viewer")), "owner");
+        assert_eq!(
+            effective_level("admin", Some("a@b.c"), Some("viewer")),
+            "owner"
+        );
         // editor baseline
         assert_eq!(effective_level("editor", None, None), "editor");
         // NOTE: legacy effectiveResourceLevel returns the BASELINE for editor
         // without consulting rows (rows can only matter below editor).
-        assert_eq!(effective_level("editor", Some("a@b.c"), Some("owner")), "editor");
+        assert_eq!(
+            effective_level("editor", Some("a@b.c"), Some("owner")),
+            "editor"
+        );
         // viewer / anonymous: row elevates, absence → viewer
         assert_eq!(effective_level("viewer", None, None), "viewer");
         assert_eq!(effective_level("viewer", Some("a@b.c"), None), "viewer");
-        assert_eq!(effective_level("viewer", Some("a@b.c"), Some("owner")), "owner");
-        assert_eq!(effective_level("anonymous", Some("a@b.c"), Some("editor")), "editor");
+        assert_eq!(
+            effective_level("viewer", Some("a@b.c"), Some("owner")),
+            "owner"
+        );
+        assert_eq!(
+            effective_level("anonymous", Some("a@b.c"), Some("editor")),
+            "editor"
+        );
     }
 
     #[test]

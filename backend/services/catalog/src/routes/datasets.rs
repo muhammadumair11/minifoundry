@@ -25,11 +25,7 @@ use std::collections::HashMap;
 
 /// Shared list implementation (public GET /api/datasets and internal
 /// GET /internal/datasets use the SAME contract).
-pub async fn list_datasets(
-    pool: &PgPool,
-    limit: i64,
-    offset: i64,
-) -> Result<Value, sqlx::Error> {
+pub async fn list_datasets(pool: &PgPool, limit: i64, offset: i64) -> Result<Value, sqlx::Error> {
     let datasets: Vec<DatasetRow> = sqlx::query_as(&format!(
         "SELECT {DATASET_COLS} FROM datasets ORDER BY updated_at DESC, id ASC LIMIT $1 OFFSET $2"
     ))
@@ -70,8 +66,10 @@ pub async fn list_datasets(
         .fetch_all(pool)
         .await?
     };
-    let head_by_dataset: HashMap<String, VersionHeadRow> =
-        heads.into_iter().map(|h| (h.dataset_id.clone(), h)).collect();
+    let head_by_dataset: HashMap<String, VersionHeadRow> = heads
+        .into_iter()
+        .map(|h| (h.dataset_id.clone(), h))
+        .collect();
 
     let items: Vec<Value> = datasets
         .iter()
@@ -99,8 +97,22 @@ pub async fn get_datasets(
     query: axum::extract::Query<HashMap<String, String>>,
 ) -> ApiResult<Response> {
     let mut issues = Vec::new();
-    let limit = coerce_int_param(query.get("limit").map(|s| s.as_str()), "limit", 1, 200, 100, &mut issues);
-    let offset = coerce_int_param(query.get("offset").map(|s| s.as_str()), "offset", 0, 10_000, 0, &mut issues);
+    let limit = coerce_int_param(
+        query.get("limit").map(|s| s.as_str()),
+        "limit",
+        1,
+        200,
+        100,
+        &mut issues,
+    );
+    let offset = coerce_int_param(
+        query.get("offset").map(|s| s.as_str()),
+        "offset",
+        0,
+        10_000,
+        0,
+        &mut issues,
+    );
     finish_query_issues(issues)?;
     let body = list_datasets(&state.db, limit, offset).await?;
     Ok(json_ok(body))
@@ -120,12 +132,13 @@ pub async fn load_detail(
     id: &str,
     branch_param: Option<&str>,
 ) -> Result<Value, DetailError> {
-    let dataset: Option<DatasetRow> =
-        sqlx::query_as(&format!("SELECT {DATASET_COLS} FROM datasets WHERE id = $1"))
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| DetailError::NotFound)?;
+    let dataset: Option<DatasetRow> = sqlx::query_as(&format!(
+        "SELECT {DATASET_COLS} FROM datasets WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| DetailError::NotFound)?;
     let Some(dataset) = dataset else {
         return Err(DetailError::NotFound);
     };
@@ -159,7 +172,9 @@ pub async fn load_detail(
                 return Err(DetailError::UnknownBranch(b.to_string()));
             };
             resolved_branch = Some(name);
-            head_idx = versions.iter().position(|v| v.version_number == head_version);
+            head_idx = versions
+                .iter()
+                .position(|v| v.version_number == head_version);
         }
     }
 
@@ -396,12 +411,10 @@ pub async fn delete_dataset(
         return Err(ApiError::not_found(format!("Dataset '{id}' not found")));
     };
 
-    sqlx::query(
-        "DELETE FROM lineage_edges WHERE from_dataset_id = $1 OR to_dataset_id = $1",
-    )
-    .bind(&id)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("DELETE FROM lineage_edges WHERE from_dataset_id = $1 OR to_dataset_id = $1")
+        .bind(&id)
+        .execute(&state.db)
+        .await?;
     sqlx::query("DELETE FROM datasets WHERE id = $1")
         .bind(&id)
         .execute(&state.db)
@@ -416,5 +429,7 @@ pub async fn delete_dataset(
     )
     .await;
 
-    Ok(json_ok(json!({ "ok": true, "deleted": dataset_id, "name": dataset_name })))
+    Ok(json_ok(
+        json!({ "ok": true, "deleted": dataset_id, "name": dataset_name }),
+    ))
 }

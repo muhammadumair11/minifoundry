@@ -34,7 +34,8 @@ pub async fn emit_version_created(state: &AppState, input: VersionCreatedInput) 
         _ => "auto",
     };
     if let Err(e) =
-        crate::quality::evaluate_rules(state, &input.dataset_id, input.version_number, trigger).await
+        crate::quality::evaluate_rules(state, &input.dataset_id, input.version_number, trigger)
+            .await
     {
         tracing::error!(error = %e.message, "quality auto-evaluation failed");
     }
@@ -50,12 +51,8 @@ pub async fn emit_version_created(state: &AppState, input: VersionCreatedInput) 
             cascade_parent_run_id: input.cascade_parent_run_id.clone(),
             cascade_depth: input.cascade_depth,
         };
-        mf_events::publish_json_quiet(
-            &state.nats,
-            mf_events::subject::VERSION_CREATED,
-            &event,
-        )
-        .await;
+        mf_events::publish_json_quiet(&state.nats, mf_events::subject::VERSION_CREATED, &event)
+            .await;
     }
 
     // 3) P4: notify dataset watchers about the new version.
@@ -76,18 +73,21 @@ async fn notify_watchers(state: &AppState, input: &VersionCreatedInput) -> Resul
     if watchers.is_empty() {
         return Ok(());
     }
-    let name: Option<(String,)> =
-        sqlx::query_as("SELECT name FROM datasets WHERE id = $1")
-            .bind(&input.dataset_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let name: Option<(String,)> = sqlx::query_as("SELECT name FROM datasets WHERE id = $1")
+        .bind(&input.dataset_id)
+        .fetch_optional(&state.db)
+        .await?;
     let Some((name,)) = name else { return Ok(()) };
 
     let label = input.source.as_deref().unwrap_or("a write");
     for (user_email,) in &watchers {
         let is_sim = user_email.starts_with("sim:");
         let event = NotifyEvent {
-            user_email: if is_sim { None } else { Some(user_email.clone()) },
+            user_email: if is_sim {
+                None
+            } else {
+                Some(user_email.clone())
+            },
             notif_type: "system".to_string(),
             title: format!("{name} \u{2014} new version v{}", input.version_number),
             body: Some(format!("A new version was written by {label}.")),

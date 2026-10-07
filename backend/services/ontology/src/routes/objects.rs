@@ -12,7 +12,10 @@ use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 use crate::dbx;
 use crate::filters::parse_filters_param;
 use crate::jsonutil::query_param;
-use crate::objects::{columns_json, find_row_by_pk, get_object_rows, load_link_sides, title_column_of, GetObjectRowsOpts};
+use crate::objects::{
+    columns_json, find_row_by_pk, get_object_rows, load_link_sides, title_column_of,
+    GetObjectRowsOpts,
+};
 use crate::routes::effective_role;
 use crate::state::AppState;
 use crate::values::js_num;
@@ -115,7 +118,9 @@ pub async fn list_objects(
     let actor = actor_from_headers(&headers);
     let role = effective_role(&actor);
 
-    let type_param = query_param(&uri, "type").map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let type_param = query_param(&uri, "type")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let Some(type_param) = type_param else {
         return Err(ApiError::bad_request(
             "Missing required query parameter 'type'",
@@ -183,7 +188,11 @@ pub async fn get_object(
 
     // P2: consumer read — catalog resolves the gated head; rows arrive masked
     // at the caller's role and the envelope carries the masked column list.
-    let Some(payload) = state.catalog.head_rows_full(&dataset_id, Some(&role)).await? else {
+    let Some(payload) = state
+        .catalog
+        .head_rows_full(&dataset_id, Some(&role))
+        .await?
+    else {
         return Err(ApiError::not_found(format!(
             "Dataset for object type '{}' has no versions",
             core.api_name

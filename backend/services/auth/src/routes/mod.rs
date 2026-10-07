@@ -101,7 +101,9 @@ pub fn str_min1_issue(m: &Map<String, Value>, field: &str) -> Result<(), String>
             "{field}: Invalid input: expected string, received {}",
             kind_of(other)
         )),
-        None => Err(format!("{field}: Invalid input: expected string, received undefined")),
+        None => Err(format!(
+            "{field}: Invalid input: expected string, received undefined"
+        )),
     }
 }
 

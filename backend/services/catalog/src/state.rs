@@ -60,8 +60,7 @@ pub struct ProjectRow {
     pub updated_at: DateTime<Utc>,
 }
 
-pub const CONNECTOR_COLS: &str =
-    "id, name, type AS ctype, config, created_at, updated_at";
+pub const CONNECTOR_COLS: &str = "id, name, type AS ctype, config, created_at, updated_at";
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct ConnectorRow {
@@ -107,7 +106,8 @@ pub struct DatasetRow {
     pub updated_at: DateTime<Utc>,
 }
 
-pub const VERSION_COLS: &str = "id, dataset_id, version_number, schema_json, row_count, data_json, \
+pub const VERSION_COLS: &str =
+    "id, dataset_id, version_number, schema_json, row_count, data_json, \
      created_by, output_job_id, created_at, branch, parent_version, lifecycle, quality_state, \
      quality_summary_json";
 
@@ -219,8 +219,7 @@ pub struct CommentRow {
     pub created_at: DateTime<Utc>,
 }
 
-pub const LINEAGE_EDGE_COLS: &str =
-    "id, from_dataset_id, to_dataset_id, pipeline_id, created_at";
+pub const LINEAGE_EDGE_COLS: &str = "id, from_dataset_id, to_dataset_id, pipeline_id, created_at";
 
 #[derive(Debug, sqlx::FromRow)]
 #[allow(dead_code)] // decoded for row fidelity

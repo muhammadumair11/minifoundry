@@ -67,7 +67,10 @@ impl Default for JsLimits {
         // isolated-runner.ts: DEFAULT_TIMEOUT_MS = 10_000, DEFAULT_MAX_ROWS = 50_000.
         // (Callers may pass tighter limits — check the legacy call sites in
         // transform-engine.ts when porting.)
-        Self { timeout: Duration::from_secs(10), max_rows: 50_000 }
+        Self {
+            timeout: Duration::from_secs(10),
+            max_rows: 50_000,
+        }
     }
 }
 
@@ -100,12 +103,16 @@ pub trait JsEngine: Send + Sync {
     /// exact validateRunnerRows messages). Error Displays are the exact legacy
     /// strings (`script error: ...`, `JavaScript execution timed out after
     /// <ms>ms`, validation messages) so callers can persist `e.to_string()`.
-    fn eval_workbook(&self, source: &str, input: &Value, limits: &JsLimits) -> Result<Vec<Value>, JsError>;
+    fn eval_workbook(
+        &self,
+        source: &str,
+        input: &Value,
+        limits: &JsLimits,
+    ) -> Result<Vec<Value>, JsError>;
 }
 
 /// The dangerous-identifier guard from execDerive (regex ported 1:1).
-pub const DERIVE_DANGEROUS_PATTERN: &str =
-    r"\b(process|require|import|eval|Function|globalThis|global|window|document|fetch|child_process|fs|net|http)\b";
+pub const DERIVE_DANGEROUS_PATTERN: &str = r"\b(process|require|import|eval|Function|globalThis|global|window|document|fetch|child_process|fs|net|http)\b";
 
 /// True when a derive expression must be rejected before evaluation.
 pub fn derive_expression_is_dangerous(expression: &str) -> bool {

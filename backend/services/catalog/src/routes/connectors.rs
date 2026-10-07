@@ -19,8 +19,7 @@ use crate::state::{
     CONNECTOR_COLS, INGESTION_COLS,
 };
 use crate::validate::{
-    as_object, opt_object, opt_str, parse_body, parse_body_or_empty, req_enum,
-    req_str_min1_custom,
+    as_object, opt_object, opt_str, parse_body, parse_body_or_empty, req_enum, req_str_min1_custom,
 };
 use crate::version_events::{emit_version_created, VersionCreatedInput};
 
@@ -88,7 +87,9 @@ pub async fn create_connector(
     )
     .await;
 
-    Ok(json_created(json!({ "connector": serialize_connector(&connector, None) })))
+    Ok(json_created(
+        json!({ "connector": serialize_connector(&connector, None) }),
+    ))
 }
 
 /// PATCH /api/connectors/{id} — editor+; shallow config merge keeps unknown
@@ -102,11 +103,12 @@ pub async fn update_connector(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "editor")?;
 
-    let existing: Option<ConnectorRow> =
-        sqlx::query_as(&format!("SELECT {CONNECTOR_COLS} FROM connectors WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let existing: Option<ConnectorRow> = sqlx::query_as(&format!(
+        "SELECT {CONNECTOR_COLS} FROM connectors WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(existing) = existing else {
         return Err(ApiError::not_found(format!("Connector '{id}' not found")));
     };
@@ -162,7 +164,9 @@ pub async fn update_connector(
     )
     .await;
 
-    Ok(json_ok(json!({ "connector": serialize_connector(&connector, None) })))
+    Ok(json_ok(
+        json!({ "connector": serialize_connector(&connector, None) }),
+    ))
 }
 
 fn config_patch_was_present(m: &Map<String, Value>) -> bool {
@@ -202,7 +206,9 @@ pub async fn delete_connector(
     )
     .await;
 
-    Ok(json_ok(json!({ "ok": true, "deleted": existing_id, "name": existing_name })))
+    Ok(json_ok(
+        json!({ "ok": true, "deleted": existing_id, "name": existing_name }),
+    ))
 }
 
 /// POST /api/connectors/test-config — editor+; dry-run fetch WITHOUT a saved
@@ -217,7 +223,11 @@ pub async fn test_config(
 
     let v = match parse_body(&body) {
         Ok(v) => v,
-        Err(_) => return Ok(json_ok(json!({ "ok": false, "error": "Request body must be valid JSON" }))),
+        Err(_) => {
+            return Ok(json_ok(
+                json!({ "ok": false, "error": "Request body must be valid JSON" }),
+            ))
+        }
     };
     let m = match as_object(v) {
         Ok(m) => m,
@@ -273,11 +283,12 @@ pub async fn ingest_connector(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "editor")?;
 
-    let connector: Option<ConnectorRow> =
-        sqlx::query_as(&format!("SELECT {CONNECTOR_COLS} FROM connectors WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let connector: Option<ConnectorRow> = sqlx::query_as(&format!(
+        "SELECT {CONNECTOR_COLS} FROM connectors WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(connector) = connector else {
         return Err(ApiError::not_found(format!("Connector '{id}' not found")));
     };
@@ -313,7 +324,11 @@ pub async fn ingest_connector(
             .map(|d| d.trim())
             .filter(|d| !d.is_empty())
             .map(|d| d.to_string());
-        RealIngestConfig { url, format: format.to_string(), data_path }
+        RealIngestConfig {
+            url,
+            format: format.to_string(),
+            data_path,
+        }
     } else {
         return Err(ApiError::bad_request(format!(
             "Real ingestion is only available for rest_url connectors (this one is '{}')",
@@ -328,9 +343,15 @@ pub async fn ingest_connector(
         .execute(&state.db)
         .await?;
 
-    let outcome =
-        run_connector_ingest(&state, &actor, &connector, &dataset_name, &ingestion_id, &ingest_config)
-            .await;
+    let outcome = run_connector_ingest(
+        &state,
+        &actor,
+        &connector,
+        &dataset_name,
+        &ingestion_id,
+        &ingest_config,
+    )
+    .await;
     match outcome {
         Ok(payload) => Ok(json_ok(payload)),
         Err(msg) => {

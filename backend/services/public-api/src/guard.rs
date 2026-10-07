@@ -252,9 +252,7 @@ where
     let (decision, log) = guard_plan(verify_state, rate_allowed);
     match decision {
         GuardDecision::Unauthorized => unauthorized(),
-        GuardDecision::UpstreamUnavailable => {
-            crate::fanout::upstream_unavailable().into_response()
-        }
+        GuardDecision::UpstreamUnavailable => crate::fanout::upstream_unavailable().into_response(),
         GuardDecision::RateLimited => {
             let t = token.expect("rate limited implies verified");
             if log {
@@ -356,11 +354,13 @@ async fn verify_token(state: &AppState, secret: &str) -> Result<TokenInfo, Guard
             };
             Ok(TokenInfo {
                 id: id.to_string(),
-                name: t.get("name")
+                name: t
+                    .get("name")
                     .and_then(|x| x.as_str())
                     .unwrap_or_default()
                     .to_string(),
-                prefix: t.get("prefix")
+                prefix: t
+                    .get("prefix")
                     .and_then(|x| x.as_str())
                     .unwrap_or_default()
                     .to_string(),
@@ -447,10 +447,7 @@ mod tests {
     fn bearer_extraction_matches_legacy_regex() {
         // exact + case-insensitive scheme + extra whitespace
         let h = headers_with(vec![("authorization", "Bearer mf_live_abc123")]);
-        assert_eq!(
-            extract_bearer_token(&h).as_deref(),
-            Some("mf_live_abc123")
-        );
+        assert_eq!(extract_bearer_token(&h).as_deref(), Some("mf_live_abc123"));
         let h = headers_with(vec![("authorization", "bearer   mf_live_x ")]);
         assert_eq!(extract_bearer_token(&h).as_deref(), Some("mf_live_x"));
         let h = headers_with(vec![("authorization", "BEARER\tmf_live_y")]);

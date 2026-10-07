@@ -99,14 +99,19 @@ pub async fn enqueue_pipeline_job(
     mf_events::publish_json_quiet(
         &state.nats,
         mf_events::subject::JOB_PIPELINE_RUN,
-        &JobWake { job_id: job.id.clone() },
+        &JobWake {
+            job_id: job.id.clone(),
+        },
     )
     .await;
 
     Ok(job)
 }
 
-pub async fn find_by_event_key(state: &AppState, event_key: &str) -> Result<Option<JobRow>, sqlx::Error> {
+pub async fn find_by_event_key(
+    state: &AppState,
+    event_key: &str,
+) -> Result<Option<JobRow>, sqlx::Error> {
     sqlx::query_as(&format!(
         "SELECT {JOB_COLS} FROM execution_jobs WHERE event_key = $1"
     ))
@@ -118,7 +123,10 @@ pub async fn find_by_event_key(state: &AppState, event_key: &str) -> Result<Opti
 /// Atomic claim (see the module header): one UPDATE ... RETURNING that leases
 /// the oldest claimable job — queued-and-due OR running-with-expired-lease —
 /// incrementing the attempt exactly like the legacy updateMany CAS.
-pub async fn claim_execution_job(state: &AppState, worker_id: &str) -> Result<Option<JobRow>, sqlx::Error> {
+pub async fn claim_execution_job(
+    state: &AppState,
+    worker_id: &str,
+) -> Result<Option<JobRow>, sqlx::Error> {
     sqlx::query_as(&format!(
         "UPDATE execution_jobs SET \
             status = 'running', \
@@ -142,7 +150,11 @@ pub async fn claim_execution_job(state: &AppState, worker_id: &str) -> Result<Op
 }
 
 /// Port of `heartbeatExecutionJob` — extend the lease while we still own it.
-pub async fn heartbeat_execution_job(state: &AppState, job_id: &str, worker_id: &str) -> Result<bool, sqlx::Error> {
+pub async fn heartbeat_execution_job(
+    state: &AppState,
+    job_id: &str,
+    worker_id: &str,
+) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE execution_jobs SET lease_until = now() + make_interval(secs => $3), updated_at = now() \
          WHERE id = $1 AND status = 'running' AND lease_owner = $2",
@@ -163,7 +175,8 @@ pub async fn process_execution_job(state: &AppState, job: JobRow, worker_id: &st
         let job_id = job.id.clone();
         let owner = worker_id.to_string();
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(HEARTBEAT_SECONDS));
+            let mut tick =
+                tokio::time::interval(tokio::time::Duration::from_secs(HEARTBEAT_SECONDS));
             tick.tick().await; // first tick fires immediately — skip it
             loop {
                 tick.tick().await;
@@ -193,7 +206,11 @@ enum JobOutcome {
     BusyRequeued,
 }
 
-async fn execute_job(state: &AppState, job: &JobRow, worker_id: &str) -> Result<JobOutcome, String> {
+async fn execute_job(
+    state: &AppState,
+    job: &JobRow,
+    worker_id: &str,
+) -> Result<JobOutcome, String> {
     // The pinned graph snapshot is the execution contract for this job.
     let version = versions::get_pipeline_version(state, &job.pipeline_id, job.version_number)
         .await
@@ -209,14 +226,21 @@ async fn execute_job(state: &AppState, job: &JobRow, worker_id: &str) -> Result<
             }
         }
     }
-    let replay_of_run_id = payload.get("replayOfRunId").and_then(|v| v.as_str()).map(String::from);
+    let replay_of_run_id = payload
+        .get("replayOfRunId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let cascade_depth = payload
         .get("cascadeDepth")
         .and_then(|v| v.as_i64())
         .unwrap_or(0)
         .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
 
-    let trigger = if job.attempt == 1 { job.trigger.clone() } else { "retry".to_string() };
+    let trigger = if job.attempt == 1 {
+        job.trigger.clone()
+    } else {
+        "retry".to_string()
+    };
     let run = engine::run_pipeline(
         state,
         &job.pipeline_id,
@@ -311,7 +335,9 @@ async fn settle_failure(state: &AppState, job: &JobRow, worker_id: &str, message
                 .fetch_optional(&state.db)
                 .await
                 .unwrap_or(None);
-        let label = pipeline_name.map(|(n,)| n).unwrap_or_else(|| job.pipeline_id.clone());
+        let label = pipeline_name
+            .map(|(n,)| n)
+            .unwrap_or_else(|| job.pipeline_id.clone());
         // Legacy body: `attempt <a>/<m>: <message.slice(0, 160)>`.
         let snippet: String = message.chars().take(160).collect();
         crate::audit::notify(
@@ -320,7 +346,10 @@ async fn settle_failure(state: &AppState, job: &JobRow, worker_id: &str, message
                 user_email: None,
                 notif_type: "run_failed".into(),
                 title: format!("Pipeline failed: {label}"),
-                body: Some(format!("attempt {}/{}: {snippet}", job.attempt, job.max_attempts)),
+                body: Some(format!(
+                    "attempt {}/{}: {snippet}",
+                    job.attempt, job.max_attempts
+                )),
                 resource_type: Some("pipeline".into()),
                 resource_id: Some(job.pipeline_id.clone()),
                 href: Some(format!("/pipelines/{}", job.pipeline_id)),
@@ -334,7 +363,10 @@ async fn settle_failure(state: &AppState, job: &JobRow, worker_id: &str, message
 
 /// Claim + process one job; returns whether a job was processed
 /// (port of `processNextExecutionJob`).
-pub async fn process_next_execution_job(state: &AppState, worker_id: &str) -> Result<bool, sqlx::Error> {
+pub async fn process_next_execution_job(
+    state: &AppState,
+    worker_id: &str,
+) -> Result<bool, sqlx::Error> {
     let Some(job) = claim_execution_job(state, worker_id).await? else {
         return Ok(false);
     };

@@ -5,7 +5,7 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
-use mf_web::{actor_from_headers, json_ok, json_created, require_role, ApiError, ApiResult};
+use mf_web::{actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult};
 use serde_json::json;
 
 use crate::audit::{audit, AuditOptions};
@@ -18,7 +18,11 @@ use crate::validate::{as_object, opt_str_nullish, parse_body, req_str_min1_custo
 /// the golden fixture shows for projects without pipelines).
 async fn pipelines_count_by_project(state: &AppState) -> std::collections::HashMap<String, i64> {
     let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    if let Ok(v) = state.orchestration.get_json::<serde_json::Value>("/internal/pipelines").await {
+    if let Ok(v) = state
+        .orchestration
+        .get_json::<serde_json::Value>("/internal/pipelines")
+        .await
+    {
         if let Some(list) = v.get("pipelines").and_then(|p| p.as_array()) {
             for p in list {
                 if let Some(pid) = p.get("projectId").and_then(|x| x.as_str()) {
@@ -30,12 +34,13 @@ async fn pipelines_count_by_project(state: &AppState) -> std::collections::HashM
     counts
 }
 
-async fn datasets_count_by_project(pool: &sqlx::PgPool) -> Result<std::collections::HashMap<String, i64>, sqlx::Error> {
-    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
-        "SELECT project_id, count(*) FROM datasets GROUP BY project_id",
-    )
-    .fetch_all(pool)
-    .await?;
+async fn datasets_count_by_project(
+    pool: &sqlx::PgPool,
+) -> Result<std::collections::HashMap<String, i64>, sqlx::Error> {
+    let rows: Vec<(Option<String>, i64)> =
+        sqlx::query_as("SELECT project_id, count(*) FROM datasets GROUP BY project_id")
+            .fetch_all(pool)
+            .await?;
     let mut out = std::collections::HashMap::new();
     for (pid, n) in rows {
         if let Some(pid) = pid {

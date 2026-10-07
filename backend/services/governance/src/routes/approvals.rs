@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use crate::fanout::{pass_through, FanOutError};
 use crate::state::{
-    audit_local, create_notification, serialize_approval, ApprovalRow, AppState, AuditOptions,
+    audit_local, create_notification, serialize_approval, AppState, ApprovalRow, AuditOptions,
     NotificationInput, APPROVAL_COLS,
 };
 
@@ -33,10 +33,7 @@ pub async fn list_approvals(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<Response> {
-    let status = params
-        .get("status")
-        .filter(|s| !s.is_empty())
-        .cloned();
+    let status = params.get("status").filter(|s| !s.is_empty()).cloned();
 
     let approvals: Vec<ApprovalRow> = sqlx::query_as(&format!(
         "SELECT {APPROVAL_COLS} FROM approval_requests \
@@ -51,7 +48,8 @@ pub async fn list_approvals(
     // (additive field; decided rows and publish_pipeline keep the raw shape).
     let mut targets: Vec<(String, Option<i32>)> = Vec::new();
     for a in &approvals {
-        if a.status == "pending" && a.kind == "publish_dataset"
+        if a.status == "pending"
+            && a.kind == "publish_dataset"
             && !targets.iter().any(|(id, _)| id == &a.target_id)
         {
             targets.push((a.target_id.clone(), a.version_number));
@@ -61,7 +59,9 @@ pub async fn list_approvals(
     for (id, version) in &targets {
         previews.insert(
             id.clone(),
-            gate_preview(&state, id, *version).await.unwrap_or(Value::Null),
+            gate_preview(&state, id, *version)
+                .await
+                .unwrap_or(Value::Null),
         );
     }
 
@@ -70,10 +70,7 @@ pub async fn list_approvals(
         .map(|a| {
             let mut v = serialize_approval(a);
             if a.status == "pending" && a.kind == "publish_dataset" {
-                v["publishPreview"] = previews
-                    .get(&a.target_id)
-                    .cloned()
-                    .unwrap_or(Value::Null);
+                v["publishPreview"] = previews.get(&a.target_id).cloned().unwrap_or(Value::Null);
             }
             v
         })
@@ -83,17 +80,18 @@ pub async fn list_approvals(
 }
 
 /// Port of the legacy `gatePreview()` — never fails (degrades to None).
-async fn gate_preview(state: &AppState, target_id: &str, version_number: Option<i32>) -> Option<Value> {
+async fn gate_preview(
+    state: &AppState,
+    target_id: &str,
+    version_number: Option<i32>,
+) -> Option<Value> {
     let detail = state
         .clients
         .catalog
         .get(&format!("/internal/datasets/{target_id}"))
         .await
         .ok()?;
-    let detail = detail
-        .get("dataset")
-        .cloned()
-        .unwrap_or(detail);
+    let detail = detail.get("dataset").cloned().unwrap_or(detail);
     let gate_on = detail.get("qualityGate").and_then(|v| v.as_bool())?;
     if !gate_on {
         return Some(serde_json::json!({
@@ -162,16 +160,20 @@ pub async fn create_approval(
 
     // Resolve the target's display name (dataset or pipeline).
     let detail = match kind {
-        "publish_dataset" => state
-            .clients
-            .catalog
-            .get(&format!("/internal/datasets/{target_id}"))
-            .await,
-        _ => state
-            .clients
-            .orchestration
-            .get(&format!("/internal/pipelines/{target_id}"))
-            .await,
+        "publish_dataset" => {
+            state
+                .clients
+                .catalog
+                .get(&format!("/internal/datasets/{target_id}"))
+                .await
+        }
+        _ => {
+            state
+                .clients
+                .orchestration
+                .get(&format!("/internal/pipelines/{target_id}"))
+                .await
+        }
     };
     let envelope = match detail {
         Ok(v) => v,
@@ -187,7 +189,10 @@ pub async fn create_approval(
         Err(e) => return Err(pass_through(e)),
     };
     let detail = payload_root(&envelope, &["dataset", "pipeline"]);
-    let target_name = detail.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+    let target_name = detail
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
     let Some(target_name) = target_name else {
         return Err(ApiError::not_found(format!(
             "Target '{target_id}' not found for kind '{kind}'"
@@ -408,7 +413,10 @@ pub async fn decide_approval(
         &actor,
         AuditOptions::new("approval.decide", "approval")
             .resource_id(Some(&id))
-            .resource_name(Some(&format!("{}: {}", approval.kind, approval.target_name)))
+            .resource_name(Some(&format!(
+                "{}: {}",
+                approval.kind, approval.target_name
+            )))
             .detail(Some(&format!(
                 "{decision} by {role}{}",
                 note.map(|n| format!(" — {n}")).unwrap_or_default()

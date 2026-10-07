@@ -64,7 +64,11 @@ impl CatalogClient {
 
     /// Full rows of a version. `version` is an exact number or `"head"`
     /// (gate-aware consumer resolution happens inside catalog).
-    pub async fn rows_all(&self, dataset_id: &str, version: &str) -> Result<SourceRows, InternalError> {
+    pub async fn rows_all(
+        &self,
+        dataset_id: &str,
+        version: &str,
+    ) -> Result<SourceRows, InternalError> {
         let path = format!(
             "/internal/datasets/{dataset_id}/versions/{version}/rows/all{}",
             self.rows_query()
@@ -106,13 +110,17 @@ impl CatalogClient {
         version_number: i64,
     ) -> Result<(), InternalError> {
         self.client
-            .delete(&format!("/internal/datasets/{dataset_id}/versions/{version_number}"))
+            .delete(&format!(
+                "/internal/datasets/{dataset_id}/versions/{version_number}"
+            ))
             .await
     }
 
     /// Remove a whole dataset (output cleanup, mode='dataset').
     pub async fn delete_dataset(&self, dataset_id: &str) -> Result<(), InternalError> {
-        self.client.delete(&format!("/internal/datasets/{dataset_id}")).await
+        self.client
+            .delete(&format!("/internal/datasets/{dataset_id}"))
+            .await
     }
 }
 
@@ -133,11 +141,15 @@ pub fn parse_rows_response(v: &Value) -> SourceRows {
             }
         }
     }
-    let version_number = v
-        .get("versionNumber")
-        .and_then(|x| x.as_i64())
-        .or_else(|| v.get("version").and_then(|ver| ver.get("versionNumber")).and_then(|x| x.as_i64()));
-    SourceRows { rows, version_number }
+    let version_number = v.get("versionNumber").and_then(|x| x.as_i64()).or_else(|| {
+        v.get("version")
+            .and_then(|ver| ver.get("versionNumber"))
+            .and_then(|x| x.as_i64())
+    });
+    SourceRows {
+        rows,
+        version_number,
+    }
 }
 
 /// Minimal percent-encoding for path segments (dataset names may contain
@@ -174,7 +186,8 @@ mod tests {
 
     #[test]
     fn rows_response_shapes() {
-        let wrapped = parse_rows_response(&json!({"rows": [{"a": 1}], "total": 1, "versionNumber": 4}));
+        let wrapped =
+            parse_rows_response(&json!({"rows": [{"a": 1}], "total": 1, "versionNumber": 4}));
         assert_eq!(wrapped.rows.len(), 1);
         assert_eq!(wrapped.version_number, Some(4));
 

@@ -58,14 +58,11 @@ pub async fn resolve_input_names(
 }
 
 /// Per-transform run counts (`_count.runs`).
-pub async fn run_counts(
-    state: &AppState,
-) -> Result<HashMap<String, i64>, sqlx::Error> {
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT transform_id, COUNT(*) FROM transform_runs GROUP BY transform_id",
-    )
-    .fetch_all(&state.db)
-    .await?;
+pub async fn run_counts(state: &AppState) -> Result<HashMap<String, i64>, sqlx::Error> {
+    let rows: Vec<(String, i64)> =
+        sqlx::query_as("SELECT transform_id, COUNT(*) FROM transform_runs GROUP BY transform_id")
+            .fetch_all(&state.db)
+            .await?;
     Ok(rows.into_iter().collect())
 }
 
@@ -79,7 +76,10 @@ pub async fn latest_runs(
     ))
     .fetch_all(&state.db)
     .await?;
-    Ok(rows.into_iter().map(|r| (r.transform_id.clone(), r)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.transform_id.clone(), r))
+        .collect())
 }
 
 /// Shared list serialization (public GET /api/transforms and the internal
@@ -87,10 +87,11 @@ pub async fn latest_runs(
 pub async fn serialized_transform_list(
     state: &AppState,
 ) -> Result<Vec<serde_json::Value>, sqlx::Error> {
-    let transforms: Vec<TransformRow> =
-        sqlx::query_as(&format!("SELECT {TRANSFORM_COLS} FROM transforms ORDER BY created_at ASC"))
-            .fetch_all(&state.db)
-            .await?;
+    let transforms: Vec<TransformRow> = sqlx::query_as(&format!(
+        "SELECT {TRANSFORM_COLS} FROM transforms ORDER BY created_at ASC"
+    ))
+    .fetch_all(&state.db)
+    .await?;
     let counts = run_counts(state).await?;
     let latest = latest_runs(state).await?;
     let names = resolve_input_names(state, &transforms).await;
@@ -180,15 +181,13 @@ pub async fn create_transform(
 }
 
 /// Fetch one transform or the exact legacy 404.
-pub async fn fetch_transform(
-    state: &AppState,
-    id: &str,
-) -> Result<TransformRow, ApiError> {
-    let row: Option<TransformRow> =
-        sqlx::query_as(&format!("SELECT {TRANSFORM_COLS} FROM transforms WHERE id = $1"))
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?;
+pub async fn fetch_transform(state: &AppState, id: &str) -> Result<TransformRow, ApiError> {
+    let row: Option<TransformRow> = sqlx::query_as(&format!(
+        "SELECT {TRANSFORM_COLS} FROM transforms WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
     row.ok_or_else(|| ApiError::not_found(format!("Transform '{id}' not found")))
 }
 
@@ -216,12 +215,11 @@ pub async fn detail_payload(
     let runs = fetch_runs(state, &transform.id, 10).await?;
     let names = resolve_input_names(state, std::slice::from_ref(transform)).await;
     // runsCount counts ALL runs, not just the fetched 10.
-    let total: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM transform_runs WHERE transform_id = $1",
-    )
-    .bind(&transform.id)
-    .fetch_one(&state.db)
-    .await?;
+    let total: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM transform_runs WHERE transform_id = $1")
+            .bind(&transform.id)
+            .fetch_one(&state.db)
+            .await?;
     let serialized_runs: Vec<serde_json::Value> =
         runs.iter().map(serialize_transform_run).collect();
     Ok(serde_json::json!({

@@ -13,10 +13,13 @@ use serde_json::{json, Value};
 
 use crate::audit::{self, AuditOptions};
 use crate::routes::{
-    as_object, opt_bool, opt_int_range, opt_string_min1, parse_body,
-    req_string_min1_custom, service_token_authorized, IntRange,
+    as_object, opt_bool, opt_int_range, opt_string_min1, parse_body, req_string_min1_custom,
+    service_token_authorized, IntRange,
 };
-use crate::state::{serialize_schedule, serialize_schedule_named, AppState, ScheduleNamedRow, ScheduleRow, SCHEDULE_COLS};
+use crate::state::{
+    serialize_schedule, serialize_schedule_named, AppState, ScheduleNamedRow, ScheduleRow,
+    SCHEDULE_COLS,
+};
 
 const INTERVAL_RANGE: IntRange = IntRange {
     min: 5,
@@ -73,7 +76,11 @@ pub async fn create_schedule(
         }
     };
     let name = collect(&mut issues, opt_string_min1(&m, "name"));
-    let interval = collect(&mut issues, opt_int_range(&m, "intervalMinutes", &INTERVAL_RANGE)).unwrap_or(60);
+    let interval = collect(
+        &mut issues,
+        opt_int_range(&m, "intervalMinutes", &INTERVAL_RANGE),
+    )
+    .unwrap_or(60);
     let enabled = collect(&mut issues, opt_bool(&m, "enabled")).unwrap_or(true);
     if !issues.is_empty() {
         return Err(ApiError::bad_request(issues.join("; ")));
@@ -86,7 +93,9 @@ pub async fn create_schedule(
             .fetch_optional(&state.db)
             .await?;
     let Some((_, pipeline_name)) = pipeline else {
-        return Err(ApiError::bad_request(format!("Pipeline '{pipeline_id}' not found")));
+        return Err(ApiError::bad_request(format!(
+            "Pipeline '{pipeline_id}' not found"
+        )));
     };
 
     let name = name.unwrap_or_else(|| format!("{pipeline_name} schedule"));
@@ -129,7 +138,9 @@ pub async fn create_schedule(
     )
     .await;
 
-    Ok(json_created(json!({ "schedule": serialize_schedule(&schedule, Some(&pipeline_name)) })))
+    Ok(json_created(
+        json!({ "schedule": serialize_schedule(&schedule, Some(&pipeline_name)) }),
+    ))
 }
 
 /// PATCH /api/schedules/{id} — update; when intervalMinutes or enabled is
@@ -158,7 +169,10 @@ pub async fn update_schedule(
     let mut issues = Vec::new();
     let name = collect(&mut issues, opt_string_min1(&m, "name"));
     let enabled = collect(&mut issues, opt_bool(&m, "enabled"));
-    let interval = collect(&mut issues, opt_int_range(&m, "intervalMinutes", &INTERVAL_RANGE));
+    let interval = collect(
+        &mut issues,
+        opt_int_range(&m, "intervalMinutes", &INTERVAL_RANGE),
+    );
     if !issues.is_empty() {
         return Err(ApiError::bad_request(issues.join("; ")));
     }
@@ -262,7 +276,10 @@ pub async fn delete_schedule(
 /// GET /api/schedules/due — enabled schedules whose nextRunAt has passed.
 /// Auth: viewer+ role OR the service token (legacy isServiceAuthorized);
 /// demo mode passes anonymous callers through the gateway's admin fallback.
-pub async fn due_schedules(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn due_schedules(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     let service_authorized = actor.is_service || service_token_authorized(&state, &headers);
     if !service_authorized {

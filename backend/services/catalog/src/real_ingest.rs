@@ -60,7 +60,10 @@ pub async fn fetch_connector_rows(config: &RealIngestConfig) -> Result<RealInges
             rows.len()
         ));
     }
-    let columns = rows.first().map(|r| r.keys().cloned().collect()).unwrap_or_default();
+    let columns = rows
+        .first()
+        .map(|r| r.keys().cloned().collect())
+        .unwrap_or_default();
     Ok(RealIngestResult {
         format: config.format.clone(),
         row_count: rows.len(),
@@ -124,28 +127,18 @@ pub fn json_to_rows(text: &str, data_path: Option<&str>) -> Result<Vec<Row>, Str
                     match cursor.get(segment) {
                         Some(next) => cursor = next.clone(),
                         None => {
-                            return Err(format!(
-                                "dataPath '{path}' not found in the JSON payload"
-                            ))
+                            return Err(format!("dataPath '{path}' not found in the JSON payload"))
                         }
                     }
                 }
                 match cursor {
                     Value::Array(a) => a,
-                    _ => {
-                        return Err(format!(
-                            "dataPath '{path}' does not point to an array"
-                        ))
-                    }
+                    _ => return Err(format!("dataPath '{path}' does not point to an array")),
                 }
             } else {
                 match crate::parsers::find_array_value(obj) {
                     Some(a) => a,
-                    None => {
-                        return Err(
-                            "JSON payload contains no array of objects".to_string()
-                        )
-                    }
+                    None => return Err("JSON payload contains no array of objects".to_string()),
                 }
             }
         }
@@ -300,7 +293,10 @@ mod tests {
         let rows = json_to_rows(text, Some("payload.items")).unwrap();
         assert_eq!(rows.len(), 2);
         let err = json_to_rows(text, Some("payload.missing")).unwrap_err();
-        assert_eq!(err, "dataPath 'payload.missing' not found in the JSON payload");
+        assert_eq!(
+            err,
+            "dataPath 'payload.missing' not found in the JSON payload"
+        );
         let err = json_to_rows(text, Some("meta")).unwrap_err();
         assert_eq!(err, "dataPath 'meta' does not point to an array");
     }
@@ -308,7 +304,11 @@ mod tests {
     #[test]
     fn json_to_rows_errors() {
         assert_eq!(
-            json_to_rows("{oops", None).unwrap_err().split(':').next().unwrap(),
+            json_to_rows("{oops", None)
+                .unwrap_err()
+                .split(':')
+                .next()
+                .unwrap(),
             "Invalid JSON"
         );
         assert_eq!(
@@ -321,7 +321,9 @@ mod tests {
 
     #[test]
     fn csv_typed_columns() {
-        let raw = crate::csvutil::parse_csv_rows("id,name,score,flag,zip,mixed\n1,a,4.5,true,012,X\n2,b,6,FALSE,345,Y\n");
+        let raw = crate::csvutil::parse_csv_rows(
+            "id,name,score,flag,zip,mixed\n1,a,4.5,true,012,X\n2,b,6,FALSE,345,Y\n",
+        );
         let rows = csv_rows_with_types(raw);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["id"], json!(1)); // uniformly numeric → number

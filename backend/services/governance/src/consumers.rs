@@ -13,7 +13,12 @@ type Handle =
 
 /// Shared consumer loop skeleton (setup retry + message pump). The inner
 /// message is cloned into the handler so handler futures stay 'static.
-async fn run_consumer(state: AppState, durable: &'static str, subject: &'static str, handle: Box<Handle>) {
+async fn run_consumer(
+    state: AppState,
+    durable: &'static str,
+    subject: &'static str,
+    handle: Box<Handle>,
+) {
     let js = mf_events::jetstream(&state.nats);
     loop {
         let consumer =

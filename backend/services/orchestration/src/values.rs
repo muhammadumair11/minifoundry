@@ -74,7 +74,11 @@ fn js_number_to_string(f: f64) -> String {
         return "NaN".into();
     }
     if f.is_infinite() {
-        return if f > 0.0 { "Infinity".into() } else { "-Infinity".into() };
+        return if f > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
     }
     if f == f.trunc() && f.abs() < 1e21 {
         return format!("{}", f as i64);
@@ -161,7 +165,9 @@ pub fn json_number(f: f64) -> Value {
     if f == f.trunc() && f.abs() < 2.0f64.powi(53) {
         return Value::from(f as i64);
     }
-    serde_json::Number::from_f64(f).map(Value::Number).unwrap_or(Value::Null)
+    serde_json::Number::from_f64(f)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
 }
 
 /// Port of the engine's `stableRowKey()`: JSON.stringify of the row with keys

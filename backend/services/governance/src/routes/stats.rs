@@ -62,11 +62,7 @@ pub async fn stats(State(state): State<AppState>) -> ApiResult<Response> {
             let pipeline_name = r
                 .get("pipelineName")
                 .cloned()
-                .or_else(|| {
-                    r.get("pipeline")
-                        .and_then(|p| p.get("name"))
-                        .cloned()
-                })
+                .or_else(|| r.get("pipeline").and_then(|p| p.get("name")).cloned())
                 .unwrap_or(Value::Null);
             serde_json::json!({
                 "id": r.get("id").cloned().unwrap_or(Value::Null),
@@ -105,7 +101,11 @@ fn log_degrade(r: Result<Value, crate::fanout::FanOutError>, what: &str) -> Valu
 /// `currentVersion` and v1 `latestVersion` shapes).
 pub fn latest_row_count(d: &Value) -> i64 {
     for key in ["currentVersion", "latestVersion"] {
-        if let Some(n) = d.get(key).and_then(|v| v.get("rowCount")).and_then(|v| v.as_i64()) {
+        if let Some(n) = d
+            .get(key)
+            .and_then(|v| v.get("rowCount"))
+            .and_then(|v| v.as_i64())
+        {
             return n;
         }
     }

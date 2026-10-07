@@ -96,13 +96,21 @@ impl CatalogClient {
     /// shape plus flatter variants).
     fn parse_summary(v: &Value) -> Option<DatasetSummary> {
         let id = v.get("id")?.as_str()?.to_string();
-        let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+        let name = v
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
         let row_count = v
             .get("currentVersion")
             .and_then(|cv| cv.get("rowCount"))
             .and_then(|rc| rc.as_i64())
             .or_else(|| v.get("rowCount").and_then(|rc| rc.as_i64()));
-        Some(DatasetSummary { id, name, row_count })
+        Some(DatasetSummary {
+            id,
+            name,
+            row_count,
+        })
     }
 
     /// GET /internal/datasets — all dataset summaries.
@@ -128,9 +136,10 @@ impl CatalogClient {
     pub async fn get_dataset(&self, id: &str) -> Result<Option<DatasetSummary>, ApiError> {
         let path = format!("/internal/datasets/{}", pct(id));
         match self.inner.get_json::<Value>(&path).await {
-            Ok(v) => Ok(Self::parse_summary(&v).or_else(|| {
-                v.get("dataset").and_then(Self::parse_summary)
-            })),
+            Ok(v) => {
+                Ok(Self::parse_summary(&v)
+                    .or_else(|| v.get("dataset").and_then(Self::parse_summary)))
+            }
             Err(e) if is_not_found(&e) => Ok(None),
             Err(e) => Err(to_api_error(e)),
         }
@@ -140,9 +149,10 @@ impl CatalogClient {
     pub async fn dataset_by_name(&self, name: &str) -> Result<Option<DatasetSummary>, ApiError> {
         let path = format!("/internal/datasets/by-name/{}", pct(name));
         match self.inner.get_json::<Value>(&path).await {
-            Ok(v) => Ok(Self::parse_summary(&v).or_else(|| {
-                v.get("dataset").and_then(Self::parse_summary)
-            })),
+            Ok(v) => {
+                Ok(Self::parse_summary(&v)
+                    .or_else(|| v.get("dataset").and_then(Self::parse_summary)))
+            }
             Err(e) if is_not_found(&e) => Ok(None),
             Err(e) => Err(to_api_error(e)),
         }
@@ -267,7 +277,13 @@ fn parse_rows_payload(v: &Value) -> RowsPayload {
                 .collect()
         })
         .unwrap_or_default();
-    RowsPayload { rows, total, version_number, schema, masked_columns }
+    RowsPayload {
+        rows,
+        total,
+        version_number,
+        schema,
+        masked_columns,
+    }
 }
 
 /// Tolerant version-meta parse: { versionNumber, schema | schemaJson, rowCount }.
@@ -294,16 +310,23 @@ fn parse_version_meta(v: &Value) -> VersionMeta {
             })
             .collect(),
         _ => match inner.get("schemaJson").and_then(|s| s.as_str()) {
-            Some(raw) => serde_json::from_str::<Vec<mf_types::SchemaColumn>>(raw).unwrap_or_default(),
+            Some(raw) => {
+                serde_json::from_str::<Vec<mf_types::SchemaColumn>>(raw).unwrap_or_default()
+            }
             None => vec![],
         },
     };
-    VersionMeta { version_number, schema, row_count }
+    VersionMeta {
+        version_number,
+        schema,
+        row_count,
+    }
 }
 
 /// Percent-encode one path/query segment (dataset ids/names/roles).
 fn pct(s: &str) -> String {
-    url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>()
+    url::form_urlencoded::byte_serialize(s.as_bytes())
+        .collect::<String>()
         .replace('+', "%20")
 }
 

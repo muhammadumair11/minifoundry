@@ -59,10 +59,15 @@ fn js_str_coerce(v: &Value) -> String {
 /// Validate + coerce request params against the parameter definitions.
 /// Err carries the EXACT legacy failure message (caller writes the failed
 /// ActionLog and maps it to 400).
-pub fn validate_params(defs: &[Value], params: &Map<String, Value>) -> Result<Vec<Provided>, String> {
+pub fn validate_params(
+    defs: &[Value],
+    params: &Map<String, Value>,
+) -> Result<Vec<Provided>, String> {
     let mut provided = Vec::new();
     for def in defs {
-        let Some(api_name) = def_str(def, "apiName") else { continue };
+        let Some(api_name) = def_str(def, "apiName") else {
+            continue;
+        };
         let data_type = def_str(def, "dataType").unwrap_or_else(|| "string".into());
         let required = def.get("required").and_then(|v| v.as_bool()) == Some(true);
         let maps_to = def_str(def, "mapsTo").unwrap_or_else(|| api_name.clone());
@@ -90,7 +95,12 @@ pub fn validate_params(defs: &[Value], params: &Map<String, Value>) -> Result<Ve
         let value = if data_type == "number" {
             let n = match raw {
                 Value::Number(num) => num.as_f64().unwrap_or(f64::NAN),
-                Value::String(s) => s.trim().parse::<f64>().ok().filter(|f| f.is_finite()).unwrap_or(f64::NAN),
+                Value::String(s) => s
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|f| f.is_finite())
+                    .unwrap_or(f64::NAN),
                 Value::Bool(b) => {
                     if *b {
                         1.0
@@ -136,13 +146,24 @@ pub fn validate_params(defs: &[Value], params: &Map<String, Value>) -> Result<Ve
                 ));
             }
         }
-        provided.push(Provided { api_name, maps_to, is_pk, value });
+        provided.push(Provided {
+            api_name,
+            maps_to,
+            is_pk,
+            value,
+        });
     }
     Ok(provided)
 }
 
 /// Write a FAILED action log (never masks the original error).
-async fn log_failure(state: &AppState, action_id: &str, params: &Map<String, Value>, message: &str) {    let result = sqlx::query(
+async fn log_failure(
+    state: &AppState,
+    action_id: &str,
+    params: &Map<String, Value>,
+    message: &str,
+) {
+    let result = sqlx::query(
         "INSERT INTO action_logs (id, action_type_id, params_json, result, message) \
          VALUES ($1, $2, $3, 'failed', $4)",
     )
@@ -192,7 +213,13 @@ pub async fn apply_action(
     params: &Map<String, Value>,
 ) -> Result<Value, ApiError> {
     if !action.enabled {
-        return Err(fail(state, &action.id, params, format!("Action '{}' is disabled", action.api_name)).await);
+        return Err(fail(
+            state,
+            &action.id,
+            params,
+            format!("Action '{}' is disabled", action.api_name),
+        )
+        .await);
     }
 
     let defs: Vec<Value> = action
@@ -213,23 +240,46 @@ pub async fn apply_action(
 
     // ── object operation on the backing dataset ────────────────────────
     let Some(dataset_id) = object_type.source_dataset_id.as_deref() else {
-        return Err(fail(state, &action.id, params, format!("Object type '{}' has no backing dataset", object_type.api_name),
+        return Err(fail(
+            state,
+            &action.id,
+            params,
+            format!(
+                "Object type '{}' has no backing dataset",
+                object_type.api_name
+            ),
         )
         .await);
     };
     let summary = state.catalog.get_dataset(dataset_id).await?;
     let Some(dataset) = summary else {
-        return Err(fail(state, &action.id, params, format!("Object type '{}' has no backing dataset", object_type.api_name),
+        return Err(fail(
+            state,
+            &action.id,
+            params,
+            format!(
+                "Object type '{}' has no backing dataset",
+                object_type.api_name
+            ),
         )
         .await);
     };
     let Some(mut rows) = state.catalog.head_rows(dataset_id, None).await? else {
-        return Err(fail(state, &action.id, params, format!("Dataset '{}' has no versions to write back onto", dataset.name),
+        return Err(fail(
+            state,
+            &action.id,
+            params,
+            format!(
+                "Dataset '{}' has no versions to write back onto",
+                dataset.name
+            ),
         )
         .await);
     };
 
-    let pk_def = defs.iter().find(|d| d.get("isPk").and_then(|v| v.as_bool()) == Some(true));
+    let pk_def = defs
+        .iter()
+        .find(|d| d.get("isPk").and_then(|v| v.as_bool()) == Some(true));
     let pk_def_api = pk_def.and_then(|d| def_str(d, "apiName"));
     let pk_def_maps_to = pk_def.and_then(|d| def_str(d, "mapsTo"));
     let pk_entry = pk_def_api
@@ -241,9 +291,11 @@ pub async fn apply_action(
     let message_head: String;
 
     if operation == "update" || operation == "delete" {
-        let (Some(pk_api), Some(pk_maps_to), Some(entry)) =
-            (pk_def_api.clone(), pk_def_maps_to.clone(), pk_entry.cloned())
-        else {
+        let (Some(pk_api), Some(pk_maps_to), Some(entry)) = (
+            pk_def_api.clone(),
+            pk_def_maps_to.clone(),
+            pk_entry.cloned(),
+        ) else {
             let message = match (&pk_def_api, &pk_def_maps_to) {
                 (None, _) => format!(
                     "Action '{}' is misconfigured: no isPk parameter defined",
@@ -257,7 +309,11 @@ pub async fn apply_action(
         let pk = crate::values::js_string(&entry.value);
         object_pk = Some(pk.clone());
         let Some(idx) = find_row_index_by_pk(&rows, &pk_maps_to, &entry.value) else {
-            return Err(fail(state, &action.id, params, format!(
+            return Err(fail(
+                state,
+                &action.id,
+                params,
+                format!(
                     "{} '{}' not found in dataset '{}'",
                     object_type.display_name, pk, dataset.name
                 ),
@@ -270,7 +326,11 @@ pub async fn apply_action(
         } else {
             let changes: Vec<&Provided> = provided.iter().filter(|p| !p.is_pk).collect();
             if changes.is_empty() {
-                return Err(fail(state, &action.id, params, "No fields to update: provide at least one non-primary-key parameter".into(),
+                return Err(fail(
+                    state,
+                    &action.id,
+                    params,
+                    "No fields to update: provide at least one non-primary-key parameter".into(),
                 )
                 .await);
             }
@@ -282,7 +342,11 @@ pub async fn apply_action(
                     None => "(missing)".to_string(),
                 };
                 row.insert(c.maps_to.clone(), c.value.clone());
-                parts.push(format!("{}: {before} -> {}", c.maps_to, format_cell(&c.value)));
+                parts.push(format!(
+                    "{}: {before} -> {}",
+                    c.maps_to,
+                    format_cell(&c.value)
+                ));
             }
             rows[idx] = row;
             message_head = format!(
@@ -313,7 +377,11 @@ pub async fn apply_action(
             _ => format!("created {}", object_type.display_name),
         };
     } else {
-        return Err(fail(state, &action.id, params, format!(
+        return Err(fail(
+            state,
+            &action.id,
+            params,
+            format!(
                 "Action '{}' has unknown operation '{}'",
                 action.api_name, operation
             ),
@@ -374,13 +442,24 @@ async fn apply_target_writeback(
 ) -> Result<Value, ApiError> {
     let target_id = action.target_dataset_id.clone().unwrap_or_default();
     let Some(target) = state.catalog.get_dataset(&target_id).await? else {
-        return Err(fail(state, &action.id, raw_params, format!("Write-back target dataset '{target_id}' not found"),
+        return Err(fail(
+            state,
+            &action.id,
+            raw_params,
+            format!("Write-back target dataset '{target_id}' not found"),
         )
         .await);
     };
     // head rows (RAW — write path) carry the resolved version's schema too
     let Some(payload) = state.catalog.head_rows_full(&target_id, None).await? else {
-        return Err(fail(state, &action.id, raw_params, format!("Target dataset '{}' has no versions to write back onto", target.name),
+        return Err(fail(
+            state,
+            &action.id,
+            raw_params,
+            format!(
+                "Target dataset '{}' has no versions to write back onto",
+                target.name
+            ),
         )
         .await);
     };
@@ -401,7 +480,11 @@ async fn apply_target_writeback(
 
     if mode == "upsert" {
         let Some(key) = key_property.as_deref() else {
-            return Err(fail(state, &action.id, raw_params, format!(
+            return Err(fail(
+                state,
+                &action.id,
+                raw_params,
+                format!(
                     "Action '{}' is misconfigured: upsert write-back needs a key property",
                     action.api_name
                 ),
@@ -409,7 +492,14 @@ async fn apply_target_writeback(
             .await);
         };
         if !schema.iter().any(|c| c.name == key) {
-            return Err(fail(state, &action.id, raw_params, format!("Key property '{key}' is not a column of dataset '{}'", target.name),
+            return Err(fail(
+                state,
+                &action.id,
+                raw_params,
+                format!(
+                    "Key property '{key}' is not a column of dataset '{}'",
+                    target.name
+                ),
             )
             .await);
         }
@@ -423,14 +513,18 @@ async fn apply_target_writeback(
 
     // The parameter carrying the upsert key: isPk param or mapsTo===keyProperty.
     let key_entry = if mode == "upsert" {
-        provided.iter().find(|p| {
-            p.is_pk || (key_property.as_deref().is_some_and(|k| p.maps_to == k))
-        })
+        provided
+            .iter()
+            .find(|p| p.is_pk || (key_property.as_deref().is_some_and(|k| p.maps_to == k)))
     } else {
         None
     };
     if mode == "upsert" && key_entry.is_none() {
-        return Err(fail(state, &action.id, raw_params, format!(
+        return Err(fail(
+            state,
+            &action.id,
+            raw_params,
+            format!(
                 "No parameter maps to the key property '{}' — add an isPk parameter mapped to it",
                 key_property.clone().unwrap_or_default()
             ),
@@ -516,7 +610,10 @@ async fn apply_target_writeback(
             target.name, result.version_number
         )
     } else {
-        format!("Wrote back to {} v{} (append)", target.name, result.version_number)
+        format!(
+            "Wrote back to {} v{} (append)",
+            target.name, result.version_number
+        )
     };
 
     let coerced = coerced_params(provided);
@@ -594,8 +691,10 @@ mod tests {
 
     #[test]
     fn required_and_missing() {
-        let defs = vec![def(json!({"apiName": "a", "dataType": "string", "mapsTo": "ca", "required": true})),
-                        def(json!({"apiName": "b", "dataType": "string", "mapsTo": "cb"}))];
+        let defs = vec![
+            def(json!({"apiName": "a", "dataType": "string", "mapsTo": "ca", "required": true})),
+            def(json!({"apiName": "b", "dataType": "string", "mapsTo": "cb"})),
+        ];
         // missing required
         let e = validate_params(&defs, &params(json!({}))).unwrap_err();
         assert_eq!(e, "Parameter 'a' is required");
@@ -613,7 +712,9 @@ mod tests {
 
     #[test]
     fn number_coercion() {
-        let defs = vec![def(json!({"apiName": "n", "dataType": "number", "mapsTo": "c", "required": true}))];
+        let defs = vec![def(
+            json!({"apiName": "n", "dataType": "number", "mapsTo": "c", "required": true}),
+        )];
         let p = validate_params(&defs, &params(json!({"n": 42}))).unwrap();
         assert_eq!(p[0].value, json!(42));
         let p = validate_params(&defs, &params(json!({"n": " 3.5 "}))).unwrap();
@@ -628,9 +729,17 @@ mod tests {
 
     #[test]
     fn boolean_coercion() {
-        let defs = vec![def(json!({"apiName": "b", "dataType": "boolean", "mapsTo": "c", "required": true}))];
-        assert_eq!(validate_params(&defs, &params(json!({"b": true}))).unwrap()[0].value, json!(true));
-        assert_eq!(validate_params(&defs, &params(json!({"b": "false"}))).unwrap()[0].value, json!(false));
+        let defs = vec![def(
+            json!({"apiName": "b", "dataType": "boolean", "mapsTo": "c", "required": true}),
+        )];
+        assert_eq!(
+            validate_params(&defs, &params(json!({"b": true}))).unwrap()[0].value,
+            json!(true)
+        );
+        assert_eq!(
+            validate_params(&defs, &params(json!({"b": "false"}))).unwrap()[0].value,
+            json!(false)
+        );
         let e = validate_params(&defs, &params(json!({"b": "yes"}))).unwrap_err();
         assert_eq!(e, "Parameter 'b' must be a boolean (got 'yes')");
         let e = validate_params(&defs, &params(json!({"b": 1}))).unwrap_err();
@@ -639,11 +748,22 @@ mod tests {
 
     #[test]
     fn string_coercion_keeps_scalars() {
-        let defs = vec![def(json!({"apiName": "s", "dataType": "string", "mapsTo": "c", "required": true}))];
-        assert_eq!(validate_params(&defs, &params(json!({"s": 5}))).unwrap()[0].value, json!("5"));
-        assert_eq!(validate_params(&defs, &params(json!({"s": true}))).unwrap()[0].value, json!("true"));
+        let defs = vec![def(
+            json!({"apiName": "s", "dataType": "string", "mapsTo": "c", "required": true}),
+        )];
+        assert_eq!(
+            validate_params(&defs, &params(json!({"s": 5}))).unwrap()[0].value,
+            json!("5")
+        );
+        assert_eq!(
+            validate_params(&defs, &params(json!({"s": true}))).unwrap()[0].value,
+            json!("true")
+        );
         // no trim on coercion (only the missing-check trims)
-        assert_eq!(validate_params(&defs, &params(json!({"s": " x "}))).unwrap()[0].value, json!(" x "));
+        assert_eq!(
+            validate_params(&defs, &params(json!({"s": " x "}))).unwrap()[0].value,
+            json!(" x ")
+        );
     }
 
     #[test]
@@ -660,13 +780,17 @@ mod tests {
             "Parameter 'newStatus' must be one of: in_transit, delivered, delayed, customs (got 'nope')"
         );
         // numeric loose match against string options
-        let num_defs = vec![def(json!({"apiName": "n", "dataType": "number", "mapsTo": "c", "oneOf": ["5"]}))];
+        let num_defs = vec![def(
+            json!({"apiName": "n", "dataType": "number", "mapsTo": "c", "oneOf": ["5"]}),
+        )];
         assert!(validate_params(&num_defs, &params(json!({"n": 5}))).is_ok());
     }
 
     #[test]
     fn pk_and_maps_to_metadata() {
-        let defs = vec![def(json!({"apiName": "id", "dataType": "string", "mapsTo": "pk_col", "isPk": true, "required": true}))];
+        let defs = vec![def(
+            json!({"apiName": "id", "dataType": "string", "mapsTo": "pk_col", "isPk": true, "required": true}),
+        )];
         let p = validate_params(&defs, &params(json!({"id": "A1"}))).unwrap();
         assert!(p[0].is_pk);
         assert_eq!(p[0].maps_to, "pk_col");

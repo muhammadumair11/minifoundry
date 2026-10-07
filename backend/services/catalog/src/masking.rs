@@ -34,7 +34,11 @@ pub struct ColumnMarkingInfo {
 /// yields an empty list — masking then degrades to a no-op, never an error.
 pub async fn fetch_markings(state: &AppState, dataset_id: &str) -> Vec<ColumnMarkingInfo> {
     let path = format!("/internal/markings/dataset/{dataset_id}");
-    match state.governance.get_json::<Vec<ColumnMarkingInfo>>(&path).await {
+    match state
+        .governance
+        .get_json::<Vec<ColumnMarkingInfo>>(&path)
+        .await
+    {
         Ok(mut markings) => {
             // legacy getColumnMarkings ordered by columnName asc
             markings.sort_by(|a, b| a.column_name.cmp(&b.column_name));
@@ -140,9 +144,15 @@ pub async fn mask_rows_internal(
     rows: Vec<Row>,
     role: Option<&str>,
 ) -> (Vec<Row>, Vec<String>) {
-    let Some(role) = role else { return (rows, Vec::new()) };
+    let Some(role) = role else {
+        return (rows, Vec::new());
+    };
     let path = format!("/internal/markings/dataset/{dataset_id}");
-    let markings = match state.governance.get_json::<Vec<ColumnMarkingInfo>>(&path).await {
+    let markings = match state
+        .governance
+        .get_json::<Vec<ColumnMarkingInfo>>(&path)
+        .await
+    {
         Ok(mut m) => {
             m.sort_by(|a, b| a.column_name.cmp(&b.column_name));
             m
@@ -187,8 +197,14 @@ mod tests {
             marking("weird", "overseer", "X"),
         ];
         // order follows the (columnName-sorted) input; levels filter per role
-        assert_eq!(masked_columns_for(&markings, "viewer"), vec!["salary", "email", "weird"]);
-        assert_eq!(masked_columns_for(&markings, "editor"), vec!["salary", "weird"]);
+        assert_eq!(
+            masked_columns_for(&markings, "viewer"),
+            vec!["salary", "email", "weird"]
+        );
+        assert_eq!(
+            masked_columns_for(&markings, "editor"),
+            vec!["salary", "weird"]
+        );
         assert_eq!(masked_columns_for(&markings, "admin"), vec!["weird"]); // unknown minRole masks from everyone
         assert_eq!(masked_columns_for(&markings, "anonymous").len(), 3);
     }
@@ -218,8 +234,14 @@ mod tests {
     #[test]
     fn mask_schema_adds_marked_with() {
         let columns = vec![
-            SchemaColumn { name: "a".into(), column_type: ColumnType::String },
-            SchemaColumn { name: "secret".into(), column_type: ColumnType::Number },
+            SchemaColumn {
+                name: "a".into(),
+                column_type: ColumnType::String,
+            },
+            SchemaColumn {
+                name: "secret".into(),
+                column_type: ColumnType::Number,
+            },
         ];
         let markings = vec![marking("secret", "admin", "PII")];
         let out = mask_schema(&columns, &markings);

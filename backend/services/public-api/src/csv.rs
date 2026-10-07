@@ -119,7 +119,10 @@ mod tests {
     #[test]
     fn slugify_matches_legacy() {
         assert_eq!(slugify_name("Active Shipments"), "active-shipments");
-        assert_eq!(slugify_name("  Supplier Risk Scores  "), "supplier-risk-scores");
+        assert_eq!(
+            slugify_name("  Supplier Risk Scores  "),
+            "supplier-risk-scores"
+        );
         assert_eq!(slugify_name("Ünïcödé — Name"), "n-c-d-name");
         assert_eq!(slugify_name("!!!"), "dataset");
         assert_eq!(slugify_name(""), "dataset");

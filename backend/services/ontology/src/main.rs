@@ -76,7 +76,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/ontology/links/{id}",
             patch(routes::links::update_link).delete(routes::links::delete_link),
         )
-        .route("/api/ontology/seed-demo", post(routes::seed_demo::seed_demo))
+        .route(
+            "/api/ontology/seed-demo",
+            post(routes::seed_demo::seed_demo),
+        )
         .route(
             "/api/ontology/{id}",
             get(routes::ontology::get_object_type).delete(routes::ontology::delete_object_type),
@@ -91,10 +94,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/objects/views/{view_id}",
             delete(routes::views::delete_view),
         )
-        .route(
-            "/api/objects/{type}/{pk}",
-            get(routes::objects::get_object),
-        )
+        .route("/api/objects/{type}/{pk}", get(routes::objects::get_object))
         // ── actions (public + apply) ───────────────────────────────────
         .route("/api/actions", get(routes::actions::list_actions_public))
         .route("/api/actions/logs", get(routes::actions::list_action_logs))
@@ -138,7 +138,10 @@ async fn main() -> anyhow::Result<()> {
                 .delete(routes::applications::delete_application),
         )
         // ── internal (service-token guarded; never routed by the gateway)
-        .route("/internal/ontology", get(routes::internal::internal_ontology))
+        .route(
+            "/internal/ontology",
+            get(routes::internal::internal_ontology),
+        )
         .route(
             "/internal/objects/{type}",
             get(routes::internal::internal_objects),

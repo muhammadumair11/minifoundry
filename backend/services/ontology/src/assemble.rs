@@ -123,7 +123,11 @@ pub async fn full_for_list(
         let links_in: Vec<(LinkTypeRow, TypeMeta)> = all_links
             .iter()
             .filter(|l| l.to_type_id == row.id)
-            .filter_map(|l| metas.get(&l.from_type_id).map(|m| (l.clone(), clone_meta(m))))
+            .filter_map(|l| {
+                metas
+                    .get(&l.from_type_id)
+                    .map(|m| (l.clone(), clone_meta(m)))
+            })
             .collect();
         let actions: Vec<ActionTypeRow> = all_actions
             .iter()

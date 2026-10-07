@@ -151,7 +151,11 @@ pub fn exec_filter(node: &GraphNode, rows: &[Row]) -> Result<Vec<Row>, PipelineE
     Ok(out)
 }
 
-fn match_filter(cell: Option<&Value>, operator: &str, value: Option<&Value>) -> Result<bool, PipelineError> {
+fn match_filter(
+    cell: Option<&Value>,
+    operator: &str,
+    value: Option<&Value>,
+) -> Result<bool, PipelineError> {
     match operator {
         "eq" => Ok(numeric_equals_opt(cell, value)),
         "neq" => Ok(!numeric_equals_opt(cell, value)),
@@ -204,9 +208,8 @@ pub fn exec_derive(node: &GraphNode, rows: &[Row]) -> Result<(Vec<Row>, usize), 
         )));
     }
 
-    let engine = mf_js::default_engine().ok_or_else(|| {
-        err(format!("derive node '{}': JS engine unavailable", node.id))
-    })?;
+    let engine = mf_js::default_engine()
+        .ok_or_else(|| err(format!("derive node '{}': JS engine unavailable", node.id)))?;
 
     // Column names from the first row (legacy sampleKeys), identifier-shaped only.
     let sample_keys: Vec<String> = rows
@@ -215,15 +218,15 @@ pub fn exec_derive(node: &GraphNode, rows: &[Row]) -> Result<(Vec<Row>, usize), 
         .unwrap_or_default();
     let row_values: Vec<Value> = rows.iter().map(|r| Value::Object(r.clone())).collect();
 
-    let (values, failed) = engine.eval_derive(&expression, &sample_keys, &row_values).map_err(|e| {
-        match e {
+    let (values, failed) = engine
+        .eval_derive(&expression, &sample_keys, &row_values)
+        .map_err(|e| match e {
             mf_js::JsError::Compile(msg) => err(format!(
                 "derive node '{}': invalid expression — {msg}",
                 node.id
             )),
             other => err(format!("derive node '{}': {other}", node.id)),
-        }
-    })?;
+        })?;
 
     let mut out = Vec::with_capacity(rows.len());
     for (i, row) in rows.iter().enumerate() {
@@ -349,17 +352,27 @@ pub fn exec_join(node: &GraphNode, inputs: &[Vec<Row>]) -> Result<Vec<Row>, Pipe
 
     let mut index: HashMap<String, Vec<&Row>> = HashMap::new();
     for r in right {
-        index.entry(key_of_opt(r.get(&right_key))).or_default().push(r);
+        index
+            .entry(key_of_opt(r.get(&right_key)))
+            .or_default()
+            .push(r);
     }
 
     let mut out: Vec<Row> = Vec::new();
     for l in left {
-        let matches = index.get(&key_of_opt(l.get(&left_key))).map(|v| v.as_slice()).unwrap_or(&[]);
+        let matches = index
+            .get(&key_of_opt(l.get(&left_key)))
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
         if matches.is_empty() {
             if how == "left" {
                 let mut row = l.clone();
                 for k in &right_cols {
-                    let target = if row.contains_key(k) { format!("right_{k}") } else { k.clone() };
+                    let target = if row.contains_key(k) {
+                        format!("right_{k}")
+                    } else {
+                        k.clone()
+                    };
                     row.insert(target, Value::Null);
                 }
                 out.push(row);
@@ -369,7 +382,11 @@ pub fn exec_join(node: &GraphNode, inputs: &[Vec<Row>]) -> Result<Vec<Row>, Pipe
         for r in matches {
             let mut row = l.clone();
             for k in &right_cols {
-                let target = if row.contains_key(k) { format!("right_{k}") } else { k.clone() };
+                let target = if row.contains_key(k) {
+                    format!("right_{k}")
+                } else {
+                    k.clone()
+                };
                 let value = r.get(k).cloned().unwrap_or(Value::Null);
                 row.insert(target, value);
             }
@@ -504,9 +521,9 @@ pub fn exec_aggregate(node: &GraphNode, rows: &[Row]) -> Result<Vec<Row>, Pipeli
             } else {
                 let value = match kind.as_str() {
                     "sum" => crate::values::json_number(round_smart(nums.iter().sum())),
-                    "avg" => {
-                        crate::values::json_number(round_smart(nums.iter().sum::<f64>() / nums.len() as f64))
-                    }
+                    "avg" => crate::values::json_number(round_smart(
+                        nums.iter().sum::<f64>() / nums.len() as f64,
+                    )),
                     "min" => crate::values::json_number(
                         nums.iter().cloned().fold(f64::INFINITY, f64::min),
                     ),
@@ -584,7 +601,10 @@ pub fn exec_dedupe(node: &GraphNode, rows: &[Row]) -> Result<Vec<Row>, PipelineE
     let mut out = Vec::new();
     for row in rows {
         let key = if !keys.is_empty() {
-            keys.iter().map(|k| key_of_opt(row.get(k))).collect::<Vec<_>>().join("\u{241F}")
+            keys.iter()
+                .map(|k| key_of_opt(row.get(k)))
+                .collect::<Vec<_>>()
+                .join("\u{241F}")
         } else {
             stable_row_key(row)
         };
@@ -659,7 +679,10 @@ fn limit_err(node: &GraphNode) -> PipelineError {
 // ─── helpers used by the graph orchestrator ─────────────────────────────
 
 /// Port of `singleInput()` — the 1-input arity check shared by most nodes.
-pub fn single_input<'a>(node: &GraphNode, inputs: &'a [Vec<Row>]) -> Result<&'a [Row], PipelineError> {
+pub fn single_input<'a>(
+    node: &GraphNode,
+    inputs: &'a [Vec<Row>],
+) -> Result<&'a [Row], PipelineError> {
     if inputs.len() != 1 {
         return Err(err(format!(
             "{} node '{}' requires exactly 1 input (found {})",
@@ -699,10 +722,14 @@ mod tests {
     }
 
     fn vals(v: Value) -> Vec<Value> {
-        v.as_array().unwrap().iter().map(|x| match x {
-            Value::Object(m) => Value::Object(m.clone()),
-            other => other.clone(),
-        }).collect()
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|x| match x {
+                Value::Object(m) => Value::Object(m.clone()),
+                other => other.clone(),
+            })
+            .collect()
     }
 
     fn rows_json(rs: &[Row]) -> Value {
@@ -720,39 +747,72 @@ mod tests {
         ]));
 
         // eq — numeric coercion ("20" == 20) and bool/"true" parity
-        let f = node("filter", json!({"column": "qty", "operator": "eq", "value": 20}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "eq", "value": 20}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 1);
-        let f = node("filter", json!({"column": "ok", "operator": "eq", "value": "true"}));
+        let f = node(
+            "filter",
+            json!({"column": "ok", "operator": "eq", "value": "true"}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 2);
 
         // neq
-        let f = node("filter", json!({"column": "city", "operator": "neq", "value": "Paris"}));
+        let f = node(
+            "filter",
+            json!({"column": "city", "operator": "neq", "value": "Paris"}),
+        );
         let out = exec_filter(&f, &data).unwrap();
         assert_eq!(out.len(), 2);
 
         // gt / gte / lt / lte (numeric strings compare numerically)
-        let f = node("filter", json!({"column": "qty", "operator": "gt", "value": 9}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "gt", "value": 9}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 2); // 10, "20"
-        let f = node("filter", json!({"column": "qty", "operator": "gte", "value": 10}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "gte", "value": 10}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 2);
-        let f = node("filter", json!({"column": "qty", "operator": "lt", "value": 10}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "lt", "value": 10}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 1); // 5
-        let f = node("filter", json!({"column": "qty", "operator": "lte", "value": 10}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "lte", "value": 10}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 2);
 
         // string compare fallback when either side is non-numeric
-        let f = node("filter", json!({"column": "city", "operator": "gt", "value": "Paris"}));
+        let f = node(
+            "filter",
+            json!({"column": "city", "operator": "gt", "value": "Paris"}),
+        );
         let out = exec_filter(&f, &data).unwrap();
         assert_eq!(out.len(), 1); // "Rome" > "Paris"
 
         // contains — case-insensitive, null → ""
-        let f = node("filter", json!({"column": "note", "operator": "contains", "value": "hello"}));
+        let f = node(
+            "filter",
+            json!({"column": "note", "operator": "contains", "value": "hello"}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 2);
-        let f = node("filter", json!({"column": "note", "operator": "contains", "value": ""}));
+        let f = node(
+            "filter",
+            json!({"column": "note", "operator": "contains", "value": ""}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 3); // null → "" contains ""
 
         // unknown operator → exact legacy message
-        let f = node("filter", json!({"column": "qty", "operator": "regex", "value": 1}));
+        let f = node(
+            "filter",
+            json!({"column": "qty", "operator": "regex", "value": 1}),
+        );
         let e = exec_filter(&f, &data).unwrap_err();
         assert_eq!(
             e.0,
@@ -764,7 +824,10 @@ mod tests {
     fn filter_missing_cell_is_undefined_not_null() {
         let data = rows(json!([{"a": null}, {"a": 1}, {}]));
         // eq null: only the explicit null matches (undefined !== null in JS)
-        let f = node("filter", json!({"column": "a", "operator": "eq", "value": null}));
+        let f = node(
+            "filter",
+            json!({"column": "a", "operator": "eq", "value": null}),
+        );
         assert_eq!(exec_filter(&f, &data).unwrap().len(), 1);
         // missing value in the node data behaves as undefined: matches only
         // rows where the cell is missing too
@@ -795,15 +858,24 @@ mod tests {
             {"quantity": 2, "unit_price_at_sale": 1.5},
             {"quantity": 3, "unit_price_at_sale": 2},
         ]));
-        let d = node("derive", json!({"newColumn": "revenue", "expression": "quantity * unit_price_at_sale"}));
+        let d = node(
+            "derive",
+            json!({"newColumn": "revenue", "expression": "quantity * unit_price_at_sale"}),
+        );
         let (out, failed) = exec_derive(&d, &data).unwrap();
         assert_eq!(failed, 0);
-        assert_eq!(rows_json(&out), json!([
-            {"quantity": 2, "unit_price_at_sale": 1.5, "revenue": 3},
-            {"quantity": 3, "unit_price_at_sale": 2, "revenue": 6},
-        ]));
+        assert_eq!(
+            rows_json(&out),
+            json!([
+                {"quantity": 2, "unit_price_at_sale": 1.5, "revenue": 3},
+                {"quantity": 3, "unit_price_at_sale": 2, "revenue": 6},
+            ])
+        );
         // row.col access always works too
-        let d = node("derive", json!({"newColumn": "rev", "expression": "row.quantity * 10"}));
+        let d = node(
+            "derive",
+            json!({"newColumn": "rev", "expression": "row.quantity * 10"}),
+        );
         let (out, failed) = exec_derive(&d, &data).unwrap();
         assert_eq!(failed, 0);
         assert_eq!(out[0].get("rev"), Some(&json!(20)));
@@ -812,12 +884,18 @@ mod tests {
     #[test]
     fn derive_dangerous_expression_rejected() {
         let data = rows(json!([{"a": 1}]));
-        let d = node("derive", json!({"newColumn": "x", "expression": "process.exit(1)"}));
+        let d = node(
+            "derive",
+            json!({"newColumn": "x", "expression": "process.exit(1)"}),
+        );
         assert_eq!(
             exec_derive(&d, &data).unwrap_err().0,
             "derive node 'derive-1': expression contains disallowed identifier"
         );
-        let d = node("derive", json!({"newColumn": "x", "expression": "fetch('http://x')"}));
+        let d = node(
+            "derive",
+            json!({"newColumn": "x", "expression": "fetch('http://x')"}),
+        );
         assert_eq!(
             exec_derive(&d, &data).unwrap_err().0,
             "derive node 'derive-1': expression contains disallowed identifier"
@@ -829,13 +907,19 @@ mod tests {
         let data = rows(json!([{"a": 1}]));
         let d = node("derive", json!({"newColumn": "x", "expression": "a +* 2"}));
         let e = exec_derive(&d, &data).unwrap_err().0;
-        assert!(e.starts_with("derive node 'derive-1': invalid expression — "), "got: {e}");
+        assert!(
+            e.starts_with("derive node 'derive-1': invalid expression — "),
+            "got: {e}"
+        );
     }
 
     #[test]
     fn derive_per_row_failures_counted() {
         let data = rows(json!([{"a": 2}, {"a": null}, {}]));
-        let d = node("derive", json!({"newColumn": "x", "expression": "a.toFixed(2)"}));
+        let d = node(
+            "derive",
+            json!({"newColumn": "x", "expression": "a.toFixed(2)"}),
+        );
         let (out, failed) = exec_derive(&d, &data).unwrap();
         // row 0 ok; rows 1/2 throw on null/undefined receiver
         assert_eq!(failed, 2);
@@ -904,17 +988,26 @@ mod tests {
             {"id": 1, "score": 11},
             {"id": 2, "score": 20},
         ]));
-        let j = node("join", json!({"how": "inner", "leftKey": "id", "rightKey": "id"}));
+        let j = node(
+            "join",
+            json!({"how": "inner", "leftKey": "id", "rightKey": "id"}),
+        );
         let out = exec_join(&j, &[left.clone(), right.clone()]).unwrap();
         // id 1 matches twice (multi-match fan-out), "2"==2 numeric key match;
         // the right "id" column collides with the left one → "right_id".
-        assert_eq!(rows_json(&out), json!([
-            {"id": 1, "name": "a", "right_id": 1, "score": 10, "right_name": "right-a"},
-            {"id": 1, "name": "a", "right_id": 1, "score": 11, "right_name": null},
-            {"id": "2", "name": "b", "right_id": 2, "score": 20, "right_name": null},
-        ]));
+        assert_eq!(
+            rows_json(&out),
+            json!([
+                {"id": 1, "name": "a", "right_id": 1, "score": 10, "right_name": "right-a"},
+                {"id": 1, "name": "a", "right_id": 1, "score": 11, "right_name": null},
+                {"id": "2", "name": "b", "right_id": 2, "score": 20, "right_name": null},
+            ])
+        );
 
-        let j = node("join", json!({"how": "left", "leftKey": "id", "rightKey": "id"}));
+        let j = node(
+            "join",
+            json!({"how": "left", "leftKey": "id", "rightKey": "id"}),
+        );
         let out = exec_join(&j, &[left.clone(), right.clone()]).unwrap();
         assert_eq!(out.len(), 4);
         // unmatched left row gets every right column as null
@@ -924,7 +1017,10 @@ mod tests {
         );
 
         // how validation
-        let j = node("join", json!({"how": "full", "leftKey": "id", "rightKey": "id"}));
+        let j = node(
+            "join",
+            json!({"how": "full", "leftKey": "id", "rightKey": "id"}),
+        );
         assert_eq!(
             exec_join(&j, &[left.clone(), right.clone()]).unwrap_err().0,
             "join node 'join-1': 'how' must be 'inner' or 'left' (got 'full')"
@@ -932,14 +1028,20 @@ mod tests {
         // arity
         let j = node("join", json!({"leftKey": "id", "rightKey": "id"}));
         let out = exec_join(&j, std::slice::from_ref(&left)).unwrap_err();
-        assert_eq!(out.0, "join node 'join-1' requires exactly 2 inputs (found 1)");
+        assert_eq!(
+            out.0,
+            "join node 'join-1' requires exactly 2 inputs (found 1)"
+        );
     }
 
     #[test]
     fn join_missing_keys_group_under_undefined() {
         let left = rows(json!([{"n": 1}, {"n": 2}]));
         let right = rows(json!([{"v": "x"}, {"v": "y"}]));
-        let j = node("join", json!({"how": "inner", "leftKey": "k", "rightKey": "k"}));
+        let j = node(
+            "join",
+            json!({"how": "inner", "leftKey": "k", "rightKey": "k"}),
+        );
         let out = exec_join(&j, &[left, right]).unwrap();
         // every row on both sides has key "undefined" → 2x2 fan-out (legacy keyOf)
         assert_eq!(out.len(), 4);
@@ -971,16 +1073,22 @@ mod tests {
             }),
         );
         let out = exec_aggregate(&a, &data).unwrap();
-        assert_eq!(rows_json(&out), json!([
-            {"city": "Berlin", "sum_qty": 15, "avgQty": 7.5, "min_qty": 5, "max_qty": 10, "count": 2, "missingCount": 0},
-            {"city": "Paris", "sum_qty": 11, "avgQty": 5.5, "min_qty": 4, "max_qty": 7, "count": 3, "missingCount": 0},
-        ]));
+        assert_eq!(
+            rows_json(&out),
+            json!([
+                {"city": "Berlin", "sum_qty": 15, "avgQty": 7.5, "min_qty": 5, "max_qty": 10, "count": 2, "missingCount": 0},
+                {"city": "Paris", "sum_qty": 11, "avgQty": 5.5, "min_qty": 4, "max_qty": 7, "count": 3, "missingCount": 0},
+            ])
+        );
     }
 
     #[test]
     fn aggregate_global_when_no_group_by() {
         let data = rows(json!([{"q": 1}, {"q": 2}]));
-        let a = node("aggregate", json!({"ops": [{"op": "count"}, {"op": "sum", "column": "q"}]}));
+        let a = node(
+            "aggregate",
+            json!({"ops": [{"op": "count"}, {"op": "sum", "column": "q"}]}),
+        );
         let out = exec_aggregate(&a, &data).unwrap();
         assert_eq!(rows_json(&out), json!([{"count": 2, "sum_q": 3}]));
 
@@ -1005,12 +1113,18 @@ mod tests {
             exec_aggregate(&a, &data).unwrap_err().0,
             "aggregate node 'aggregate-1' requires a non-empty 'ops' array"
         );
-        let a = node("aggregate", json!({"groupBy": "q", "ops": [{"op": "count"}]}));
+        let a = node(
+            "aggregate",
+            json!({"groupBy": "q", "ops": [{"op": "count"}]}),
+        );
         assert_eq!(
             exec_aggregate(&a, &data).unwrap_err().0,
             "aggregate node 'aggregate-1': 'groupBy' must be an array of column names"
         );
-        let a = node("aggregate", json!({"ops": [{"op": "median", "column": "q"}]}));
+        let a = node(
+            "aggregate",
+            json!({"ops": [{"op": "median", "column": "q"}]}),
+        );
         assert_eq!(
             exec_aggregate(&a, &data).unwrap_err().0,
             "aggregate node 'aggregate-1': unknown op 'median' (supported: sum, avg, min, max, count)"
@@ -1037,12 +1151,15 @@ mod tests {
             json!({"by": [{"column": "city", "dir": "asc"}, {"column": "qty", "dir": "desc"}]}),
         );
         let out = exec_sort(&s, &data).unwrap();
-        assert_eq!(rows_json(&out), json!([
-            {"city": "Aachen", "qty": 10},
-            {"city": "Aachen", "qty": "3"},
-            {"city": "Berlin", "qty": 2},
-            {"city": "Berlin", "qty": 1},
-        ]));
+        assert_eq!(
+            rows_json(&out),
+            json!([
+                {"city": "Aachen", "qty": 10},
+                {"city": "Aachen", "qty": "3"},
+                {"city": "Berlin", "qty": 2},
+                {"city": "Berlin", "qty": 1},
+            ])
+        );
         // dir defaults to asc when not "desc"
         let s = node("sort", json!({"by": [{"column": "qty"}]}));
         let out = exec_sort(&s, &data).unwrap();
@@ -1086,7 +1203,10 @@ mod tests {
         let d = node("dedupe", json!({"keys": ["id"]}));
         let out = exec_dedupe(&d, &data2).unwrap();
         // "1" and 1 canonicalize to the same key → first occurrence wins
-        assert_eq!(rows_json(&out), json!([{"id": "1", "v": "a"}, {"id": 2, "v": "c"}]));
+        assert_eq!(
+            rows_json(&out),
+            json!([{"id": "1", "v": "a"}, {"id": 2, "v": "c"}])
+        );
 
         let bad = node("dedupe", json!({"keys": "id"}));
         assert_eq!(
@@ -1103,12 +1223,18 @@ mod tests {
         let b = rows(json!([{"y": 3, "z": 4}]));
         let u = node("union", json!({}));
         let out = exec_union(&u, &[a, b]).unwrap();
-        assert_eq!(rows_json(&out), json!([
-            {"x": 1, "y": 2, "z": null},
-            {"x": null, "y": 3, "z": 4},
-        ]));
+        assert_eq!(
+            rows_json(&out),
+            json!([
+                {"x": 1, "y": 2, "z": null},
+                {"x": null, "y": 3, "z": 4},
+            ])
+        );
         let out = exec_union(&u, &[rows(json!([{"x":1}]))]).unwrap_err();
-        assert_eq!(out.0, "union node 'union-1' requires exactly 2 inputs (found 1)");
+        assert_eq!(
+            out.0,
+            "union node 'union-1' requires exactly 2 inputs (found 1)"
+        );
     }
 
     // ─── limit ──────────────────────────────────────────────────────────
@@ -1122,7 +1248,12 @@ mod tests {
         assert_eq!(exec_limit(&l, &data).unwrap().len(), 0);
         let l = node("limit", json!({"n": 10}));
         assert_eq!(exec_limit(&l, &data).unwrap().len(), 3);
-        for bad in [json!({"n": -1}), json!({"n": 1.5}), json!({"n": "2"}), json!({})] {
+        for bad in [
+            json!({"n": -1}),
+            json!({"n": 1.5}),
+            json!({"n": "2"}),
+            json!({}),
+        ] {
             let l = node("limit", bad);
             assert_eq!(
                 exec_limit(&l, &data).unwrap_err().0,

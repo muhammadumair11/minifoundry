@@ -127,7 +127,8 @@ const DEMO_ACTIONS: [DemoAction; 3] = [
         api_name: "update-shipment-status",
         display_name: "Update Shipment Status",
         // NOTE: legacy uses a typographic apostrophe (U+2019) here.
-        description: "Set a shipment\u{2019}s live status (in_transit, delivered, delayed, customs).",
+        description:
+            "Set a shipment\u{2019}s live status (in_transit, delivered, delayed, customs).",
         object_api_name: "shipment",
         operation: "update",
     },
@@ -241,10 +242,11 @@ pub async fn seed_demo(State(state): State<AppState>, headers: HeaderMap) -> Api
     // resolve type ids (all ensured above)
     let mut type_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for def in DEMO_TYPES.iter() {
-        let t: Option<(String,)> = sqlx::query_as("SELECT id FROM object_types WHERE api_name = $1")
-            .bind(def.api_name)
-            .fetch_optional(&state.db)
-            .await?;
+        let t: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM object_types WHERE api_name = $1")
+                .bind(def.api_name)
+                .fetch_optional(&state.db)
+                .await?;
         if let Some((id,)) = t {
             type_ids.insert(def.api_name.to_string(), id);
         }
@@ -258,13 +260,12 @@ pub async fn seed_demo(State(state): State<AppState>, headers: HeaderMap) -> Api
         ) else {
             continue;
         };
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM link_types WHERE from_type_id = $1 AND api_name = $2",
-        )
-        .bind(from_type_id)
-        .bind(link.api_name)
-        .fetch_optional(&state.db)
-        .await?;
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM link_types WHERE from_type_id = $1 AND api_name = $2")
+                .bind(from_type_id)
+                .bind(link.api_name)
+                .fetch_optional(&state.db)
+                .await?;
         if existing.is_some() {
             continue;
         }

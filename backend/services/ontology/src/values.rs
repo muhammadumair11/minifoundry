@@ -140,7 +140,9 @@ pub fn js_num(f: f64) -> Value {
     if f.is_finite() && f == f.trunc() && f.abs() < 1e15 {
         serde_json::json!((f as i64))
     } else {
-        Value::Number(serde_json::Number::from_f64(f).unwrap_or_else(|| serde_json::Number::from(0)))
+        Value::Number(
+            serde_json::Number::from_f64(f).unwrap_or_else(|| serde_json::Number::from(0)),
+        )
     }
 }
 
@@ -203,7 +205,9 @@ pub fn aggregate(agg: &str, count: usize, values: &[f64]) -> f64 {
 /// Port of `normalizeValue()` (dataset-service): trim strings, "true"/"false"
 /// → bool, plain-decimal strings → number (identifier-like values preserved).
 pub fn normalize_value(v: &Value) -> Value {
-    let Value::String(s) = v else { return v.clone() };
+    let Value::String(s) = v else {
+        return v.clone();
+    };
     let t = s.trim();
     if t.is_empty() {
         return Value::String(String::new());
@@ -309,7 +313,9 @@ pub fn generate_pk(rows: &[Row], column: &str) -> Value {
         if next == next.trunc() && next.abs() <= i64::MAX as f64 {
             return Value::Number(serde_json::Number::from(next as i64));
         }
-        return Value::Number(serde_json::Number::from_f64(next).unwrap_or_else(|| serde_json::Number::from(0)));
+        return Value::Number(
+            serde_json::Number::from_f64(next).unwrap_or_else(|| serde_json::Number::from(0)),
+        );
     }
 
     // /^([A-Za-z][A-Za-z0-9]*?)-(\d+)$/ shared prefix pattern
@@ -359,11 +365,10 @@ fn to_base36(mut n: i64) -> String {
 /// Row index whose pk column loosely equals `pk_value` (port of
 /// findRowIndexByPk); None when no row matches.
 pub fn find_row_index_by_pk(rows: &[Row], pk_column: &str, pk_value: &Value) -> Option<usize> {
-    rows.iter()
-        .position(|row| match row.get(pk_column) {
-            Some(cell) => loose_equal(cell, pk_value),
-            None => pk_value.is_null(),
-        })
+    rows.iter().position(|row| match row.get(pk_column) {
+        Some(cell) => loose_equal(cell, pk_value),
+        None => pk_value.is_null(),
+    })
 }
 
 #[cfg(test)]
@@ -394,9 +399,18 @@ mod tests {
 
     #[test]
     fn compare_numeric_then_string() {
-        assert_eq!(compare_values(&json!(2), &json!("10")), std::cmp::Ordering::Less);
-        assert_eq!(compare_values(&json!("b"), &json!("a")), std::cmp::Ordering::Greater);
-        assert_eq!(compare_values(&json!("5"), &json!(5)), std::cmp::Ordering::Equal);
+        assert_eq!(
+            compare_values(&json!(2), &json!("10")),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_values(&json!("b"), &json!("a")),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_values(&json!("5"), &json!(5)),
+            std::cmp::Ordering::Equal
+        );
     }
 
     #[test]
@@ -411,8 +425,14 @@ mod tests {
     #[test]
     fn js_number_string_matches_js() {
         assert_eq!(js_number_string(&serde_json::Number::from(42)), "42");
-        assert_eq!(js_number_string(&serde_json::Number::from_f64(42.0).unwrap()), "42");
-        assert_eq!(js_number_string(&serde_json::Number::from_f64(4.25).unwrap()), "4.25");
+        assert_eq!(
+            js_number_string(&serde_json::Number::from_f64(42.0).unwrap()),
+            "42"
+        );
+        assert_eq!(
+            js_number_string(&serde_json::Number::from_f64(4.25).unwrap()),
+            "4.25"
+        );
     }
 
     #[test]
@@ -460,10 +480,7 @@ mod tests {
 
     #[test]
     fn generate_pk_numeric_increment() {
-        let rows = vec![
-            row(vec![("id", json!(3))]),
-            row(vec![("id", json!(10))]),
-        ];
+        let rows = vec![row(vec![("id", json!(3))]), row(vec![("id", json!(10))])];
         assert_eq!(generate_pk(&rows, "id"), json!(11));
     }
 
@@ -474,7 +491,10 @@ mod tests {
             row(vec![("id", json!("CUST-0010"))]),
         ];
         assert_eq!(generate_pk(&rows, "id"), json!("CUST-0011"));
-        let mixed = vec![row(vec![("id", json!("A-1"))]), row(vec![("id", json!("B-2"))])];
+        let mixed = vec![
+            row(vec![("id", json!("A-1"))]),
+            row(vec![("id", json!("B-2"))]),
+        ];
         let v = generate_pk(&mixed, "id");
         assert!(matches!(v, Value::String(s) if s.starts_with("NEW-")));
     }

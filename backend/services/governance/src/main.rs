@@ -58,7 +58,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/markings",
             get(routes::markings::list_markings).post(routes::markings::create_marking),
         )
-        .route("/api/markings/{id}", delete(routes::markings::delete_marking))
+        .route(
+            "/api/markings/{id}",
+            delete(routes::markings::delete_marking),
+        )
         .route("/api/markings/{id}/attach", post(routes::markings::attach))
         .route("/api/markings/{id}/detach", post(routes::markings::detach))
         // ── approvals (P2 trust workflow) ──────────────────────────────
@@ -80,7 +83,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/acl/check", get(routes::acl::check_acl))
         .route("/api/acl/{acl_id}", delete(routes::acl::revoke_acl))
         // ── notification center (R14) ──────────────────────────────────
-        .route("/api/notifications", get(routes::notifications::list_notifications))
+        .route(
+            "/api/notifications",
+            get(routes::notifications::list_notifications),
+        )
         .route(
             "/api/notifications/read-all",
             post(routes::notifications::read_all),
@@ -100,7 +106,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/settings/overview", get(routes::settings::overview))
         .route("/api/settings/reset", post(routes::settings::reset))
         // ── demo seed + cross-cutting reads ────────────────────────────
-        .route("/api/governance/seed-demo", post(routes::seed_demo::seed_demo))
+        .route(
+            "/api/governance/seed-demo",
+            post(routes::seed_demo::seed_demo),
+        )
         .route("/api/search", get(routes::search::search))
         .route("/api/stats", get(routes::stats::stats))
         // ── internal (service-token guarded; never routed by the gateway)
@@ -109,7 +118,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::internal::dataset_markings),
         )
         .route("/internal/acl/check", get(routes::internal::acl_check))
-        .route("/internal/approvals", post(routes::internal::create_approval))
+        .route(
+            "/internal/approvals",
+            post(routes::internal::create_approval),
+        )
         .route("/internal/stats", get(routes::internal::stats))
         .route("/internal/reset", post(routes::internal::reset))
         .with_state(state);

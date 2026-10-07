@@ -101,8 +101,17 @@ pub fn pipeline_v1_item(p: &Value) -> Value {
     let node_count = root
         .get("nodeCount")
         .and_then(|v| v.as_i64())
-        .or_else(|| root.get("graph").and_then(|g| g.get("nodes")).and_then(|n| n.as_array()).map(|a| a.len() as i64))
-        .or_else(|| root.get("nodes").and_then(|n| n.as_array()).map(|a| a.len() as i64))
+        .or_else(|| {
+            root.get("graph")
+                .and_then(|g| g.get("nodes"))
+                .and_then(|n| n.as_array())
+                .map(|a| a.len() as i64)
+        })
+        .or_else(|| {
+            root.get("nodes")
+                .and_then(|n| n.as_array())
+                .map(|a| a.len() as i64)
+        })
         .unwrap_or(0);
     let last_run = root
         .get("lastRun")

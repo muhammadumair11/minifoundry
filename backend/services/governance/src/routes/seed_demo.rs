@@ -16,7 +16,7 @@ use axum::response::Response;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 
 use crate::fanout::{pass_through, percent_encode, FanOutError};
-use crate::state::{audit_local, AuditOptions, AppState, MarkingRow, MARKING_COLS};
+use crate::state::{audit_local, AppState, AuditOptions, MarkingRow, MARKING_COLS};
 
 struct DemoMarkingSpec {
     name: &'static str,
@@ -207,10 +207,7 @@ async fn dataset_by_name(state: &AppState, name: &str) -> Result<(String, String
         .await;
     match resp {
         Ok(v) => {
-            let root = v
-                .get("dataset")
-                .filter(|d| d.is_object())
-                .unwrap_or(&v);
+            let root = v.get("dataset").filter(|d| d.is_object()).unwrap_or(&v);
             let id = root.get("id").and_then(|x| x.as_str());
             let Some(id) = id else {
                 return Err(ApiError::bad_request(format!(

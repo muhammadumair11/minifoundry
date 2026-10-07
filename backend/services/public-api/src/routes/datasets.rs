@@ -42,7 +42,11 @@ pub async fn list_datasets(
     let st = state.clone();
     guard::with_api_token(&state, &headers, &path, move |_ctx| async move {
         let (page, page_size) = v1_page_from(&params);
-        let resp = st.catalog.get("/internal/datasets").await.map_err(fanout_err)?;
+        let resp = st
+            .catalog
+            .get("/internal/datasets")
+            .await
+            .map_err(fanout_err)?;
         let summaries = items_array(&resp, "datasets");
 
         let details: Vec<Option<Value>> = futures::future::join_all(summaries.iter().map(|d| {
@@ -214,7 +218,10 @@ async fn resolve_version(
     // Gated datasets: an explicit ?version= must equal the published pointer
     // (legacy: `Version ${n} is not published for dataset '${name}'`).
     if let Some(n) = version_number {
-        let gated = root.get("qualityGate").and_then(|v| v.as_bool()).unwrap_or(false);
+        let gated = root
+            .get("qualityGate")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if let Some(published) = root.get("publishedVersion").and_then(|v| v.as_i64()) {
             if gated && n != published {
                 return Err(ApiError::not_found(format!(
@@ -388,16 +395,21 @@ pub fn dataset_v1_item(d: &Value, detail: Option<&Value>) -> Value {
     let latest = detail
         .and_then(latest_published_version)
         .or_else(|| {
-            ["latestPublishedVersion", "latestVersion", "consumerVersion", "currentVersion"]
-                .iter()
-                .find_map(|k| root.get(*k).filter(|v| v.is_object()))
-                .map(|v| {
-                    serde_json::json!({
-                        "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
-                        "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
-                        "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
-                    })
+            [
+                "latestPublishedVersion",
+                "latestVersion",
+                "consumerVersion",
+                "currentVersion",
+            ]
+            .iter()
+            .find_map(|k| root.get(*k).filter(|v| v.is_object()))
+            .map(|v| {
+                serde_json::json!({
+                    "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
+                    "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
+                    "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
                 })
+            })
         })
         .unwrap_or(Value::Null);
     // The detail envelope is fresher for updatedAt when present.

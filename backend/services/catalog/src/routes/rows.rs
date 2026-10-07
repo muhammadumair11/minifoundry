@@ -17,8 +17,8 @@ use crate::csvutil::{rows_to_csv, slugify_name};
 use crate::dataset_service::{get_dataset_version, resolve_consumer_version};
 use crate::jsval::{canonical_row, compare_values, js_stringify, values_json};
 use crate::masking::{apply_masking, fetch_markings, mask_schema, masked_columns_for};
-use crate::rows::{read_version_rows_all, read_version_rows_paged, rows_from_data_json};
 use crate::routes::{parse_version_param, require_dataset};
+use crate::rows::{read_version_rows_all, read_version_rows_paged, rows_from_data_json};
 use crate::state::{AppState, VersionRow};
 
 /// Shared version selection for rows/export (exact legacy control flow):
@@ -116,9 +116,14 @@ pub async fn get_rows(
     let markings = fetch_markings(&state, &dataset_id).await;
 
     if q.is_none() && order_by.is_none() {
-        let (rows, total) =
-            read_version_rows_paged(&state.db, &dataset_id, version.version_number, page, page_size)
-                .await?;
+        let (rows, total) = read_version_rows_paged(
+            &state.db,
+            &dataset_id,
+            version.version_number,
+            page,
+            page_size,
+        )
+        .await?;
         let masked_columns = masked_columns_for(&markings, &actor.role);
         let (rows, masked_columns) = apply_masking(rows, &masked_columns);
         return Ok(json_ok(json!({
@@ -133,8 +138,13 @@ pub async fn get_rows(
 
     // Search/sort path: load ALL rows, mask FIRST (so neither cell values nor
     // the search filter can leak governed values), then filter/sort/paginate.
-    let raw = read_version_rows_all(&state.db, &dataset_id, version.version_number, &version.data_json)
-        .await?;
+    let raw = read_version_rows_all(
+        &state.db,
+        &dataset_id,
+        version.version_number,
+        &version.data_json,
+    )
+    .await?;
     let masked_columns = masked_columns_for(&markings, &actor.role);
     let (masked_rows, masked_columns) = apply_masking(raw, &masked_columns);
     let mut rows = masked_rows;
@@ -324,7 +334,8 @@ pub async fn get_diff(
             None
         }
     };
-    let (Some(from_num), Some(to_num)) = (parse_side(query.get("from")), parse_side(query.get("to")))
+    let (Some(from_num), Some(to_num)) =
+        (parse_side(query.get("from")), parse_side(query.get("to")))
     else {
         return Err(ApiError::bad_request(
             "Query parameters 'from' and 'to' must be version numbers",
@@ -339,7 +350,9 @@ pub async fn get_diff(
     .fetch_optional(&state.db)
     .await?;
     let Some((from_schema, from_data)) = from_version else {
-        return Err(ApiError::bad_request(format!("Version {from_num} not found")));
+        return Err(ApiError::bad_request(format!(
+            "Version {from_num} not found"
+        )));
     };
     let to_version = sqlx::query_as::<_, (sqlx::types::Json<Vec<mf_types::SchemaColumn>>, String)>(
         "SELECT schema_json, data_json FROM dataset_versions WHERE dataset_id = $1 AND version_number = $2",
@@ -415,7 +428,11 @@ pub async fn export_dataset(
     )
     .await;
 
-    let filename = format!("{}-v{}.csv", slugify_name(&dataset_name), version.version_number);
+    let filename = format!(
+        "{}-v{}.csv",
+        slugify_name(&dataset_name),
+        version.version_number
+    );
     let csv = rows_to_csv(&schema, &rows);
     let mut resp = Response::new(axum::body::Body::from(csv));
     *resp.status_mut() = StatusCode::OK;
@@ -443,7 +460,10 @@ mod tests {
     use mf_types::{ColumnType, SchemaColumn};
 
     fn col(name: &str, t: ColumnType) -> SchemaColumn {
-        SchemaColumn { name: name.into(), column_type: t }
+        SchemaColumn {
+            name: name.into(),
+            column_type: t,
+        }
     }
 
     #[test]
@@ -463,7 +483,10 @@ mod tests {
         assert_eq!(d["datasetId"], "ds1");
         assert_eq!(d["fromVersion"], 1);
         assert_eq!(d["toVersion"], 1);
-        assert_eq!(d["schema"], json!({"added": [], "removed": [], "changed": []}));
+        assert_eq!(
+            d["schema"],
+            json!({"added": [], "removed": [], "changed": []})
+        );
         assert_eq!(d["rowCount"], json!({"from": 2, "to": 2}));
         assert_eq!(d["addedRows"], json!([]));
         assert_eq!(d["removedRows"], json!([]));
@@ -508,7 +531,10 @@ mod tests {
         let to = vec![row(r#"{"a":1,"c":true}"#)];
         let d = compute_diff("d", 1, 2, &from_schema, &to_schema, from, to);
         assert_eq!(d["schema"]["added"], json!([{"name":"c","type":"boolean"}]));
-        assert_eq!(d["schema"]["removed"], json!([{"name":"b","type":"string"}]));
+        assert_eq!(
+            d["schema"]["removed"],
+            json!([{"name":"b","type":"string"}])
+        );
         assert_eq!(
             d["schema"]["changed"],
             json!([{"name":"a","fromType":"string","toType":"number"}])
@@ -541,7 +567,15 @@ mod tests {
 
     #[test]
     fn diff_without_key_column_yields_empty_row_diffs() {
-        let d = compute_diff("d", 1, 2, &[], &[], vec![row(r#"{"a":1}"#)], vec![row(r#"{"b":2}"#)]);
+        let d = compute_diff(
+            "d",
+            1,
+            2,
+            &[],
+            &[],
+            vec![row(r#"{"a":1}"#)],
+            vec![row(r#"{"b":2}"#)],
+        );
         assert_eq!(d["addedRows"], json!([]));
         assert_eq!(d["removedRows"], json!([]));
         assert_eq!(d["rowCount"], json!({"from": 1, "to": 1}));

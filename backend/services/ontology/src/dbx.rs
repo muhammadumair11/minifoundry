@@ -27,10 +27,12 @@ pub async fn find_object_type(
     Ok(row)
 }
 
-pub async fn load_properties(db: &PgPool, object_type_id: &str) -> Result<Vec<PropertyRow>, ApiErr> {
-    let q = format!(
-        "SELECT {PROPERTY_COLS} FROM properties WHERE object_type_id = $1 ORDER BY id ASC"
-    );
+pub async fn load_properties(
+    db: &PgPool,
+    object_type_id: &str,
+) -> Result<Vec<PropertyRow>, ApiErr> {
+    let q =
+        format!("SELECT {PROPERTY_COLS} FROM properties WHERE object_type_id = $1 ORDER BY id ASC");
     Ok(sqlx::query_as::<_, PropertyRow>(&q)
         .bind(object_type_id)
         .fetch_all(db)
@@ -78,7 +80,8 @@ pub async fn outgoing_links(
     db: &PgPool,
     type_id: &str,
 ) -> Result<Vec<(LinkTypeRow, Option<TypeMeta>)>, ApiErr> {
-    let q = format!("SELECT {LINK_COLS} FROM link_types WHERE from_type_id = $1 ORDER BY api_name ASC");
+    let q =
+        format!("SELECT {LINK_COLS} FROM link_types WHERE from_type_id = $1 ORDER BY api_name ASC");
     let links = sqlx::query_as::<_, LinkTypeRow>(&q)
         .bind(type_id)
         .fetch_all(db)
@@ -95,7 +98,8 @@ pub async fn incoming_links(
     db: &PgPool,
     type_id: &str,
 ) -> Result<Vec<(LinkTypeRow, Option<TypeMeta>)>, ApiErr> {
-    let q = format!("SELECT {LINK_COLS} FROM link_types WHERE to_type_id = $1 ORDER BY api_name ASC");
+    let q =
+        format!("SELECT {LINK_COLS} FROM link_types WHERE to_type_id = $1 ORDER BY api_name ASC");
     let links = sqlx::query_as::<_, LinkTypeRow>(&q)
         .bind(type_id)
         .fetch_all(db)

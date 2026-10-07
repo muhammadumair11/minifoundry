@@ -511,41 +511,97 @@ mod tests {
 
     #[test]
     fn bar_count_groups_desc_then_name() {
-        let out = compute_widget_rows("bar", "count", Some("city"), None, 10, "desc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "count",
+            Some("city"),
+            None,
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         // counts: Rotterdam 3, Hamburg 2, (empty) 1
-        assert_eq!(out, vec![
-            json!({"name": "Rotterdam", "value": 3}),
-            json!({"name": "Hamburg", "value": 2}),
-            json!({"name": "(empty)", "value": 1}),
-        ]);
+        assert_eq!(
+            out,
+            vec![
+                json!({"name": "Rotterdam", "value": 3}),
+                json!({"name": "Hamburg", "value": 2}),
+                json!({"name": "(empty)", "value": 1}),
+            ]
+        );
     }
 
     #[test]
     fn sum_coerces_numeric_strings_and_skips_junk() {
-        let out = compute_widget_rows("bar", "sum", Some("city"), Some("qty"), 10, "desc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "sum",
+            Some("city"),
+            Some("qty"),
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         // Rotterdam 10+20+30=60, (empty) 7, Hamburg 5 ('abc' skipped)
-        assert_eq!(out, vec![
-            json!({"name": "Rotterdam", "value": 60}),
-            json!({"name": "(empty)", "value": 7}),
-            json!({"name": "Hamburg", "value": 5}),
-        ]);
+        assert_eq!(
+            out,
+            vec![
+                json!({"name": "Rotterdam", "value": 60}),
+                json!({"name": "(empty)", "value": 7}),
+                json!({"name": "Hamburg", "value": 5}),
+            ]
+        );
     }
 
     #[test]
     fn avg_min_max_and_empty_group_zero() {
-        let out = compute_widget_rows("line", "avg", Some("city"), Some("qty"), 10, "desc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "line",
+            "avg",
+            Some("city"),
+            Some("qty"),
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         assert_eq!(out[0], json!({"name": "Rotterdam", "value": 20})); // 60/3
         assert_eq!(out[1], json!({"name": "(empty)", "value": 7}));
         assert_eq!(out[2], json!({"name": "Hamburg", "value": 5})); // only numeric value
 
-        let out = compute_widget_rows("pie", "max", Some("city"), Some("qty"), 10, "desc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "pie",
+            "max",
+            Some("city"),
+            Some("qty"),
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         assert_eq!(out[0], json!({"name": "Rotterdam", "value": 30}));
-        let out = compute_widget_rows("area", "min", Some("city"), Some("qty"), 10, "asc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "area",
+            "min",
+            Some("city"),
+            Some("qty"),
+            10,
+            "asc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         // asc by value: Hamburg 5, (empty) 7, Rotterdam 10
         assert_eq!(out[0], json!({"name": "Hamburg", "value": 5}));
         assert_eq!(out[1], json!({"name": "(empty)", "value": 7}));
@@ -559,20 +615,43 @@ mod tests {
             {"city": "X", "qty": "abc"},
             {"city": "X", "qty": null}
         ]));
-        let out = compute_widget_rows("bar", "sum", Some("city"), Some("qty"), 10, "desc", &data, 2, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "sum",
+            Some("city"),
+            Some("qty"),
+            10,
+            "desc",
+            &data,
+            2,
+            "ds",
+        )
+        .unwrap();
         assert_eq!(out, vec![json!({"name": "X", "value": 0})]);
     }
 
     #[test]
     fn topn_and_sort_dir() {
-        let out = compute_widget_rows("bar", "count", Some("city"), None, 2, "asc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "count",
+            Some("city"),
+            None,
+            2,
+            "asc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         // asc: (empty) 1, Hamburg 2 — Rotterdam cut by topN
-        assert_eq!(out, vec![
-            json!({"name": "(empty)", "value": 1}),
-            json!({"name": "Hamburg", "value": 2}),
-        ]);
+        assert_eq!(
+            out,
+            vec![
+                json!({"name": "(empty)", "value": 1}),
+                json!({"name": "Hamburg", "value": 2}),
+            ]
+        );
     }
 
     #[test]
@@ -580,10 +659,22 @@ mod tests {
         let data = rows(json!([
             {"city": "b"}, {"city": "a"}, {"city": "c"}
         ]));
-        let out = compute_widget_rows("bar", "count", Some("city"), None, 10, "desc", &data, 3, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "count",
+            Some("city"),
+            None,
+            10,
+            "desc",
+            &data,
+            3,
+            "ds",
+        )
+        .unwrap();
         assert_eq!(
-            out.iter().map(|r| r["name"].as_str().unwrap()).collect::<Vec<_>>(),
+            out.iter()
+                .map(|r| r["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
             vec!["a", "b", "c"]
         );
     }
@@ -594,8 +685,18 @@ mod tests {
             .unwrap();
         assert_eq!(out, vec![json!({"name": "value", "value": 42})]);
 
-        let out = compute_widget_rows("stat", "sum", None, Some("qty"), 10, "desc", &sample(), 6, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "stat",
+            "sum",
+            None,
+            Some("qty"),
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap();
         assert_eq!(out, vec![json!({"name": "value", "value": 72})]); // 10+20+30+5+7
 
         let e = compute_widget_rows("stat", "sum", None, None, 10, "desc", &sample(), 6, "ds")
@@ -618,33 +719,86 @@ mod tests {
             .unwrap_err();
         assert_eq!(e.message, "Widget needs a groupBy column (type 'bar')");
 
-        let e = compute_widget_rows("pie", "count", Some("nope"), None, 10, "desc", &sample(), 6, "Ships")
-            .unwrap_err();
+        let e = compute_widget_rows(
+            "pie",
+            "count",
+            Some("nope"),
+            None,
+            10,
+            "desc",
+            &sample(),
+            6,
+            "Ships",
+        )
+        .unwrap_err();
         assert_eq!(e.message, "Column 'nope' not found in dataset 'Ships'");
 
-        let e = compute_widget_rows("pie", "sum", Some("city"), None, 10, "desc", &sample(), 6, "ds")
-            .unwrap_err();
+        let e = compute_widget_rows(
+            "pie",
+            "sum",
+            Some("city"),
+            None,
+            10,
+            "desc",
+            &sample(),
+            6,
+            "ds",
+        )
+        .unwrap_err();
         assert_eq!(e.message, "agg 'sum' needs a valueColumn");
 
-        let e = compute_widget_rows("pie", "sum", Some("city"), Some("nope"), 10, "desc", &sample(), 6, "Ships")
-            .unwrap_err();
+        let e = compute_widget_rows(
+            "pie",
+            "sum",
+            Some("city"),
+            Some("nope"),
+            10,
+            "desc",
+            &sample(),
+            6,
+            "Ships",
+        )
+        .unwrap_err();
         assert_eq!(e.message, "Column 'nope' not found in dataset 'Ships'");
 
         // empty dataset: column checks skipped (legacy `allRows.length > 0` guard)
-        let out = compute_widget_rows("bar", "count", Some("anything"), None, 10, "desc", &[], 0, "ds")
-            .unwrap();
+        let out = compute_widget_rows(
+            "bar",
+            "count",
+            Some("anything"),
+            None,
+            10,
+            "desc",
+            &[],
+            0,
+            "ds",
+        )
+        .unwrap();
         assert!(out.is_empty());
     }
 
     #[test]
     fn boolean_group_labels() {
         let data = rows(json!([{"flag": true}, {"flag": false}, {"flag": true}]));
-        let out = compute_widget_rows("bar", "count", Some("flag"), None, 10, "desc", &data, 3, "ds")
-            .unwrap();
-        assert_eq!(out, vec![
-            json!({"name": "true", "value": 2}),
-            json!({"name": "false", "value": 1}),
-        ]);
+        let out = compute_widget_rows(
+            "bar",
+            "count",
+            Some("flag"),
+            None,
+            10,
+            "desc",
+            &data,
+            3,
+            "ds",
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            vec![
+                json!({"name": "true", "value": 2}),
+                json!({"name": "false", "value": 1}),
+            ]
+        );
     }
 
     // ─── widget validation ───────────────────────────────────────────────
@@ -674,27 +828,49 @@ mod tests {
         );
 
         // config defaults to {} and is always present
-        let w2 = validate_widget("widget", &json!({"id": "w", "type": "stat", "title": "t", "datasetId": "d"})).unwrap();
+        let w2 = validate_widget(
+            "widget",
+            &json!({"id": "w", "type": "stat", "title": "t", "datasetId": "d"}),
+        )
+        .unwrap();
         assert_eq!(w2.raw["config"], json!({}));
         assert!(w2.raw.get("span").is_none());
     }
 
     #[test]
     fn widget_validation_errors() {
-        let e = validate_widget("widget", &json!({"id": "w1", "type": "bar", "title": "t"})).unwrap_err();
-        assert_eq!(e.message, "widget.datasetId: datasetId is required for a dataset widget");
+        let e = validate_widget("widget", &json!({"id": "w1", "type": "bar", "title": "t"}))
+            .unwrap_err();
+        assert_eq!(
+            e.message,
+            "widget.datasetId: datasetId is required for a dataset widget"
+        );
 
         let e = validate_widget(
             "widgets.0",
             &json!({"id": "w1", "type": "bar", "title": "t", "sourceType": "objectType"}),
         )
         .unwrap_err();
-        assert_eq!(e.message, "widgets.0.objectTypeId: objectTypeId is required for an Ontology widget");
+        assert_eq!(
+            e.message,
+            "widgets.0.objectTypeId: objectTypeId is required for an Ontology widget"
+        );
 
-        let e = validate_widget("widget", &json!({"id": "", "type": "bar", "title": "t", "datasetId": "d"})).unwrap_err();
-        assert_eq!(e.message, "widget.id: Too small: expected string to have >=1 chars");
+        let e = validate_widget(
+            "widget",
+            &json!({"id": "", "type": "bar", "title": "t", "datasetId": "d"}),
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.message,
+            "widget.id: Too small: expected string to have >=1 chars"
+        );
 
-        let e = validate_widget("widget", &json!({"id": "w", "type": "nope", "title": "t", "datasetId": "d"})).unwrap_err();
+        let e = validate_widget(
+            "widget",
+            &json!({"id": "w", "type": "nope", "title": "t", "datasetId": "d"}),
+        )
+        .unwrap_err();
         assert_eq!(
             e.message,
             "widget.type: Invalid option: expected one of \"bar\"|\"line\"|\"pie\"|\"area\"|\"stat\"|\"table\""
@@ -705,7 +881,10 @@ mod tests {
             &json!({"id": "w", "type": "bar", "title": "t", "datasetId": "d", "config": {"topN": 0}}),
         )
         .unwrap_err();
-        assert_eq!(e.message, "widget.config.topN: Invalid input: expected int between 1 and 100");
+        assert_eq!(
+            e.message,
+            "widget.config.topN: Invalid input: expected int between 1 and 100"
+        );
 
         let e = validate_widget(
             "widget",
@@ -718,11 +897,17 @@ mod tests {
     #[test]
     fn widgets_array_limits() {
         let e = validate_widgets("widgets", &json!({"a": 1})).unwrap_err();
-        assert_eq!(e.message, "widgets: Invalid input: expected array, received object");
+        assert_eq!(
+            e.message,
+            "widgets: Invalid input: expected array, received object"
+        );
         let many: Vec<Value> = (0..51)
             .map(|i| json!({"id": format!("w{i}"), "type": "stat", "title": "t", "datasetId": "d"}))
             .collect();
         let e = validate_widgets("widgets", &Value::Array(many)).unwrap_err();
-        assert_eq!(e.message, "widgets: Too big: expected array to have <=50 items");
+        assert_eq!(
+            e.message,
+            "widgets: Too big: expected array to have <=50 items"
+        );
     }
 }

@@ -77,11 +77,10 @@ pub async fn get_impact(
         )));
     };
 
-    let edges: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT from_dataset_id, to_dataset_id, pipeline_id FROM lineage_edges",
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let edges: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT from_dataset_id, to_dataset_id, pipeline_id FROM lineage_edges")
+            .fetch_all(&state.db)
+            .await?;
 
     // BFS downstream from the root (first/shortest hop wins).
     let mut downstream: Vec<(String, i32, Option<String>)> = Vec::new(); // id, depth, viaPipeline
@@ -145,10 +144,7 @@ pub async fn get_impact(
         .iter()
         .map(|(id, d, via)| {
             let ds = by_id.get(id);
-            let via_name = via
-                .as_ref()
-                .and_then(|p| names.get(p))
-                .cloned();
+            let via_name = via.as_ref().and_then(|p| names.get(p)).cloned();
             json!({
                 "id": id,
                 "name": ds.map(|x| x.name.clone()).unwrap_or_else(|| "(unknown)".to_string()),
@@ -307,7 +303,9 @@ pub async fn get_version_lineage(
             )
         } else if let Some(run_id) = &e.run_id {
             match runs.get(run_id) {
-                Some((trigger, status, started)) => (trigger.clone(), status.clone(), started.clone()),
+                Some((trigger, status, started)) => {
+                    (trigger.clone(), status.clone(), started.clone())
+                }
                 None => (None, None, None),
             }
         } else {

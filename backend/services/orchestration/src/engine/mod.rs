@@ -47,8 +47,18 @@ pub fn storage_max_rows() -> usize {
 }
 
 const KNOWN_NODE_TYPES: [&str; 12] = [
-    "source", "filter", "derive", "select", "rename", "join", "aggregate", "sort", "dedupe",
-    "union", "limit", "output",
+    "source",
+    "filter",
+    "derive",
+    "select",
+    "rename",
+    "join",
+    "aggregate",
+    "sort",
+    "dedupe",
+    "union",
+    "limit",
+    "output",
 ];
 
 // ─── Graph types ────────────────────────────────────────────────────────
@@ -198,8 +208,7 @@ pub struct RunRecord {
     pub output_version_number: Option<i32>,
 }
 
-const RUN_RECORD_COLS: &str =
-    "id, status, failure_cause, output_dataset_id, output_version_number";
+const RUN_RECORD_COLS: &str = "id, status, failure_cause, output_dataset_id, output_version_number";
 
 /// Execute a pipeline end-to-end and return the final run record. The run is
 /// created up-front (status 'running') and updated to success/failed. Errors
@@ -243,7 +252,10 @@ pub async fn run_pipeline(
     if active.is_some() {
         let now = Utc::now();
         let busy_manifest = RunManifest {
-            graph_version: GraphVersionRef { version_number: opts.version_number, node_count: 0 },
+            graph_version: GraphVersionRef {
+                version_number: opts.version_number,
+                node_count: 0,
+            },
             inputs: vec![],
             outputs: vec![],
             nodes: vec![],
@@ -302,7 +314,10 @@ pub async fn run_pipeline(
         state,
     };
 
-    let graph_value = opts.graph_override.clone().unwrap_or(pipeline.graph_json.0.clone());
+    let graph_value = opts
+        .graph_override
+        .clone()
+        .unwrap_or(pipeline.graph_json.0.clone());
     let mut failure_msg: Option<String> = None;
     let mut result: Option<ExecuteResult> = None;
     match execute_graph(&mut ctx, &graph_value).await {
@@ -366,18 +381,21 @@ pub async fn run_pipeline(
         .await;
         // Flush cascade log lines appended after finalization (legacy persistLogs).
         let _ = sqlx::query("UPDATE pipeline_runs SET logs_json = $1 WHERE id = $2")
-            .bind(Json(serde_json::to_value(&ctx.log).unwrap_or(Value::Array(vec![]))))
+            .bind(Json(
+                serde_json::to_value(&ctx.log).unwrap_or(Value::Array(vec![])),
+            ))
             .bind(&run_id)
             .execute(&state.db)
             .await;
     }
 
     // Re-read so the returned record reflects any post-finalize updates.
-    let fresh: Option<RunRecord> =
-        sqlx::query_as(&format!("SELECT {RUN_RECORD_COLS} FROM pipeline_runs WHERE id = $1"))
-            .bind(&run_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let fresh: Option<RunRecord> = sqlx::query_as(&format!(
+        "SELECT {RUN_RECORD_COLS} FROM pipeline_runs WHERE id = $1"
+    ))
+    .bind(&run_id)
+    .fetch_optional(&state.db)
+    .await?;
     Ok(fresh.unwrap_or(final_run))
 }
 
@@ -484,7 +502,9 @@ async fn trigger_cascades(
 
 async fn persist_cascade_logs(state: &AppState, run_id: &str, log: &[LogEntry]) {
     let _ = sqlx::query("UPDATE pipeline_runs SET logs_json = $1 WHERE id = $2")
-        .bind(Json(serde_json::to_value(log).unwrap_or(Value::Array(vec![]))))
+        .bind(Json(
+            serde_json::to_value(log).unwrap_or(Value::Array(vec![])),
+        ))
         .bind(run_id)
         .execute(&state.db)
         .await;
@@ -564,7 +584,13 @@ async fn execute_graph(
         // sorts Number(a==='in-1') - Number(b==='in-1') ascending, stable).
         let mut in_edges: Vec<&GraphEdge> =
             graph.edges.iter().filter(|e| e.target == node.id).collect();
-        in_edges.sort_by_key(|e| if e.target_handle.as_deref() == Some("in-1") { 1 } else { 0 });
+        in_edges.sort_by_key(|e| {
+            if e.target_handle.as_deref() == Some("in-1") {
+                1
+            } else {
+                0
+            }
+        });
         let mut inputs: Vec<Vec<Row>> = Vec::with_capacity(in_edges.len());
         for e in in_edges {
             match outputs.get(&e.source) {
@@ -629,7 +655,11 @@ pub fn parse_graph(value: &Value) -> Result<PipelineGraph, PipelineError> {
             Some(Value::Object(m)) => m.clone(),
             _ => Map::new(),
         };
-        nodes.push(GraphNode { id, node_type, data });
+        nodes.push(GraphNode {
+            id,
+            node_type,
+            data,
+        });
     }
 
     let mut edges = Vec::new();
@@ -647,9 +677,20 @@ pub fn parse_graph(value: &Value) -> Result<PipelineGraph, PipelineError> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("edge-{i}")),
-            source: e.get("source").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            target: e.get("target").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            target_handle: e.get("targetHandle").and_then(|h| h.as_str()).map(|s| s.to_string()),
+            source: e
+                .get("source")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            target: e
+                .get("target")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            target_handle: e
+                .get("targetHandle")
+                .and_then(|h| h.as_str())
+                .map(|s| s.to_string()),
         });
     }
     Ok(PipelineGraph { nodes, edges })
@@ -701,7 +742,11 @@ pub fn validate_graph(graph: &PipelineGraph) -> Result<(), PipelineError> {
             )));
         }
     }
-    let output_nodes = graph.nodes.iter().filter(|n| n.node_type == "output").count();
+    let output_nodes = graph
+        .nodes
+        .iter()
+        .filter(|n| n.node_type == "output")
+        .count();
     if output_nodes != 1 {
         return Err(PipelineError(format!(
             "Pipeline must have exactly one output node (found {output_nodes})"
@@ -742,8 +787,7 @@ pub fn validate_graph(graph: &PipelineGraph) -> Result<(), PipelineError> {
 
 /// Kahn's algorithm; throws on cycles. Returns nodes in execution order.
 pub fn topo_sort(graph: &PipelineGraph) -> Result<Vec<GraphNode>, PipelineError> {
-    let by_id: HashMap<&str, &GraphNode> =
-        graph.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+    let by_id: HashMap<&str, &GraphNode> = graph.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
     let mut in_degree: HashMap<&str, usize> = HashMap::new();
     let mut adjacency: HashMap<&str, Vec<&str>> = HashMap::new();
     for node in &graph.nodes {
@@ -751,7 +795,10 @@ pub fn topo_sort(graph: &PipelineGraph) -> Result<Vec<GraphNode>, PipelineError>
         adjacency.insert(node.id.as_str(), Vec::new());
     }
     for edge in &graph.edges {
-        adjacency.entry(edge.source.as_str()).or_default().push(edge.target.as_str());
+        adjacency
+            .entry(edge.source.as_str())
+            .or_default()
+            .push(edge.target.as_str());
         *in_degree.entry(edge.target.as_str()).or_insert(0) += 1;
     }
     let mut queue: VecDeque<&str> = graph
@@ -784,7 +831,10 @@ pub fn topo_sort(graph: &PipelineGraph) -> Result<Vec<GraphNode>, PipelineError>
             cyclic.join(", ")
         )));
     }
-    Ok(order.iter().map(|id| (*by_id.get(id).expect("node")).clone()).collect())
+    Ok(order
+        .iter()
+        .map(|id| (*by_id.get(id).expect("node")).clone())
+        .collect())
 }
 
 // ─── Node dispatch ──────────────────────────────────────────────────────
@@ -964,14 +1014,19 @@ async fn exec_output(
     // Ensure the output dataset exists (by exact name; legacy createDatasetFromRows).
     let dataset_id = match catalog.dataset_by_name(&name).await {
         Ok(v) => extract_id(&v).ok_or_else(|| {
-            PipelineError(format!("Catalog returned an unusable dataset payload for '{name}'"))
+            PipelineError(format!(
+                "Catalog returned an unusable dataset payload for '{name}'"
+            ))
         })?,
         Err(e) if is_not_found(&e) => {
-            let created = catalog.create_dataset(&name, &["derived"]).await.map_err(|e2| {
-                PipelineError(internal_error_message(&e2))
-            })?;
+            let created = catalog
+                .create_dataset(&name, &["derived"])
+                .await
+                .map_err(|e2| PipelineError(internal_error_message(&e2)))?;
             extract_id(&created).ok_or_else(|| {
-                PipelineError(format!("Catalog returned an unusable dataset payload for '{name}'"))
+                PipelineError(format!(
+                    "Catalog returned an unusable dataset payload for '{name}'"
+                ))
             })?
         }
         Err(e) => return Err(PipelineError(internal_error_message(&e))),
@@ -1012,9 +1067,10 @@ async fn exec_output(
         body["outputJobId"] = Value::String(job_id.to_string());
     }
 
-    let resp = catalog.append_version(&dataset_id, &body).await.map_err(|e| {
-        PipelineError(internal_error_message(&e))
-    })?;
+    let resp = catalog
+        .append_version(&dataset_id, &body)
+        .await
+        .map_err(|e| PipelineError(internal_error_message(&e)))?;
     let version_number = resp
         .get("versionNumber")
         .and_then(|v| v.as_i64())
@@ -1061,7 +1117,11 @@ async fn exec_output(
 fn extract_id(v: &Value) -> Option<String> {
     v.get("id")
         .and_then(|x| x.as_str())
-        .or_else(|| v.get("dataset").and_then(|d| d.get("id")).and_then(|x| x.as_str()))
+        .or_else(|| {
+            v.get("dataset")
+                .and_then(|d| d.get("id"))
+                .and_then(|x| x.as_str())
+        })
         .map(|s| s.to_string())
 }
 
@@ -1106,7 +1166,9 @@ mod tests {
             "Pipeline graph must contain \"nodes\" and \"edges\" arrays"
         );
         assert_eq!(
-            parse_graph(&json!({"nodes": 5, "edges": []})).unwrap_err().0,
+            parse_graph(&json!({"nodes": 5, "edges": []}))
+                .unwrap_err()
+                .0,
             "Pipeline graph must contain \"nodes\" and \"edges\" arrays"
         );
     }
@@ -1238,7 +1300,10 @@ mod tests {
 
     #[test]
     fn busy_message_constant() {
-        assert_eq!(PIPELINE_BUSY_MESSAGE, "Run skipped: another run is already in progress");
+        assert_eq!(
+            PIPELINE_BUSY_MESSAGE,
+            "Run skipped: another run is already in progress"
+        );
         assert_eq!(CASCADE_MAX_DEPTH, 2);
         assert_eq!(CASCADE_MAX_CHILDREN, 5);
         assert_eq!(RUNNING_STALE_MS, 600_000);
@@ -1247,7 +1312,10 @@ mod tests {
     #[test]
     fn manifest_serialization_shape() {
         let m = RunManifest {
-            graph_version: GraphVersionRef { version_number: Some(11), node_count: 3 },
+            graph_version: GraphVersionRef {
+                version_number: Some(11),
+                node_count: 3,
+            },
             inputs: vec![ManifestInput {
                 dataset_id: "d1".into(),
                 dataset_name: "orders".into(),
@@ -1261,9 +1329,24 @@ mod tests {
                 row_count: 16,
             }],
             nodes: vec![
-                ManifestNode { node_id: "s".into(), node_type: "source".into(), label: None, code_sha256: None },
-                ManifestNode { node_id: "d".into(), node_type: "derive".into(), label: None, code_sha256: Some("abc".into()) },
-                ManifestNode { node_id: "o".into(), node_type: "output".into(), label: Some("curated".into()), code_sha256: None },
+                ManifestNode {
+                    node_id: "s".into(),
+                    node_type: "source".into(),
+                    label: None,
+                    code_sha256: None,
+                },
+                ManifestNode {
+                    node_id: "d".into(),
+                    node_type: "derive".into(),
+                    label: None,
+                    code_sha256: Some("abc".into()),
+                },
+                ManifestNode {
+                    node_id: "o".into(),
+                    node_type: "output".into(),
+                    label: Some("curated".into()),
+                    code_sha256: None,
+                },
             ],
         };
         let v = serde_json::to_value(&m).unwrap();
@@ -1272,9 +1355,15 @@ mod tests {
         assert_eq!(v["outputs"][0]["versionNumber"], 7);
         // exact key sets per the run-detail fixture
         assert_eq!(v["nodes"][0].as_object().unwrap().len(), 2);
-        assert!(v["nodes"][1].as_object().unwrap().contains_key("codeSha256"));
+        assert!(v["nodes"][1]
+            .as_object()
+            .unwrap()
+            .contains_key("codeSha256"));
         assert!(v["nodes"][2].as_object().unwrap().contains_key("label"));
-        assert!(!v["nodes"][2].as_object().unwrap().contains_key("codeSha256"));
+        assert!(!v["nodes"][2]
+            .as_object()
+            .unwrap()
+            .contains_key("codeSha256"));
         // round-trip
         let back: RunManifest = serde_json::from_value(v).unwrap();
         assert_eq!(back.nodes.len(), 3);
@@ -1285,7 +1374,10 @@ mod tests {
     fn busy_manifest_matches_legacy_shape() {
         // The busy-skip run stores an empty manifest + single error log line.
         let m = RunManifest {
-            graph_version: GraphVersionRef { version_number: None, node_count: 0 },
+            graph_version: GraphVersionRef {
+                version_number: None,
+                node_count: 0,
+            },
             inputs: vec![],
             outputs: vec![],
             nodes: vec![],

@@ -12,7 +12,9 @@ use std::collections::HashMap;
 use crate::audit::{audit, AuditOptions};
 use crate::quality::{evaluate_rules, kind_requires_column, QUALITY_KINDS};
 use crate::routes::require_dataset;
-use crate::state::{serialize_result, serialize_rule, AppState, ResultRow, RuleRow, RESULT_COLS, RULE_COLS};
+use crate::state::{
+    serialize_result, serialize_rule, AppState, ResultRow, RuleRow, RESULT_COLS, RULE_COLS,
+};
 use crate::validate::{
     as_object, opt_bool, opt_enum, opt_object, opt_str_trim_bounded, parse_body, req_enum,
 };
@@ -77,8 +79,8 @@ pub async fn post_quality(
 
     let v = parse_body(&body)?;
     let m = as_object(v)?;
-    let name = opt_str_trim_bounded(&m, "name", 1, Some("name is required"), 120)?
-        .ok_or_else(|| {
+    let name =
+        opt_str_trim_bounded(&m, "name", 1, Some("name is required"), 120)?.ok_or_else(|| {
             ApiError::bad_request("name: Invalid input: expected string, received undefined")
         })?;
     let kind = req_enum(&m, "kind", &QUALITY_KINDS)?;
@@ -88,7 +90,9 @@ pub async fn post_quality(
     let enabled = opt_bool(&m, "enabled")?.unwrap_or(true);
 
     if kind_requires_column(kind) && column.map(|c| c.is_empty()).unwrap_or(true) {
-        return Err(ApiError::bad_request(format!("kind '{kind}' requires a column")));
+        return Err(ApiError::bad_request(format!(
+            "kind '{kind}' requires a column"
+        )));
     }
 
     let rule: RuleRow = sqlx::query_as(&format!(
@@ -186,7 +190,11 @@ pub async fn patch_quality_rule(
     .bind(name)
     .bind(kind)
     .bind(column_present)
-    .bind(if column_present && !column_null { column } else { None })
+    .bind(if column_present && !column_null {
+        column
+    } else {
+        None
+    })
     .bind(config.map(|c| serde_json::to_string(&Value::Object(c)).unwrap_or_else(|_| "{}".into())))
     .bind(severity)
     .bind(enabled)
@@ -244,7 +252,9 @@ pub async fn delete_quality_rule(
     )
     .await;
 
-    Ok(json_ok(json!({ "ok": true, "deleted": rule.id, "name": rule.name })))
+    Ok(json_ok(
+        json!({ "ok": true, "deleted": rule.id, "name": rule.name }),
+    ))
 }
 
 /// POST /api/datasets/{id}/quality/evaluate — editor+; run all ENABLED rules
@@ -283,11 +293,7 @@ pub async fn evaluate_quality(
             .await?;
             match main_head.or(any_head) {
                 Some(n) => n,
-                None => {
-                    return Err(ApiError::bad_request(
-                        "Dataset has no versions to evaluate",
-                    ))
-                }
+                None => return Err(ApiError::bad_request("Dataset has no versions to evaluate")),
             }
         }
     };

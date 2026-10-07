@@ -1158,6 +1158,7 @@ Work Log (condensed — live status in MIGRATION.md):
 - Phase 2+3 IN FLIGHT: catalog + orchestration (incl. mf-js/rquickjs engine) delegated to parallel subagents against INTERNAL_API.md + fixtures; waves B (compute, ontology) and C (governance, public-api) queued behind them. scripts/smoke.sh drafted as the Phase 7 full-stack gate.
 
 Stage Summary:
-- New stack layout: backend/ (Cargo workspace, 8 services + seed CLI + contracts) and frontend/ (Vite SPA). Legacy Next.js app untouched at repo root until Phase 7 cutover (still runnable; its API was the contract-capture source).
-- Commits: bbcadb9 scaffold → afbeabf compile fixes → 20251af Phase-1 green → 799ac23 infra/clippy cleanup (+ agent commits to follow).
-- Remaining: catalog/orchestration review+integrate, compute/ontology/governance/public-api waves, full compose bring-up, smoke.sh green, cutover (delete legacy app), final CI + README rewrite.
+- New stack layout: backend/ (Cargo workspace, 8 services + seed CLI + contracts) and frontend/ (Vite SPA). Legacy Next.js app REMOVED at cutover (8c98d7f) — preserved in git history on main.
+- MIGRATION COMPLETE. Final gates (compose stack, fresh volumes): e2e-phase1 27/27 · verify-contracts 70/70 · smoke.sh 94/0 · cargo fmt/clippy(-D-clean)/test (25 suites) green · frontend tsc+vite green · SPA+proxy verified via nginx container.
+- Ports delivered by 5 parallel subagents (catalog 76 tests, orchestration 68 incl. mf-js QuickJS 24, compute 23, ontology 82, governance+public-api 53) + orchestrator-built auth/gateway/shared crates/frontend; ~30K lines of Rust total.
+- Remaining recommendation: visual browser pass over the 24 SPA pages at http://localhost:3000 (data chains all verified programmatically).

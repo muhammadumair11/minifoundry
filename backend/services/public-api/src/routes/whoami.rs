@@ -19,7 +19,14 @@ pub async fn whoami(State(state): State<AppState>, headers: HeaderMap, uri: Uri)
     let path = uri.path().to_string();
     let st = state.clone();
     guard::with_api_token(&state, &headers, &path, move |ctx| async move {
-        handler(&st, ctx.token.id.as_str(), ctx.token.name.as_str(), ctx.token.prefix.as_str(), &ctx.token.request_count).await
+        handler(
+            &st,
+            ctx.token.id.as_str(),
+            ctx.token.name.as_str(),
+            ctx.token.prefix.as_str(),
+            &ctx.token.request_count,
+        )
+        .await
     })
     .await
 }

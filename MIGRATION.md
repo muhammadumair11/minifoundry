@@ -17,7 +17,7 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 | 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | ✅ COMPLETE (c09ef0f → 151fceb apply-path RAW amendment → 5d3b057 maskedColumns-from-catalog; 82 tests; 184-check live QA; RAW write-back proven zero-'------') |
 | 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | ✅ COMPLETE (05df02d + ba87b32; 53 tests; masking E2E + 429 burst + curriculum-via-audit + tolerant phase all live-verified) |
 | 6b | **INTEGRATION GATE (dev-stack, clean reset + reseed)** | ✅ **GREEN: e2e-phase1 27/27 · verify-contracts 70/70 · smoke.sh 91/0** (all 8 services + gateway + SPA; pipeline run, 3-language transforms, v1 rate-limit, cross-service masking all live) |
-| 7 | docker compose full-stack pass, browser UI check, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | 🔨 next |
+| 7 | docker compose full-stack pass, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | ✅ EXECUTED (8c98d7f: 492 files / 200,708 legacy lines removed; compose stack green from fresh volumes: e2e 27/27 · verify 70/70 · smoke 94/0; post-cutover gates: fmt clean, clippy 0 warnings, 25 test suites green, frontend tsc+build green; CI = backend + frontend + compose smoke on main/dispatch) |
 
 ## Resume point (if continuing in a later session)
 

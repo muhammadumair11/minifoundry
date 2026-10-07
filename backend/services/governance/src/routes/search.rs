@@ -161,10 +161,7 @@ pub async fn search(
                 for item in normalize_items(&v) {
                     let ty = item["type"].as_str().unwrap_or_default();
                     if let Some(pos) = SECTION_ORDER.iter().position(|t| *t == ty) {
-                        sections
-                            .entry(SECTION_ORDER[pos])
-                            .or_default()
-                            .push(item);
+                        sections.entry(SECTION_ORDER[pos]).or_default().push(item);
                     }
                 }
             }
@@ -217,7 +214,10 @@ pub fn parse_instance_type(v: &Value) -> Option<InstanceType> {
         .and_then(|x| x.as_str())
         .unwrap_or(&api_name)
         .to_string();
-    if v.get("sourceDatasetId").map(|x| x.is_null()).unwrap_or(true) {
+    if v.get("sourceDatasetId")
+        .map(|x| x.is_null())
+        .unwrap_or(true)
+    {
         return None;
     }
     let primary_key = v
@@ -284,10 +284,7 @@ pub fn instance_hits(
         if hits.len() >= budget || seen_titles.len() >= MAX_OBJECT_HITS_PER_TYPE {
             break;
         }
-        let values = row
-            .get("values")
-            .filter(|v| v.is_object())
-            .unwrap_or(row);
+        let values = row.get("values").filter(|v| v.is_object()).unwrap_or(row);
         let Some(title_text) = values.get(title_column).and_then(js_string) else {
             continue;
         };
@@ -306,9 +303,7 @@ pub fn instance_hits(
             (false, Some(pk_col)) => values
                 .get(pk_col)
                 .and_then(js_string)
-                .map(|pk| {
-                    format!("/objects/{}?pk={}", t.api_name, percent_encode(&pk))
-                })
+                .map(|pk| format!("/objects/{}?pk={}", t.api_name, percent_encode(&pk)))
                 .unwrap_or_else(|| format!("/objects/{}", t.api_name)),
             _ => format!("/objects/{}", t.api_name),
         };
@@ -442,10 +437,7 @@ mod tests {
         let merged = merge_results(sections);
         assert_eq!(merged.len(), MAX_RESULTS);
         // datasets fill their cap (10) first, then pipelines up to the total
-        assert_eq!(
-            merged.iter().filter(|v| v["type"] == "dataset").count(),
-            10
-        );
+        assert_eq!(merged.iter().filter(|v| v["type"] == "dataset").count(), 10);
         assert_eq!(
             merged.iter().filter(|v| v["type"] == "pipeline").count(),
             10
@@ -484,7 +476,10 @@ mod tests {
         sections.insert("object", items);
         let merged = merge_results(sections);
         assert_eq!(
-            merged.iter().filter(|v| v["subtitle"] == "Customer").count(),
+            merged
+                .iter()
+                .filter(|v| v["subtitle"] == "Customer")
+                .count(),
             MAX_OBJECT_HITS_PER_TYPE
         );
         assert_eq!(merged.len(), MAX_OBJECT_HITS_PER_TYPE + 1);
@@ -571,7 +566,9 @@ mod tests {
     #[test]
     fn instance_hits_respect_per_type_cap_and_budget() {
         let t = itype();
-        let rows: Vec<Value> = (0..9).map(|i| row(&format!("C{i}"), &format!("Amin {i}"))).collect();
+        let rows: Vec<Value> = (0..9)
+            .map(|i| row(&format!("C{i}"), &format!("Amin {i}")))
+            .collect();
         let mut seen = std::collections::HashSet::new();
         let hits = instance_hits(&t, &rows, &[], "amin", 20, &mut seen);
         assert_eq!(hits.len(), MAX_OBJECT_HITS_PER_TYPE);
@@ -602,7 +599,10 @@ mod tests {
         t2.id = "ot2".into();
         let rows = vec![row("C1", "Amina")];
         let mut seen = std::collections::HashSet::new();
-        assert_eq!(instance_hits(&t1, &rows, &[], "amina", 20, &mut seen).len(), 1);
+        assert_eq!(
+            instance_hits(&t1, &rows, &[], "amina", 20, &mut seen).len(),
+            1
+        );
         // same apiName|title from a second type record → globally deduped
         assert!(instance_hits(&t2, &rows, &[], "amina", 20, &mut seen).is_empty());
     }
@@ -626,6 +626,12 @@ mod tests {
         let no_props = serde_json::json!({
             "id": "y", "apiName": "b", "sourceDatasetId": "ds", "primaryKey": "pk"
         });
-        assert_eq!(parse_instance_type(&no_props).unwrap().title_column.as_deref(), Some("pk"));
+        assert_eq!(
+            parse_instance_type(&no_props)
+                .unwrap()
+                .title_column
+                .as_deref(),
+            Some("pk")
+        );
     }
 }

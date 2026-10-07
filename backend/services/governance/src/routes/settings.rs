@@ -178,7 +178,10 @@ pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     // if it ever lands — must keep users: legacy parity).
     let (catalog, orchestration, compute, ontology, auth) = futures::join!(
         state.clients.catalog.post("/internal/reset", &Value::Null),
-        state.clients.orchestration.post("/internal/reset", &Value::Null),
+        state
+            .clients
+            .orchestration
+            .post("/internal/reset", &Value::Null),
         state.clients.compute.post("/internal/reset", &Value::Null),
         state.clients.ontology.post("/internal/reset", &Value::Null),
         state.clients.auth.post("/internal/reset", &Value::Null),
@@ -305,8 +308,14 @@ mod tests {
     #[test]
     fn merge_accepts_flat_or_nested() {
         let mut into = Map::new();
-        merge_counts(&mut into, &serde_json::json!({ "datasets": 3, "junk": "x" }));
-        merge_counts(&mut into, &serde_json::json!({ "counts": { "pipelines": 1 } }));
+        merge_counts(
+            &mut into,
+            &serde_json::json!({ "datasets": 3, "junk": "x" }),
+        );
+        merge_counts(
+            &mut into,
+            &serde_json::json!({ "counts": { "pipelines": 1 } }),
+        );
         assert_eq!(into.get("datasets").and_then(|v| v.as_i64()), Some(3));
         assert_eq!(into.get("pipelines").and_then(|v| v.as_i64()), Some(1));
         assert!(into.get("junk").is_none());

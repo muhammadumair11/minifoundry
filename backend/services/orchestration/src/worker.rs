@@ -26,7 +26,8 @@ pub fn spawn_job_worker(state: AppState) {
         let worker_id = format!("{}:{}", std::process::id(), uuid::Uuid::new_v4());
         tracing::info!(worker = %worker_id, "job worker started");
 
-        let mut sweep = tokio::time::interval(tokio::time::Duration::from_secs(SWEEP_INTERVAL_SECONDS));
+        let mut sweep =
+            tokio::time::interval(tokio::time::Duration::from_secs(SWEEP_INTERVAL_SECONDS));
         sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         // Boot catch-up: process anything left over from a previous life.

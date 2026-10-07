@@ -52,21 +52,30 @@ async fn main() -> anyhow::Result<()> {
             "/api/transforms",
             get(routes::transforms::list_transforms).post(routes::transforms::create_transform),
         )
-        .route("/api/transforms/seed-demo", post(routes::seed_demo::seed_demo))
+        .route(
+            "/api/transforms/seed-demo",
+            post(routes::seed_demo::seed_demo),
+        )
         .route(
             "/api/transforms/{id}",
             get(routes::transforms::get_transform)
                 .patch(routes::transforms::update_transform)
                 .delete(routes::transforms::delete_transform),
         )
-        .route("/api/transforms/{id}/run", post(routes::runs::run_transform))
+        .route(
+            "/api/transforms/{id}/run",
+            post(routes::runs::run_transform),
+        )
         .route("/api/transforms/{id}/runs", get(routes::runs::list_runs))
         .route(
             "/api/transforms/{id}/runs/{run_id}/replay",
             post(routes::runs::replay_run),
         )
         // internal (service-token guarded; never routed by the gateway)
-        .route("/internal/transforms", get(routes::internal::list_transforms))
+        .route(
+            "/internal/transforms",
+            get(routes::internal::list_transforms),
+        )
         .route("/internal/search", get(routes::internal::search))
         .route("/internal/stats", get(routes::internal::stats))
         .route(

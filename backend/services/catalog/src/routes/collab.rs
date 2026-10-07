@@ -11,7 +11,9 @@ use std::collections::HashMap;
 use crate::audit::{audit, AuditOptions};
 use crate::routes::{identity_of, require_dataset_plain, watcher_key_of};
 use crate::state::{serialize_comment, AppState, CommentRow, COMMENT_COLS};
-use crate::validate::{as_object, opt_bool, opt_int_positive_null, opt_str_trim_bounded, parse_body};
+use crate::validate::{
+    as_object, opt_bool, opt_int_positive_null, opt_str_trim_bounded, parse_body,
+};
 
 /// GET /api/datasets/{id}/comments — latest 200, oldest-first thread read.
 pub async fn get_comments(
@@ -47,16 +49,10 @@ pub async fn post_comment(
 
     let v = parse_body(&body)?;
     let m = as_object(v)?;
-    let body_text = opt_str_trim_bounded(
-        &m,
-        "body",
-        1,
-        Some("comment is empty"),
-        2000,
-    )?
-    .ok_or_else(|| {
-        ApiError::bad_request("body: Invalid input: expected string, received undefined")
-    })?;
+    let body_text = opt_str_trim_bounded(&m, "body", 1, Some("comment is empty"), 2000)?
+        .ok_or_else(|| {
+            ApiError::bad_request("body: Invalid input: expected string, received undefined")
+        })?;
     let version_number = opt_int_positive_null(&m, "versionNumber")?.flatten();
 
     let (author_key, author_label) = identity_of(&actor);
@@ -77,7 +73,11 @@ pub async fn post_comment(
 
     // detail: `comment on v<n>|dataset: <first 80 chars>[…]`
     let preview: String = body_text.chars().take(80).collect();
-    let ellipsis = if body_text.chars().count() > 80 { "\u{2026}" } else { "" };
+    let ellipsis = if body_text.chars().count() > 80 {
+        "\u{2026}"
+    } else {
+        ""
+    };
     let target = match version_number {
         Some(n) => format!("v{n}"),
         None => "dataset".to_string(),
@@ -92,7 +92,9 @@ pub async fn post_comment(
     )
     .await;
 
-    Ok(json_created(json!({ "comment": serialize_comment(&comment) })))
+    Ok(json_created(
+        json!({ "comment": serialize_comment(&comment) }),
+    ))
 }
 
 /// DELETE /api/datasets/{id}/comments?commentId= — author or admin only.
@@ -109,11 +111,12 @@ pub async fn delete_comment(
         ));
     };
 
-    let comment: Option<CommentRow> =
-        sqlx::query_as(&format!("SELECT {COMMENT_COLS} FROM dataset_comments WHERE id = $1"))
-            .bind(comment_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let comment: Option<CommentRow> = sqlx::query_as(&format!(
+        "SELECT {COMMENT_COLS} FROM dataset_comments WHERE id = $1"
+    ))
+    .bind(comment_id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(comment) = comment.filter(|c| c.dataset_id == id) else {
         return Err(ApiError::not_found("comment not found"));
     };
@@ -171,7 +174,9 @@ pub async fn get_watch(
             .fetch_one(&state.db)
             .await?;
 
-    Ok(json_ok(json!({ "watching": mine.is_some(), "watchers": total })))
+    Ok(json_ok(
+        json!({ "watching": mine.is_some(), "watchers": total }),
+    ))
 }
 
 /// POST /api/datasets/{id}/watch — { watch: boolean } toggles the caller's
@@ -218,14 +223,25 @@ pub async fn post_watch(
     audit(
         &state,
         &actor,
-        AuditOptions::new(if watch { "dataset.watch" } else { "dataset.unwatch" }, "dataset")
-            .resource_id(Some(&id))
-            .resource_name(dataset_name.as_deref())
-            .detail(Some(&format!(
-                "{key} {} ({watchers} watcher{})",
-                if watch { "now watches" } else { "stopped watching" },
-                if watchers == 1 { "" } else { "s" }
-            ))),
+        AuditOptions::new(
+            if watch {
+                "dataset.watch"
+            } else {
+                "dataset.unwatch"
+            },
+            "dataset",
+        )
+        .resource_id(Some(&id))
+        .resource_name(dataset_name.as_deref())
+        .detail(Some(&format!(
+            "{key} {} ({watchers} watcher{})",
+            if watch {
+                "now watches"
+            } else {
+                "stopped watching"
+            },
+            if watchers == 1 { "" } else { "s" }
+        ))),
     )
     .await;
 

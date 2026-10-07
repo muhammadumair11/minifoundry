@@ -43,8 +43,8 @@ pub async fn post_branches(
 
     let v = parse_body(&body)?;
     let m = as_object(v)?;
-    let name = opt_str_trim_bounded(&m, "name", 1, Some("name is required"), 64)?
-        .ok_or_else(|| {
+    let name =
+        opt_str_trim_bounded(&m, "name", 1, Some("name is required"), 64)?.ok_or_else(|| {
             ApiError::bad_request("name: Invalid input: expected string, received undefined")
         })?;
     let description = opt_str_trim_bounded(&m, "description", 0, None, 500)?;
@@ -54,7 +54,11 @@ pub async fn post_branches(
     let branch = create_branch(
         &state.db,
         &id,
-        CreateBranchInput { name, description, base_version },
+        CreateBranchInput {
+            name,
+            description,
+            base_version,
+        },
         Some(&created_by),
     )
     .await
@@ -103,7 +107,9 @@ pub async fn delete_branch_route(
     )
     .await;
 
-    Ok(json_ok(json!({ "ok": true, "deleted": branch.id, "name": branch.name })))
+    Ok(json_ok(
+        json!({ "ok": true, "deleted": branch.id, "name": branch.name }),
+    ))
 }
 
 /// POST /api/datasets/{id}/branches/{branchId}/commit — editor+; rows in the
@@ -169,11 +175,10 @@ pub async fn merge_branch_route(
         .map_err(|e| e.into_api_error())?;
 
     // R14: announce the merged main version (consumable when the gate is off).
-    let gate: Option<(bool,)> =
-        sqlx::query_as("SELECT quality_gate FROM datasets WHERE id = $1")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let gate: Option<(bool,)> = sqlx::query_as("SELECT quality_gate FROM datasets WHERE id = $1")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?;
     crate::version_events::emit_version_created(
         &state,
         crate::version_events::VersionCreatedInput {

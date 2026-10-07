@@ -148,12 +148,13 @@ pub async fn read_version_rows_paged(
     page: i64,
     page_size: i64,
 ) -> Result<(Vec<Row>, i64), sqlx::Error> {
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2")
-            .bind(dataset_id)
-            .bind(version_number)
-            .fetch_one(db)
-            .await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2",
+    )
+    .bind(dataset_id)
+    .bind(version_number)
+    .fetch_one(db)
+    .await?;
     if count > 0 {
         let skip = (page - 1) * page_size;
         let raw: Vec<(String,)> = sqlx::query_as(
@@ -185,8 +186,14 @@ pub async fn read_version_rows_paged(
     };
     let all = rows_from_data_json(&data_json);
     let start = ((page - 1) * page_size).max(0) as usize;
-    let end = start.saturating_add(page_size.max(0) as usize).min(all.len());
-    let rows = if start < all.len() { all[start..end].to_vec() } else { Vec::new() };
+    let end = start
+        .saturating_add(page_size.max(0) as usize)
+        .min(all.len());
+    let rows = if start < all.len() {
+        all[start..end].to_vec()
+    } else {
+        Vec::new()
+    };
     Ok((rows, row_count as i64))
 }
 
@@ -197,12 +204,13 @@ pub async fn read_version_rows_all(
     version_number: i32,
     data_json: &str,
 ) -> Result<Vec<Row>, sqlx::Error> {
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2")
-            .bind(dataset_id)
-            .bind(version_number)
-            .fetch_one(db)
-            .await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2",
+    )
+    .bind(dataset_id)
+    .bind(version_number)
+    .fetch_one(db)
+    .await?;
     if count > 0 {
         let raw: Vec<(String,)> = sqlx::query_as(
             "SELECT row_data FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2 \
@@ -298,9 +306,9 @@ mod tests {
 
     #[test]
     fn risk_dataset_schema_matches_fixture() {
-        let rows = normalize_rows(&[
-            row(r#"{"supplier":"Northline Foods","region":"EMEA","risk_score":22,"tier":"A"}"#),
-        ]);
+        let rows = normalize_rows(&[row(
+            r#"{"supplier":"Northline Foods","region":"EMEA","risk_score":22,"tier":"A"}"#,
+        )]);
         let schema = infer_schema(&rows);
         let v = serde_json::to_value(&schema).unwrap();
         assert_eq!(
@@ -319,6 +327,9 @@ mod tests {
         assert_eq!(parse_json_text::<Vec<Row>>("", vec![]).len(), 0);
         assert_eq!(parse_json_text::<Vec<Row>>("nope", vec![]).len(), 0);
         assert_eq!(rows_from_data_json(r#"[{"a":1}]"#).len(), 1);
-        assert_eq!(data_json_string(&[row(r#"{"z":1,"a":2}"#)]), r#"[{"z":1,"a":2}]"#);
+        assert_eq!(
+            data_json_string(&[row(r#"{"z":1,"a":2}"#)]),
+            r#"[{"z":1,"a":2}]"#
+        );
     }
 }

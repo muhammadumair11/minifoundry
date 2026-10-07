@@ -65,7 +65,9 @@ pub async fn post_ingest(
                 .fetch_optional(&state.db)
                 .await?;
         if connector.is_none() {
-            return Err(ApiError::bad_request(format!("Connector '{cid}' not found")));
+            return Err(ApiError::bad_request(format!(
+                "Connector '{cid}' not found"
+            )));
         }
     }
 
@@ -130,10 +132,7 @@ async fn run_ingest(
     let (raw_rows, source_desc): (Vec<mf_types::Row>, String) = match itype {
         "sample" => {
             let Some(key) = sample_key.filter(|s| !s.is_empty()) else {
-                return Err((
-                    "type \"sample\" requires a sampleKey".to_string(),
-                    true,
-                ));
+                return Err(("type \"sample\" requires a sampleKey".to_string(), true));
             };
             let packs = sample_packs();
             let Some(pack) = packs.iter().find(|p| p.key == key) else {
@@ -290,8 +289,9 @@ pub async fn list_ingestions(State(state): State<AppState>) -> ApiResult<Respons
     .fetch_all(&state.db)
     .await?;
 
-    let datasets: Vec<(String, String)> =
-        sqlx::query_as("SELECT id, name FROM datasets").fetch_all(&state.db).await?;
+    let datasets: Vec<(String, String)> = sqlx::query_as("SELECT id, name FROM datasets")
+        .fetch_all(&state.db)
+        .await?;
     let name_by_id: HashMap<String, String> = datasets.into_iter().collect();
 
     let out: Vec<Value> = ingestions

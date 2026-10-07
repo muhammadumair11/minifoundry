@@ -18,9 +18,9 @@ use crate::dataset_service::{
 };
 use crate::masking::mask_rows_internal;
 use crate::publication::publish_approved;
-use crate::rows::{normalize_rows, parse_json_text, rows_from_data_json};
 use crate::routes::datasets::{list_datasets, load_detail};
 use crate::routes::require_service;
+use crate::rows::{normalize_rows, parse_json_text, rows_from_data_json};
 use crate::state::{AppState, DatasetRow, VersionRow, DATASET_COLS, VERSION_COLS};
 use crate::validate::{as_object, opt_rows_array, parse_body, req_str};
 use crate::version_events::{emit_version_created, VersionCreatedInput};
@@ -98,7 +98,9 @@ pub async fn internal_create_dataset(
     let m = as_object(v)?;
     let name = req_str(&m, "name")?;
     if name.trim().is_empty() {
-        return Err(ApiError::bad_request("name: Too small: expected string to have >=1 chars"));
+        return Err(ApiError::bad_request(
+            "name: Too small: expected string to have >=1 chars",
+        ));
     }
     let description = m.get("description").and_then(|d| d.as_str());
     let project_id = m.get("projectId").and_then(|d| d.as_str());
@@ -108,11 +110,7 @@ pub async fn internal_create_dataset(
             .filter_map(|t| t.as_str().map(String::from))
             .collect(),
         None | Some(Value::Null) => Vec::new(),
-        Some(_) => {
-            return Err(ApiError::bad_request(
-                "tags: Invalid input: expected array",
-            ))
-        }
+        Some(_) => return Err(ApiError::bad_request("tags: Invalid input: expected array")),
     };
 
     let dataset: DatasetRow = sqlx::query_as(&format!(
@@ -128,9 +126,7 @@ pub async fn internal_create_dataset(
     .await?;
 
     Ok(json_created(crate::state::serialize_dataset_summary(
-        &dataset,
-        None,
-        0,
+        &dataset, None, 0,
     )))
 }
 
@@ -155,7 +151,9 @@ async fn resolve_internal_version(
             .await?
             .map(|(name, quality_gate)| VersionTarget { name, quality_gate });
     let Some(dataset) = dataset else {
-        return Err(ApiError::not_found(format!("Dataset '{dataset_id}' not found")));
+        return Err(ApiError::not_found(format!(
+            "Dataset '{dataset_id}' not found"
+        )));
     };
 
     let selected: Option<i32> = if n == "head" {
@@ -291,8 +289,7 @@ pub async fn internal_version_rows(
     let limit = limit_raw.map(|_| lenient_int(query.get("limit"), 0, i64::MAX, 5000));
     let role = crate::routes::internal_role_param(&query);
 
-    let (rows, total) =
-        read_rows_offset_limit(&state, &id, &version, offset, limit).await?;
+    let (rows, total) = read_rows_offset_limit(&state, &id, &version, offset, limit).await?;
     let resolved = version.version_number;
     let schema = version.schema_json.0.clone();
     let (rows, masked_columns) = mask_rows_internal(&state, &id, rows, role.as_deref()).await;
@@ -344,7 +341,9 @@ pub async fn internal_delete_version(
     let version_number = {
         let parsed = crate::jsval::js_parse_number(&n);
         if !parsed.is_finite() || parsed.fract() != 0.0 || parsed < 1.0 {
-            return Err(ApiError::bad_request(format!("Invalid version number '{n}'")));
+            return Err(ApiError::bad_request(format!(
+                "Invalid version number '{n}'"
+            )));
         }
         parsed as i32
     };
@@ -370,13 +369,11 @@ pub async fn internal_delete_version(
     }
 
     let mut tx = state.db.begin().await?;
-    sqlx::query(
-        "DELETE FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2",
-    )
-    .bind(&id)
-    .bind(version_number)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("DELETE FROM dataset_version_rows WHERE dataset_id = $1 AND version_number = $2")
+        .bind(&id)
+        .bind(version_number)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM quality_results WHERE dataset_id = $1 AND version_number = $2")
         .bind(&id)
         .bind(version_number)
@@ -445,7 +442,9 @@ pub async fn internal_delete_dataset(
         .bind(&id)
         .execute(&state.db)
         .await?;
-    Ok(json_ok(json!({ "ok": true, "deleted": dataset_id, "name": dataset_name })))
+    Ok(json_ok(
+        json!({ "ok": true, "deleted": dataset_id, "name": dataset_name }),
+    ))
 }
 
 /// POST /internal/datasets/{id}/versions — THE single version-write door:
@@ -463,11 +462,12 @@ pub async fn internal_append_version(
     let m = as_object(v)?;
     let created_by = req_str(&m, "createdBy")?;
 
-    let dataset: Option<DatasetRow> =
-        sqlx::query_as(&format!("SELECT {DATASET_COLS} FROM datasets WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let dataset: Option<DatasetRow> = sqlx::query_as(&format!(
+        "SELECT {DATASET_COLS} FROM datasets WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(dataset) = dataset else {
         return Err(ApiError::not_found(format!("Dataset '{id}' not found")));
     };
@@ -482,7 +482,10 @@ pub async fn internal_append_version(
     }
 
     // outputJobId idempotency — on conflict return the EXISTING version.
-    let output_job_id = m.get("outputJobId").and_then(|v| v.as_str()).map(String::from);
+    let output_job_id = m
+        .get("outputJobId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     if let Some(job_id) = &output_job_id {
         let existing: Option<VersionRow> = sqlx::query_as(&format!(
             "SELECT {VERSION_COLS} FROM dataset_versions WHERE output_job_id = $1"
@@ -511,7 +514,10 @@ pub async fn internal_append_version(
                         ApiError::bad_request("schema: Invalid input: expected { name, type }")
                     })?
                     .to_string();
-                let type_str = item.get("type").and_then(|t| t.as_str()).unwrap_or("string");
+                let type_str = item
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("string");
                 let column_type = match type_str {
                     "string" => ColumnType::String,
                     "number" => ColumnType::Number,
@@ -555,16 +561,32 @@ pub async fn internal_append_version(
             )))
         }
     };
-    let parent_version = m.get("parentVersion").and_then(|p| p.as_i64()).map(|p| p as i32);
+    let parent_version = m
+        .get("parentVersion")
+        .and_then(|p| p.as_i64())
+        .map(|p| p as i32);
     let run_id = m.get("runId").and_then(|v| v.as_str()).map(String::from);
-    let pipeline_id = m.get("pipelineId").and_then(|v| v.as_str()).map(String::from);
-    let transform_run_id =
-        m.get("transformRunId").and_then(|v| v.as_str()).map(String::from);
-    let transform_id = m.get("transformId").and_then(|v| v.as_str()).map(String::from);
+    let pipeline_id = m
+        .get("pipelineId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let transform_run_id = m
+        .get("transformRunId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let transform_id = m
+        .get("transformId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let source = m.get("source").and_then(|v| v.as_str()).map(String::from);
-    let cascade_parent_run_id =
-        m.get("cascadeParentRunId").and_then(|v| v.as_str()).map(String::from);
-    let cascade_depth = m.get("cascadeDepth").and_then(|v| v.as_i64()).map(|d| d as i32);
+    let cascade_parent_run_id = m
+        .get("cascadeParentRunId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let cascade_depth = m
+        .get("cascadeDepth")
+        .and_then(|v| v.as_i64())
+        .map(|d| d as i32);
 
     let data_json = crate::rows::data_json_string(&normalized);
 
@@ -655,7 +677,9 @@ pub async fn internal_append_version(
                 i.get("datasetId").and_then(|d| d.as_str()).map(|d| {
                     (
                         d.to_string(),
-                        i.get("versionNumber").and_then(|v| v.as_i64()).map(|v| v as i32),
+                        i.get("versionNumber")
+                            .and_then(|v| v.as_i64())
+                            .map(|v| v as i32),
                     )
                 })
             })
@@ -675,7 +699,9 @@ pub async fn internal_append_version(
     let mut seen_version_inputs: HashSet<String> = HashSet::new();
     let mut version_edges: Vec<VersionLineageInput> = Vec::new();
     for (from_id, from_version) in &inputs {
-        let Some(from_version) = from_version else { continue };
+        let Some(from_version) = from_version else {
+            continue;
+        };
         if !seen_version_inputs.insert(from_id.clone()) {
             continue;
         }
@@ -739,9 +765,7 @@ pub async fn internal_publish_approved(
         .and_then(|n| n.as_i64())
         .filter(|n| *n >= 1)
         .ok_or_else(|| {
-            ApiError::bad_request(
-                "versionNumber: Invalid input: expected positive integer",
-            )
+            ApiError::bad_request("versionNumber: Invalid input: expected positive integer")
         })? as i32;
     let approval_id = m.get("approvalId").and_then(|v| v.as_str());
     let decided_by = m.get("decidedBy").and_then(|v| v.as_str());
@@ -1065,8 +1089,14 @@ pub async fn handle_approval_decided(
     approval_id: &str,
     decided_by: &str,
 ) -> Result<(), String> {
-    publish_approved(state, target_id, version_number, Some(approval_id), Some(decided_by))
-        .await
-        .map(|_| ())
-        .map_err(|e| e.message)
+    publish_approved(
+        state,
+        target_id,
+        version_number,
+        Some(approval_id),
+        Some(decided_by),
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.message)
 }

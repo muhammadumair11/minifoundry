@@ -144,8 +144,9 @@ impl FanOut {
             if text.trim().is_empty() {
                 return Ok(Value::Null);
             }
-            return serde_json::from_str(&text)
-                .map_err(|e| FanOutError::Transport(format!("bad JSON from {}: {e}", self.service)));
+            return serde_json::from_str(&text).map_err(|e| {
+                FanOutError::Transport(format!("bad JSON from {}: {e}", self.service))
+            });
         }
         let body: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         let message = body

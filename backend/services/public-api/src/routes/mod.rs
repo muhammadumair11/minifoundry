@@ -53,7 +53,10 @@ pub fn sort_by_ts_desc(items: &mut [Value], key: &str) {
         .enumerate()
         .map(|(i, v)| {
             (
-                v.get(key).and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                v.get(key)
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 i,
             )
         })

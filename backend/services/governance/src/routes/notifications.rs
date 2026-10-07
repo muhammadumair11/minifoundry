@@ -55,17 +55,22 @@ pub async fn mark_read(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
 
-    let row: Option<NotificationRow> =
-        sqlx::query_as(&format!("SELECT {NOTIF_COLS} FROM notifications WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let row: Option<NotificationRow> = sqlx::query_as(&format!(
+        "SELECT {NOTIF_COLS} FROM notifications WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
 
     let Some(n) = row else {
-        return Err(ApiError::not_found(format!("Notification '{id}' not found")));
+        return Err(ApiError::not_found(format!(
+            "Notification '{id}' not found"
+        )));
     };
     if n.user_email.is_some() && n.user_email != actor.email {
-        return Err(ApiError::not_found(format!("Notification '{id}' not found")));
+        return Err(ApiError::not_found(format!(
+            "Notification '{id}' not found"
+        )));
     }
 
     let read_at = match n.read_at {

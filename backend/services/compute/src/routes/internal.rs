@@ -71,10 +71,7 @@ pub async fn search(
 }
 
 /// GET /internal/stats — `{transforms, transformRuns}` counts.
-pub async fn stats(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
+pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
     let (transforms,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM transforms")
         .fetch_one(&state.db)
@@ -101,15 +98,13 @@ pub async fn curriculum_state(
     let (transform_created,): (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM transforms)")
         .fetch_one(&state.db)
         .await?;
-    let (workbook_run,): (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM transform_runs)")
+    let (workbook_run,): (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM transform_runs)")
+        .fetch_one(&state.db)
+        .await?;
+    let (workbook_run_success,): (bool,) =
+        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM transform_runs WHERE status = 'success')")
             .fetch_one(&state.db)
             .await?;
-    let (workbook_run_success,): (bool,) = sqlx::query_as(
-        "SELECT EXISTS(SELECT 1 FROM transform_runs WHERE status = 'success')",
-    )
-    .fetch_one(&state.db)
-    .await?;
     let db = &state.db;
     let lang_used = |lang: &'static str| async move {
         let (used,): (bool,) = sqlx::query_as(
@@ -156,10 +151,7 @@ pub async fn curriculum_state(
 
 /// POST /internal/reset — truncate compute tables (governance settings/reset
 /// fan-out; runs first — FK).
-pub async fn reset(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
+pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
     sqlx::query("TRUNCATE TABLE transform_runs, transforms")
         .execute(&state.db)

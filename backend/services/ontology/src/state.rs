@@ -139,7 +139,8 @@ pub const PROPERTY_COLS: &str =
     "id, object_type_id, api_name, display_name, data_type, is_title, hide_in_table";
 pub const LINK_COLS: &str = "id, api_name, display_name, from_type_id, to_type_id, cardinality, \
      fk_property, fk_side, link_dataset_id, from_key_column, to_key_column, created_at";
-pub const ACTION_COLS: &str = "id, api_name, display_name, description, object_type_id, operation, \
+pub const ACTION_COLS: &str =
+    "id, api_name, display_name, description, object_type_id, operation, \
      parameters_json, enabled, target_dataset_id, write_mode, key_property, created_at, updated_at";
 #[allow(dead_code)]
 pub const ACTION_LOG_COLS: &str =

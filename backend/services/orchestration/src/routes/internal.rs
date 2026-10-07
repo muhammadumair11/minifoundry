@@ -29,7 +29,10 @@ pub fn require_service(state: &AppState, headers: &HeaderMap) -> Result<(), ApiE
 }
 
 /// GET /internal/pipelines — pipeline list (public contract).
-pub async fn internal_pipelines(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn internal_pipelines(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     require_service(&state, &headers)?;
     Ok(json_ok(pipelines_list_payload(&state).await?))
 }
@@ -55,7 +58,10 @@ pub async fn internal_runs(
 }
 
 /// GET /internal/health/runs — run aggregates for the platform health route.
-pub async fn internal_health_runs(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn internal_health_runs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     require_service(&state, &headers)?;
     let runs = compute_runs_health(&state)
         .await
@@ -71,7 +77,10 @@ pub async fn internal_search(
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    let q = params.get("q").map(|s| s.trim().to_string()).unwrap_or_default();
+    let q = params
+        .get("q")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
     if q.is_empty() {
         return Ok(json_ok(json!({ "results": [] })));
     }
@@ -99,10 +108,17 @@ pub async fn internal_search(
 
 /// GET /internal/stats — {pipelines, runs, runsSuccess, runsFailed,
 /// schedules, jobsQueued, jobsRunning} (exact INTERNAL_API.md contract).
-pub async fn internal_stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn internal_stats(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    let (pipelines,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipelines").fetch_one(&state.db).await?;
-    let (runs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs").fetch_one(&state.db).await?;
+    let (pipelines,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipelines")
+        .fetch_one(&state.db)
+        .await?;
+    let (runs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs")
+        .fetch_one(&state.db)
+        .await?;
     let (runs_success,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'success'")
             .fetch_one(&state.db)
@@ -111,7 +127,9 @@ pub async fn internal_stats(State(state): State<AppState>, headers: HeaderMap) -
         sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'failed'")
             .fetch_one(&state.db)
             .await?;
-    let (schedules,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schedules").fetch_one(&state.db).await?;
+    let (schedules,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schedules")
+        .fetch_one(&state.db)
+        .await?;
     let (jobs_queued,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM execution_jobs WHERE status = 'queued'")
             .fetch_one(&state.db)
@@ -139,13 +157,17 @@ pub async fn internal_curriculum_state(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    let (pipelines,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipelines").fetch_one(&state.db).await?;
+    let (pipelines,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipelines")
+        .fetch_one(&state.db)
+        .await?;
     let (saved_versions,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM pipeline_versions WHERE created_by IS DISTINCT FROM 'backfill'",
     )
     .fetch_one(&state.db)
     .await?;
-    let (runs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs").fetch_one(&state.db).await?;
+    let (runs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs")
+        .fetch_one(&state.db)
+        .await?;
     let (runs_success,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'success'")
             .fetch_one(&state.db)
@@ -158,7 +180,9 @@ pub async fn internal_curriculum_state(
         sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs WHERE \"trigger\" = 'replay'")
             .fetch_one(&state.db)
             .await?;
-    let (schedules,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schedules").fetch_one(&state.db).await?;
+    let (schedules,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schedules")
+        .fetch_one(&state.db)
+        .await?;
     let (jobs_queued,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM execution_jobs WHERE status = 'queued'")
             .fetch_one(&state.db)
@@ -189,14 +213,15 @@ pub async fn internal_curriculum_state(
 
 /// POST /internal/reset — truncate every orchestration table (governance
 /// settings/reset calls this; auth users are NOT touched).
-pub async fn internal_reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn internal_reset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    sqlx::query(
-        "TRUNCATE pipeline_runs, execution_jobs, schedules, pipeline_versions, pipelines",
-    )
-    .execute(&state.db)
-    .await
-    .map_err(|e| ApiError::internal(e.to_string()))?;
+    sqlx::query("TRUNCATE pipeline_runs, execution_jobs, schedules, pipeline_versions, pipelines")
+        .execute(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     tracing::warn!("internal reset: orchestration tables truncated");
     Ok(json_ok(json!({ "ok": true })))
 }

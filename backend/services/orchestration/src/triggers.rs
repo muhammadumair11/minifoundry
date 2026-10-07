@@ -135,7 +135,11 @@ pub async fn handle_version_created(
             state,
             &pipeline.id,
             EnqueueOptions {
-                trigger: if cascade.is_some() { "cascade" } else { "upstream" },
+                trigger: if cascade.is_some() {
+                    "cascade"
+                } else {
+                    "upstream"
+                },
                 event_key,
                 schedule_id: None,
                 max_attempts: Some(pipeline.max_retries + 1),

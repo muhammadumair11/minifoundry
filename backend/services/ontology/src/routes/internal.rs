@@ -87,12 +87,21 @@ pub async fn internal_objects(
             "Missing required query parameter 'type'",
         ));
     }
-    let role = query_param(&uri, "role").map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let role = query_param(&uri, "role")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let q = query_param(&uri, "q").or_else(|| query_param(&uri, "query"));
     let page = {
         let raw = query_param(&uri, "page");
-        let n = raw.as_deref().and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(1.0);
-        if n.is_nan() || n == 0.0 { 1.0 } else { n.max(1.0) }
+        let n = raw
+            .as_deref()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .unwrap_or(1.0);
+        if n.is_nan() || n == 0.0 {
+            1.0
+        } else {
+            n.max(1.0)
+        }
     };
     let page_size = {
         let raw = query_param(&uri, "pageSize").or_else(|| query_param(&uri, "limit"));
@@ -100,7 +109,11 @@ pub async fn internal_objects(
             .as_deref()
             .and_then(|s| s.trim().parse::<f64>().ok())
             .unwrap_or(50.0);
-        if n.is_nan() || n == 0.0 { 50.0 } else { n.clamp(1.0, 200.0) }
+        if n.is_nan() || n == 0.0 {
+            50.0
+        } else {
+            n.clamp(1.0, 200.0)
+        }
     };
 
     let body = crate::routes::objects::objects_listing(
@@ -227,7 +240,16 @@ pub async fn internal_curriculum_state(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    let (object_types, link_types, action_types, action_logs_success, object_views, dashboards, dashboards_with_widgets, applications): (i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+    let (
+        object_types,
+        link_types,
+        action_types,
+        action_logs_success,
+        object_views,
+        dashboards,
+        dashboards_with_widgets,
+        applications,
+    ): (i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM object_types), (SELECT COUNT(*) FROM link_types), \
          (SELECT COUNT(*) FROM action_types), \
          (SELECT COUNT(*) FROM action_logs WHERE result = 'success'), \

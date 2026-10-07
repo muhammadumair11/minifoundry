@@ -83,9 +83,7 @@ pub async fn ensure_dataset_by_name(
         .and_then(|d| d.get("id"))
         .and_then(|v| v.as_str())
         .map(String::from)
-        .ok_or_else(|| InternalError::Transport(
-            "catalog create-dataset response has no id".into(),
-        ))
+        .ok_or_else(|| InternalError::Transport("catalog create-dataset response has no id".into()))
 }
 
 /// GET /internal/datasets/{id}/versions/{n} — version meta (`n` = "head" or a

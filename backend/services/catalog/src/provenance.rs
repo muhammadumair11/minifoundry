@@ -96,7 +96,10 @@ pub async fn resolve_provenance(pool: &PgPool, created_by: Option<&str>) -> Valu
 
 /// Port of `resolveProvenanceMany`: unique createdBy values resolved once and
 /// mapped back positionally.
-pub async fn resolve_provenance_many(pool: &PgPool, created_by_list: &[Option<String>]) -> Vec<Value> {
+pub async fn resolve_provenance_many(
+    pool: &PgPool,
+    created_by_list: &[Option<String>],
+) -> Vec<Value> {
     let mut unique: Vec<Option<String>> = Vec::new();
     for c in created_by_list {
         let key = c.clone().unwrap_or_default();

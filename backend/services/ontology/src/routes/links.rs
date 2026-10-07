@@ -77,7 +77,12 @@ fn parse_link_config(m: &serde_json::Map<String, Value>) -> Result<LinkConfigInp
     // apiName: slug regex with its own message
     let api_name = match m.get("apiName").and_then(|v| v.as_str()) {
         Some(s) => {
-            check_regex("apiName", s, slug_re(), "Use a lowercase slug starting with a letter")?;
+            check_regex(
+                "apiName",
+                s,
+                slug_re(),
+                "Use a lowercase slug starting with a letter",
+            )?;
             s.to_string()
         }
         None => {
@@ -159,11 +164,16 @@ async fn validate_link_config(state: &AppState, input: &LinkConfigInput) -> Resu
     let (Some(from), Some(to)) = (from, to) else {
         return Err(bad("Select two existing object types".into()));
     };
-    let (Some(from_ds), Some(from_pk)) = (from.source_dataset_id.clone(), from.primary_key.clone()) else {
-        return Err(bad("Both object types need a backing dataset and primary key".into()));
+    let (Some(from_ds), Some(from_pk)) = (from.source_dataset_id.clone(), from.primary_key.clone())
+    else {
+        return Err(bad(
+            "Both object types need a backing dataset and primary key".into(),
+        ));
     };
     let (Some(to_ds), Some(to_pk)) = (to.source_dataset_id.clone(), to.primary_key.clone()) else {
-        return Err(bad("Both object types need a backing dataset and primary key".into()));
+        return Err(bad(
+            "Both object types need a backing dataset and primary key".into(),
+        ));
     };
 
     if input.cardinality == "many-to-many" {
@@ -172,7 +182,9 @@ async fn validate_link_config(state: &AppState, input: &LinkConfigInput) -> Resu
             input.from_key_column.clone(),
             input.to_key_column.clone(),
         ) else {
-            return Err(bad("Select a relationship dataset and both key columns".into()));
+            return Err(bad(
+                "Select a relationship dataset and both key columns".into()
+            ));
         };
         if from_col == to_col {
             return Err(bad("Select two different relationship key columns".into()));
@@ -233,18 +245,21 @@ async fn validate_link_config(state: &AppState, input: &LinkConfigInput) -> Resu
     let side = effective_fk_side(&input.cardinality, input.fk_side.as_deref());
     if input.cardinality == "one-to-many" && side != "to" {
         return Err(bad(
-            "One to many requires a foreign key on the target type".into(),
+            "One to many requires a foreign key on the target type".into()
         ));
     }
     if input.cardinality == "many-to-one" && side != "from" {
         return Err(bad(
-            "Many to one requires a foreign key on the source type".into(),
+            "Many to one requires a foreign key on the source type".into()
         ));
     }
 
     let from_schema = schema_of(state, &from_ds).await?;
     let to_schema = schema_of(state, &to_ds).await?;
-    let (from_schema, to_schema) = (from_schema.unwrap_or_default(), to_schema.unwrap_or_default());
+    let (from_schema, to_schema) = (
+        from_schema.unwrap_or_default(),
+        to_schema.unwrap_or_default(),
+    );
     if !from_schema.iter().any(|c| c.name == from_pk) {
         return Err(bad(format!(
             "{} primary key is missing from its consumer-visible dataset schema",
@@ -275,7 +290,11 @@ async fn validate_link_config(state: &AppState, input: &LinkConfigInput) -> Resu
             holder.display_name
         )));
     }
-    let referenced_schema = if side == "from" { &to_schema } else { &from_schema };
+    let referenced_schema = if side == "from" {
+        &to_schema
+    } else {
+        &from_schema
+    };
     let referenced_pk = if side == "from" { &to_pk } else { &from_pk };
     if col_type(holder_schema, &fk) != col_type(referenced_schema, referenced_pk) {
         return Err(bad(format!(
@@ -318,9 +337,21 @@ fn normalized_values(input: &LinkConfigInput) -> NormalizedLinkCols {
         } else {
             Some(effective_fk_side(&input.cardinality, input.fk_side.as_deref()).to_string())
         },
-        if m2m { input.link_dataset_id.clone() } else { None },
-        if m2m { input.from_key_column.clone() } else { None },
-        if m2m { input.to_key_column.clone() } else { None },
+        if m2m {
+            input.link_dataset_id.clone()
+        } else {
+            None
+        },
+        if m2m {
+            input.from_key_column.clone()
+        } else {
+            None
+        },
+        if m2m {
+            input.to_key_column.clone()
+        } else {
+            None
+        },
     )
 }
 
@@ -416,7 +447,9 @@ pub async fn create_link(
     )
     .await;
 
-    Ok(json_created(serde_json::json!({ "link": serialize_link(&link) })))
+    Ok(json_created(
+        serde_json::json!({ "link": serialize_link(&link) }),
+    ))
 }
 
 /// PATCH /api/ontology/links/{id} — full-config update (editor+).
@@ -488,7 +521,9 @@ pub async fn update_link(
     )
     .await;
 
-    Ok(json_ok(serde_json::json!({ "link": serialize_link(&link) })))
+    Ok(json_ok(
+        serde_json::json!({ "link": serialize_link(&link) }),
+    ))
 }
 
 /// DELETE /api/ontology/links/{id} (editor+, 204).

@@ -25,7 +25,11 @@ pub fn js_num_to_string(n: f64) -> String {
         return "NaN".to_string();
     }
     if n.is_infinite() {
-        return if n > 0.0 { "Infinity".into() } else { "-Infinity".into() };
+        return if n > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
     }
     if n.fract() == 0.0 && n.abs() < 1e15 {
         // integer-valued → no decimal point (JS prints 22, -0 → "0")
@@ -55,7 +59,9 @@ pub fn js_number_value(v: f64) -> Value {
     if v.is_finite() && v.fract() == 0.0 && v.abs() <= 9_007_199_254_740_991.0 {
         Value::Number(serde_json::Number::from(v as i64))
     } else {
-        serde_json::Number::from_f64(v).map(Value::Number).unwrap_or(Value::Null)
+        serde_json::Number::from_f64(v)
+            .map(Value::Number)
+            .unwrap_or(Value::Null)
     }
 }
 
@@ -93,15 +99,18 @@ pub fn js_parse_number(raw: &str) -> f64 {
     }
     let body = s.strip_prefix('+').unwrap_or(s);
     // hex / octal / binary literals
-    for (prefix, radix) in [("0x", 16u32), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)] {
+    for (prefix, radix) in [
+        ("0x", 16u32),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
         if let Some(digits) = body.strip_prefix(prefix) {
             let neg = false;
             let _ = neg;
-            if !digits.is_empty()
-                && digits
-                    .chars()
-                    .all(|c| c.is_digit(radix))
-            {
+            if !digits.is_empty() && digits.chars().all(|c| c.is_digit(radix)) {
                 if let Ok(n) = i64::from_str_radix(digits, radix) {
                     return n as f64;
                 }
@@ -272,13 +281,19 @@ mod tests {
         assert_eq!(to_number(&json!(" 7 ")), 7.0);
         assert!(to_number(&json!("")).is_nan());
         assert!(to_number(&Value::Null).is_nan());
-        assert_eq!(compare_values(Some(&json!(2)), Some(&json!(10))), std::cmp::Ordering::Less);
+        assert_eq!(
+            compare_values(Some(&json!(2)), Some(&json!(10))),
+            std::cmp::Ordering::Less
+        );
         // mixed → string compare: "apple" vs "Banana" (case-insensitive NOT applied here)
         assert_eq!(
             compare_values(Some(&json!("apple")), Some(&json!("Banana"))),
             std::cmp::Ordering::Greater
         );
-        assert_eq!(compare_values(None, Some(&json!("x"))), std::cmp::Ordering::Less);
+        assert_eq!(
+            compare_values(None, Some(&json!("x"))),
+            std::cmp::Ordering::Less
+        );
     }
 
     #[test]

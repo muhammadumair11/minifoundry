@@ -323,7 +323,10 @@ pub async fn seed_database(state: &AppState) -> Result<SeedResult, String> {
         dataset_names.push(name);
     }
 
-    Ok(SeedResult { seeded: true, datasets: dataset_names })
+    Ok(SeedResult {
+        seeded: true,
+        datasets: dataset_names,
+    })
 }
 
 #[cfg(test)]

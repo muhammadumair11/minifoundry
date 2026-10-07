@@ -15,7 +15,9 @@ pub fn parse_body(bytes: &[u8]) -> Result<Value, ApiError> {
 pub fn as_object(v: Value) -> Result<Map<String, Value>, ApiError> {
     match v {
         Value::Object(m) => Ok(m),
-        _ => Err(ApiError::bad_request("body: Invalid input: expected object")),
+        _ => Err(ApiError::bad_request(
+            "body: Invalid input: expected object",
+        )),
     }
 }
 
@@ -31,15 +33,23 @@ pub fn kind_of(v: &Value) -> &'static str {
 }
 
 fn expected(path: &str, kind: &str, got: &str) -> ApiError {
-    ApiError::bad_request(format!("{path}: Invalid input: expected {kind}, received {got}"))
+    ApiError::bad_request(format!(
+        "{path}: Invalid input: expected {kind}, received {got}"
+    ))
 }
 
 fn missing(path: &str, kind: &str) -> ApiError {
-    ApiError::bad_request(format!("{path}: Invalid input: expected {kind}, received undefined"))
+    ApiError::bad_request(format!(
+        "{path}: Invalid input: expected {kind}, received undefined"
+    ))
 }
 
 /// Required string field (`z.string()`), custom path for nested issues.
-pub fn req_str_at<'a>(m: &'a Map<String, Value>, path: &str, field: &str) -> Result<&'a str, ApiError> {
+pub fn req_str_at<'a>(
+    m: &'a Map<String, Value>,
+    path: &str,
+    field: &str,
+) -> Result<&'a str, ApiError> {
     match m.get(field) {
         Some(Value::String(s)) => Ok(s),
         Some(other) => Err(expected(path, "string", kind_of(other))),

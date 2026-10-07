@@ -191,7 +191,10 @@ mod tests {
 
     #[test]
     fn in_list() {
-        assert!(filter_matches(&row(), &f("name", "in", "Amina Khan, Other")));
+        assert!(filter_matches(
+            &row(),
+            &f("name", "in", "Amina Khan, Other")
+        ));
         assert!(filter_matches(&row(), &f("qty", "in", " 12 , 13 ")));
         assert!(!filter_matches(&row(), &f("name", "in", "x,y")));
         assert!(!filter_matches(&row(), &f("name", "in", "")));
@@ -216,13 +219,23 @@ mod tests {
         assert_eq!(ok[0].value, "");
 
         let e = parse_filters_param(Some("not json")).unwrap_err();
-        assert_eq!(e.message, "'filters' must be a JSON array of {property, op, value}");
+        assert_eq!(
+            e.message,
+            "'filters' must be a JSON array of {property, op, value}"
+        );
         let e = parse_filters_param(Some(r#"{"property":"a"}"#)).unwrap_err();
-        assert_eq!(e.message, "'filters' must be a JSON array of {property, op, value}");
+        assert_eq!(
+            e.message,
+            "'filters' must be a JSON array of {property, op, value}"
+        );
         let e = parse_filters_param(Some(r#"[{"op":"eq","value":"1"}]"#)).unwrap_err();
         assert_eq!(e.message, "every filter needs a 'property' column name");
-        let e = parse_filters_param(Some(r#"[{"property":"a","op":"nope","value":"1"}]"#)).unwrap_err();
-        assert_eq!(e.message, "filter op must be one of: eq, neq, contains, gt, lt, gte, lte, in");
+        let e =
+            parse_filters_param(Some(r#"[{"property":"a","op":"nope","value":"1"}]"#)).unwrap_err();
+        assert_eq!(
+            e.message,
+            "filter op must be one of: eq, neq, contains, gt, lt, gte, lte, in"
+        );
         let many = format!(
             "[{}]",
             vec![r#"{"property":"a","op":"eq","value":"1"}"#; MAX_VIEW_FILTERS + 1].join(",")

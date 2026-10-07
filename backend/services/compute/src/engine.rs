@@ -338,9 +338,7 @@ pub async fn load_inputs(
                     .await
                     .map_err(|e| e.to_string())?
                 else {
-                    return Err(format!(
-                        "Pinned input dataset '{id}' v{n} no longer exists"
-                    ));
+                    return Err(format!("Pinned input dataset '{id}' v{n} no longer exists"));
                 };
                 (meta, n)
             }
@@ -394,7 +392,13 @@ pub fn build_script_input(inputs: &[LoadedInput]) -> Value {
     for input in inputs {
         datasets.insert(
             input.name.clone(),
-            Value::Array(input.rows.iter().map(|r| Value::Object(r.clone())).collect()),
+            Value::Array(
+                input
+                    .rows
+                    .iter()
+                    .map(|r| Value::Object(r.clone()))
+                    .collect(),
+            ),
         );
         schemas.insert(
             input.name.clone(),
@@ -613,9 +617,10 @@ async fn execute_run(
         "transformRunId": run_id,
         "transformId": t.id,
     });
-    let (version_number, published_rows) = catalog::post_version(&state.catalog, &dataset_id, &body)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (version_number, published_rows) =
+        catalog::post_version(&state.catalog, &dataset_id, &body)
+            .await
+            .map_err(|e| e.to_string())?;
 
     *output_dataset_id = Some(dataset_id.clone());
     *output_version_number = Some(version_number as i32);
@@ -709,11 +714,7 @@ mod tests {
             validate_sql("-- lead\nSELECT 1", &mut log).unwrap(),
             "-- lead\nSELECT 1"
         );
-        assert!(validate_sql(
-            "WITH x AS (SELECT 1) SELECT * FROM x",
-            &mut log
-        )
-        .is_ok());
+        assert!(validate_sql("WITH x AS (SELECT 1) SELECT * FROM x", &mut log).is_ok());
         // ';' inside string literals passes the engine check (the isolated
         // runner rejects it later — same as legacy)
         assert!(validate_sql("SELECT 'a;b'", &mut log).is_ok());
@@ -811,12 +812,22 @@ mod tests {
     #[test]
     fn sql_inputs_materialize_schema_columns_and_collisions() {
         let inputs = vec![
-            loaded("Active Shipments", &["id", "city"], vec![json!({"id": "1", "city": "berlin", "extra": "ignored"}).as_object().unwrap().clone()]),
+            loaded(
+                "Active Shipments",
+                &["id", "city"],
+                vec![json!({"id": "1", "city": "berlin", "extra": "ignored"})
+                    .as_object()
+                    .unwrap()
+                    .clone()],
+            ),
             loaded("active_shipments", &["id"], Vec::new()),
         ];
         let tables = build_sql_inputs(&inputs);
         assert_eq!(tables[0].name, "active_shipments");
-        assert_eq!(tables[0].columns, vec!["id".to_string(), "city".to_string()]);
+        assert_eq!(
+            tables[0].columns,
+            vec!["id".to_string(), "city".to_string()]
+        );
         assert_eq!(tables[0].rows.len(), 1);
         assert_eq!(tables[1].name, "active_shipments_2");
         assert!(tables[1].rows.is_empty());
@@ -844,14 +855,20 @@ mod tests {
     #[test]
     fn script_input_shape_matches_legacy() {
         let row: Row = json!({"a": 1}).as_object().unwrap().clone();
-        let inputs = vec![loaded("First", &["a"], vec![row.clone()]), loaded("Second", &["b"], Vec::new())];
+        let inputs = vec![
+            loaded("First", &["a"], vec![row.clone()]),
+            loaded("Second", &["b"], Vec::new()),
+        ];
         let v = build_script_input(&inputs);
         let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
         assert_eq!(keys, vec!["rows", "datasets", "schemas"]);
         assert_eq!(v["rows"], json!([{"a": 1}]));
         assert_eq!(v["datasets"]["First"], json!([{"a": 1}]));
         assert_eq!(v["datasets"]["Second"], json!([]));
-        assert_eq!(v["schemas"]["First"], json!([{"name": "a", "type": "string"}]));
+        assert_eq!(
+            v["schemas"]["First"],
+            json!([{"name": "a", "type": "string"}])
+        );
     }
 
     #[test]

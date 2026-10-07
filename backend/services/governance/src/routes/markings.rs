@@ -12,11 +12,13 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
-use mf_web::{actor_from_headers, json_created, json_ok, no_content, require_role, ApiError, ApiResult};
+use mf_web::{
+    actor_from_headers, json_created, json_ok, no_content, require_role, ApiError, ApiResult,
+};
 use serde_json::Value;
 
 use crate::state::{
-    audit_local, AuditOptions, AppState, ColumnMarkingRow, MarkingRow, MARKING_COLS,
+    audit_local, AppState, AuditOptions, ColumnMarkingRow, MarkingRow, MARKING_COLS,
 };
 
 /// GET /api/markings — markings with the columns they mark (any role).
@@ -97,24 +99,15 @@ pub async fn create_marking(
     let m = crate::routes::as_object(v)?;
     let name = crate::routes::req_str_min1(&m, "name", "name is required")?;
     let description = crate::routes::opt_str(&m, "description")?;
-    let color = crate::routes::opt_enum_default(
-        &m,
-        "color",
-        &["rose", "amber", "teal", "zinc"],
-        "rose",
-    )?;
-    let min_role = crate::routes::opt_enum_default(
-        &m,
-        "minRole",
-        &["viewer", "editor", "admin"],
-        "editor",
-    )?;
+    let color =
+        crate::routes::opt_enum_default(&m, "color", &["rose", "amber", "teal", "zinc"], "rose")?;
+    let min_role =
+        crate::routes::opt_enum_default(&m, "minRole", &["viewer", "editor", "admin"], "editor")?;
 
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM markings WHERE name = $1")
-            .bind(name)
-            .fetch_optional(&state.db)
-            .await?;
+    let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM markings WHERE name = $1")
+        .bind(name)
+        .fetch_optional(&state.db)
+        .await?;
     if existing.is_some() {
         return Err(ApiError::bad_request(format!(
             "Marking '{name}' already exists"
@@ -225,7 +218,11 @@ async fn resolve_dataset(state: &AppState, dataset_id: &str) -> Result<String, O
             let name = v
                 .get("name")
                 .and_then(|x| x.as_str())
-                .or_else(|| v.get("dataset").and_then(|d| d.get("name")).and_then(|x| x.as_str()))
+                .or_else(|| {
+                    v.get("dataset")
+                        .and_then(|d| d.get("name"))
+                        .and_then(|x| x.as_str())
+                })
                 .unwrap_or(dataset_id)
                 .to_string();
             Ok(name)

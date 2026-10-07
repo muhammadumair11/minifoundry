@@ -10,8 +10,12 @@ use chrono::Utc;
 use mf_web::ApiError;
 use sqlx::PgPool;
 
-use crate::dataset_service::{head_version_number, main_head_version_number, prune_dataset_versions};
-use crate::rows::{data_json_string, infer_schema, normalize_rows, rows_from_data_json, write_version_rows};
+use crate::dataset_service::{
+    head_version_number, main_head_version_number, prune_dataset_versions,
+};
+use crate::rows::{
+    data_json_string, infer_schema, normalize_rows, rows_from_data_json, write_version_rows,
+};
 use crate::state::{AppState, BranchRow, VersionRow, BRANCH_COLS, VERSION_COLS};
 
 /// Typed error so routes map to the right HTTP status (legacy BranchError).
@@ -22,7 +26,10 @@ pub struct BranchError {
 
 impl BranchError {
     pub fn new(message: impl Into<String>, status: u16) -> Self {
-        Self { message: message.into(), status }
+        Self {
+            message: message.into(),
+            status,
+        }
     }
     pub fn into_api_error(self) -> ApiError {
         let status = match self.status {
@@ -35,13 +42,18 @@ impl BranchError {
 }
 
 /// List all branches of a dataset + the current main head version number.
-pub async fn list_branches(pool: &PgPool, dataset_id: &str) -> Result<serde_json::Value, sqlx::Error> {
+pub async fn list_branches(
+    pool: &PgPool,
+    dataset_id: &str,
+) -> Result<serde_json::Value, sqlx::Error> {
     let branches: Vec<BranchRow> =
         sqlx::query_as(&format!("SELECT {BRANCH_COLS} FROM dataset_branches WHERE dataset_id = $1 ORDER BY created_at ASC, id ASC"))
             .bind(dataset_id)
             .fetch_all(pool)
             .await?;
-    let main_head = main_head_version_number(pool, dataset_id).await?.unwrap_or(0);
+    let main_head = main_head_version_number(pool, dataset_id)
+        .await?
+        .unwrap_or(0);
     Ok(serde_json::json!({
         "branches": branches.iter().map(crate::state::serialize_branch).collect::<Vec<_>>(),
         "mainHead": main_head,
@@ -85,7 +97,10 @@ pub async fn create_branch(
         .await
         .map_err(|e| BranchError::new(e.to_string(), 500))?;
     let Some(main_head) = main_head else {
-        return Err(BranchError::new("Dataset has no main versions to branch from", 400));
+        return Err(BranchError::new(
+            "Dataset has no main versions to branch from",
+            400,
+        ));
     };
     let base_version = input.base_version.unwrap_or(main_head as i64);
     if base_version < 1 {
@@ -110,7 +125,9 @@ pub async fn create_branch(
     };
     if base_branch != "main" {
         return Err(BranchError::new(
-            format!("baseVersion must be a main version (v{base_version} is on branch '{base_branch}')"),
+            format!(
+                "baseVersion must be a main version (v{base_version} is on branch '{base_branch}')"
+            ),
             400,
         ));
     }
@@ -122,9 +139,15 @@ pub async fn create_branch(
             .await
             .map_err(|e| BranchError::new(e.to_string(), 500))?;
     if dup.is_some() {
-        return Err(BranchError::new(format!("Branch '{name}' already exists"), 409));
+        return Err(BranchError::new(
+            format!("Branch '{name}' already exists"),
+            409,
+        ));
     }
-    let description = input.description.map(|d| d.trim()).filter(|d| !d.is_empty());
+    let description = input
+        .description
+        .map(|d| d.trim())
+        .filter(|d| !d.is_empty());
     let branch: BranchRow = sqlx::query_as(&format!(
         "INSERT INTO dataset_branches (id, dataset_id, name, base_version, head_version, description, created_by) \
          VALUES ($1, $2, $3, $4, $4, $5, $6) RETURNING {BRANCH_COLS}"
@@ -188,7 +211,10 @@ pub async fn commit_branch_version(
         .map_err(|e| BranchError::new(e.to_string(), 500))?
         + 1;
 
-    let mut tx = pool.begin().await.map_err(|e| BranchError::new(e.to_string(), 500))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| BranchError::new(e.to_string(), 500))?;
     let updated = sqlx::query(
         "UPDATE dataset_branches SET head_version = $3, merged_at = NULL, merged_into = NULL \
          WHERE id = $1 AND dataset_id = $2 AND head_version = $4",
@@ -234,7 +260,9 @@ pub async fn commit_branch_version(
     .execute(&mut *tx)
     .await
     .map_err(|e| BranchError::new(e.to_string(), 500))?;
-    tx.commit().await.map_err(|e| BranchError::new(e.to_string(), 500))?;
+    tx.commit()
+        .await
+        .map_err(|e| BranchError::new(e.to_string(), 500))?;
 
     // Indexed row storage (improvement: legacy commits relied on the
     // dataJson read fallback; behavior is contract-identical).
@@ -296,7 +324,10 @@ pub async fn merge_branch(
     .map_err(|e| BranchError::new(e.to_string(), 500))?;
     let Some(head) = head else {
         return Err(BranchError::new(
-            format!("Branch head version {} no longer exists", branch.head_version),
+            format!(
+                "Branch head version {} no longer exists",
+                branch.head_version
+            ),
             400,
         ));
     };
@@ -310,7 +341,9 @@ pub async fn merge_branch(
         return Err(BranchError::new(
             format!(
                 "Main advanced to v{}; create a fresh branch from current main before merging",
-                current_main.map(|n| n.to_string()).unwrap_or_else(|| "null".to_string())
+                current_main
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".to_string())
             ),
             409,
         ));
@@ -330,7 +363,10 @@ pub async fn merge_branch(
     let merged_at = Utc::now();
     let lifecycle = if quality_gate { "draft" } else { "published" };
 
-    let mut tx = pool.begin().await.map_err(|e| BranchError::new(e.to_string(), 500))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| BranchError::new(e.to_string(), 500))?;
     sqlx::query(
         "INSERT INTO dataset_versions (id, dataset_id, version_number, schema_json, row_count, \
           data_json, created_by, branch, parent_version, lifecycle) \
@@ -384,7 +420,9 @@ pub async fn merge_branch(
             .await
             .map_err(|e| BranchError::new(e.to_string(), 500))?;
     }
-    tx.commit().await.map_err(|e| BranchError::new(e.to_string(), 500))?;
+    tx.commit()
+        .await
+        .map_err(|e| BranchError::new(e.to_string(), 500))?;
 
     // Indexed row storage for the new main version (copied from the branch
     // head; legacy relied on the dataJson fallback — contract-identical).
@@ -429,7 +467,10 @@ pub async fn delete_branch(
             format!(
                 "Branch '{}' is merged (v{}) and cannot be deleted",
                 branch.name,
-                branch.merged_into.map(|n| n.to_string()).unwrap_or_else(|| "null".to_string())
+                branch
+                    .merged_into
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".to_string())
             ),
             409,
         ));

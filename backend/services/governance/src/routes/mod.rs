@@ -287,22 +287,37 @@ mod tests {
     fn str_array_validation() {
         let m = obj(serde_json::json!({"columns": []}));
         assert_eq!(
-            req_str_array(&m, "columns", "columns must not be empty", "column names must be non-empty")
-                .unwrap_err()
-                .message,
+            req_str_array(
+                &m,
+                "columns",
+                "columns must not be empty",
+                "column names must be non-empty"
+            )
+            .unwrap_err()
+            .message,
             "columns: columns must not be empty"
         );
         let m = obj(serde_json::json!({"columns": ["a", "  ", "b"]}));
         assert_eq!(
-            req_str_array(&m, "columns", "columns must not be empty", "column names must be non-empty")
-                .unwrap_err()
-                .message,
+            req_str_array(
+                &m,
+                "columns",
+                "columns must not be empty",
+                "column names must be non-empty"
+            )
+            .unwrap_err()
+            .message,
             "columns.1: column names must be non-empty"
         );
         let m = obj(serde_json::json!({"columns": [" a ", "b"]}));
         assert_eq!(
-            req_str_array(&m, "columns", "columns must not be empty", "column names must be non-empty")
-                .unwrap(),
+            req_str_array(
+                &m,
+                "columns",
+                "columns must not be empty",
+                "column names must be non-empty"
+            )
+            .unwrap(),
             vec!["a".to_string(), "b".to_string()]
         );
     }

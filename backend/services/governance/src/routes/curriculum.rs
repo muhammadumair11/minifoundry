@@ -21,7 +21,7 @@ use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::state::{audit_local, AuditOptions, AppState, CurriculumRow};
+use crate::state::{audit_local, AppState, AuditOptions, CurriculumRow};
 
 pub struct CurriculumStep {
     pub id: &'static str,
@@ -254,7 +254,8 @@ pub fn detect_auto(entries: &[EvidenceEntry]) -> HashMap<&'static str, Evidence>
             None => Evidence::none(),
         }
     }
-    let contains_success = |d: Option<&str>| d.map(|d| d.contains("status=success")).unwrap_or(false);
+    let contains_success =
+        |d: Option<&str>| d.map(|d| d.contains("status=success")).unwrap_or(false);
     let not_failed = |d: Option<&str>| !d.map(|d| d.starts_with("FAILED")).unwrap_or(false);
     let is_replay = |d: Option<&str>| d.map(|d| d.starts_with("replay of run")).unwrap_or(false);
 
@@ -262,7 +263,10 @@ pub fn detect_auto(entries: &[EvidenceEntry]) -> HashMap<&'static str, Evidence>
     out.insert("connectors", ev(find(entries, &["connector.create"], None)));
     out.insert("ingest", ev(find(entries, &["ingest.complete"], None)));
     out.insert("datasets", ev(find(entries, &["dataset.view"], None)));
-    out.insert("transform-write", ev(find(entries, &["transform.create"], None)));
+    out.insert(
+        "transform-write",
+        ev(find(entries, &["transform.create"], None)),
+    );
     out.insert(
         "transform-run",
         ev(find(entries, &["transform.run"], Some(&contains_success))),
@@ -283,15 +287,28 @@ pub fn detect_auto(entries: &[EvidenceEntry]) -> HashMap<&'static str, Evidence>
     );
     out.insert(
         "dashboard",
-        ev(find(entries, &["dashboard.create", "dashboard.update"], None)),
+        ev(find(
+            entries,
+            &["dashboard.create", "dashboard.update"],
+            None,
+        )),
     );
-    out.insert("column-marking", ev(find(entries, &["marking.attach"], None)));
-    out.insert("quality-gate", ev(find(entries, &["dataset.publish"], None)));
+    out.insert(
+        "column-marking",
+        ev(find(entries, &["marking.attach"], None)),
+    );
+    out.insert(
+        "quality-gate",
+        ev(find(entries, &["dataset.publish"], None)),
+    );
     out.insert(
         "run-replay",
         ev(find(entries, &["pipeline.run"], Some(&is_replay))),
     );
-    out.insert("version-lineage", ev(find(entries, &["lineage.version.view"], None)));
+    out.insert(
+        "version-lineage",
+        ev(find(entries, &["lineage.version.view"], None)),
+    );
     out.insert("api-token", ev(find(entries, &["apiToken.create"], None)));
     out
 }
@@ -418,11 +435,12 @@ pub async fn get_curriculum_status(state: &AppState, actor_key: &str) -> Result<
         .collect();
     let auto = detect_auto(&evidence_entries);
 
-    let rows: Vec<CurriculumRow> =
-        sqlx::query_as("SELECT step_id, completed_at FROM curriculum_progress WHERE actor_key = $1")
-            .bind(actor_key)
-            .fetch_all(&state.db)
-            .await?;
+    let rows: Vec<CurriculumRow> = sqlx::query_as(
+        "SELECT step_id, completed_at FROM curriculum_progress WHERE actor_key = $1",
+    )
+    .bind(actor_key)
+    .fetch_all(&state.db)
+    .await?;
     let manual: HashMap<String, DateTime<Utc>> = rows
         .into_iter()
         .map(|r| (r.step_id, r.completed_at))
@@ -441,7 +459,10 @@ fn actor_key_of(actor: &mf_auth::Actor) -> String {
 
 /// GET /api/curriculum — sim actors get a fresh learner identity + cookie
 /// (exactly like the legacy route's randomUUID branch).
-pub async fn get_curriculum(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn get_curriculum(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     let actor_key = actor_key_of(&actor);
 
@@ -586,7 +607,11 @@ mod tests {
     #[test]
     fn auto_detection_rules() {
         let entries = vec![
-            entry("pipeline.run", Some("replay of run abc status=success"), Some("P")),
+            entry(
+                "pipeline.run",
+                Some("replay of run abc status=success"),
+                Some("P"),
+            ),
             entry("pipeline.run", Some("status=success"), Some("P")),
             entry("action.apply", Some("FAILED: boom"), None),
             entry("apiToken.create", None, Some("tok")),
@@ -701,7 +726,13 @@ mod tests {
         // Golden fixture: datasets/transform-run/ontology/action-run/api-token
         // done → completed 5, percent 28, next 'connectors'.
         let mut auto = HashMap::new();
-        for id in ["datasets", "transform-run", "ontology", "action-run", "api-token"] {
+        for id in [
+            "datasets",
+            "transform-run",
+            "ontology",
+            "action-run",
+            "api-token",
+        ] {
             auto.insert(
                 id,
                 Evidence {

@@ -24,7 +24,8 @@ const TICK_INTERVAL_SECONDS: u64 = 30;
 
 pub fn spawn_scheduler(state: AppState) {
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(TICK_INTERVAL_SECONDS));
+        let mut tick =
+            tokio::time::interval(tokio::time::Duration::from_secs(TICK_INTERVAL_SECONDS));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;

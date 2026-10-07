@@ -213,7 +213,9 @@ pub async fn replay_run(
         ));
     };
     let Ok(manifest) = serde_json::from_value::<RunManifest>(manifest_value) else {
-        return Err(ApiError::bad_request("Run manifest is unreadable — cannot replay"));
+        return Err(ApiError::bad_request(
+            "Run manifest is unreadable — cannot replay",
+        ));
     };
 
     let pinned = run.version_number.unwrap_or(1);
@@ -265,7 +267,9 @@ pub async fn replay_run(
     )
     .await;
 
-    Ok(json_ok(json!({ "job": { "id": job.id, "status": job.status, "eventKey": job.event_key } })))
+    Ok(json_ok(
+        json!({ "job": { "id": job.id, "status": job.status, "eventKey": job.event_key } }),
+    ))
 }
 
 /// POST /api/runs/{id}/retry — enqueue a durable retry pinning the LATEST
@@ -323,5 +327,7 @@ pub async fn retry_run(
     )
     .await;
 
-    Ok(json_ok(json!({ "job": { "id": job.id, "status": job.status, "eventKey": job.event_key } })))
+    Ok(json_ok(
+        json!({ "job": { "id": job.id, "status": job.status, "eventKey": job.event_key } }),
+    ))
 }

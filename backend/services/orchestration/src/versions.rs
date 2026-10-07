@@ -5,7 +5,7 @@
 use serde_json::Value;
 use sqlx::types::Json;
 
-use crate::state::{PipelineVersionRow, AppState, VERSION_COLS};
+use crate::state::{AppState, PipelineVersionRow, VERSION_COLS};
 
 /// Pipeline versions retained per pipeline (versions beyond this are pruned).
 pub const KEEP_LAST_N: i64 = 20;
@@ -67,7 +67,11 @@ pub fn assert_valid_graph(graph: &Value) -> Result<usize, String> {
             }
         }
     }
-    Ok(obj.get("nodes").and_then(|n| n.as_array()).map(|a| a.len()).unwrap_or(0))
+    Ok(obj
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0))
 }
 
 /// Newest version of a pipeline, or None when none exist yet.
@@ -104,7 +108,10 @@ pub async fn ensure_pipeline_version(
     state: &AppState,
     pipeline_id: &str,
 ) -> Result<PipelineVersionRow, String> {
-    if let Some(latest) = latest_version(state, pipeline_id).await.map_err(|e| e.to_string())? {
+    if let Some(latest) = latest_version(state, pipeline_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
         return Ok(latest);
     }
     let pipeline: Option<(Json<Value>,)> =
@@ -132,7 +139,9 @@ pub async fn snapshot_pipeline_version(
     // Unique (pipeline_id, version_number): a concurrent snapshot race is
     // resolved by re-reading the winner's row (last writer appends the next).
     for _attempt in 0..3 {
-        let prev = latest_version_number(state, pipeline_id).await.map_err(|e| e.to_string())?;
+        let prev = latest_version_number(state, pipeline_id)
+            .await
+            .map_err(|e| e.to_string())?;
         let next = prev.unwrap_or(0) + 1;
         let id = mf_db::new_id();
         let result = sqlx::query_as(&format!(
@@ -209,7 +218,10 @@ mod tests {
             assert_valid_graph(&json!({"nodes": [{"id": "a"}, {"id": "b"}], "edges": []})).unwrap(),
             2
         );
-        assert_eq!(assert_valid_graph(&json!({"nodes": [], "edges": []})).unwrap(), 0);
+        assert_eq!(
+            assert_valid_graph(&json!({"nodes": [], "edges": []})).unwrap(),
+            0
+        );
     }
 
     #[test]

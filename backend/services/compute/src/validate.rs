@@ -143,8 +143,8 @@ mod tests {
 
     #[test]
     fn valid_rows_pass_and_preserve_cell_order() {
-        let rows = validate_runner_rows(&json!([{"z": "s", "a": 1, "b": true, "c": null}]), 10)
-            .unwrap();
+        let rows =
+            validate_runner_rows(&json!([{"z": "s", "a": 1, "b": true, "c": null}]), 10).unwrap();
         assert_eq!(rows.len(), 1);
         let keys: Vec<&String> = rows[0].keys().collect();
         assert_eq!(

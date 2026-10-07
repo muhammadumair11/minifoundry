@@ -6,21 +6,23 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use chrono::Utc;
-use mf_web::{actor_from_headers, json_accepted, json_created, json_ok, require_role, ApiError, ApiResult};
+use mf_web::{
+    actor_from_headers, json_accepted, json_created, json_ok, require_role, ApiError, ApiResult,
+};
 use serde_json::{json, Map, Value};
 use sqlx::types::Json;
 
 use crate::audit::{self, AuditOptions};
 use crate::jobs::{self, EnqueueOptions};
 use crate::routes::{
-    as_object, nullish_string, opt_enum, opt_graph, opt_int_range, opt_string,
-    opt_string_array, opt_string_min1, parse_body, parse_body_or_empty, req_int_min1,
-    req_string_min1_custom, service_token_authorized, IntRange,
+    as_object, nullish_string, opt_enum, opt_graph, opt_int_range, opt_string, opt_string_array,
+    opt_string_min1, parse_body, parse_body_or_empty, req_int_min1, req_string_min1_custom,
+    service_token_authorized, IntRange,
 };
 use crate::scheduler;
 use crate::state::{
-    LastRunRow, PipelineRow, PipelineVersionRow, RunRow, ScheduleRow, AppState,
-    PIPELINE_COLS, RUN_COLS, SCHEDULE_COLS, VERSION_COLS,
+    AppState, LastRunRow, PipelineRow, PipelineVersionRow, RunRow, ScheduleRow, PIPELINE_COLS,
+    RUN_COLS, SCHEDULE_COLS, VERSION_COLS,
 };
 use crate::versions;
 
@@ -36,10 +38,11 @@ pub async fn list_pipelines(State(state): State<AppState>) -> ApiResult<Response
 }
 
 pub async fn pipelines_list_payload(state: &AppState) -> Result<Value, ApiError> {
-    let pipelines: Vec<PipelineRow> =
-        sqlx::query_as(&format!("SELECT {PIPELINE_COLS} FROM pipelines ORDER BY updated_at DESC"))
-            .fetch_all(&state.db)
-            .await?;
+    let pipelines: Vec<PipelineRow> = sqlx::query_as(&format!(
+        "SELECT {PIPELINE_COLS} FROM pipelines ORDER BY updated_at DESC"
+    ))
+    .fetch_all(&state.db)
+    .await?;
     let counts: Vec<(String, i64)> =
         sqlx::query_as("SELECT pipeline_id, COUNT(*) FROM pipeline_runs GROUP BY pipeline_id")
             .fetch_all(&state.db)
@@ -127,7 +130,9 @@ pub async fn create_pipeline(
     )
     .await;
 
-    Ok(json_created(json!({ "pipeline": crate::state::serialize_pipeline_basic(&pipeline) })))
+    Ok(json_created(
+        json!({ "pipeline": crate::state::serialize_pipeline_basic(&pipeline) }),
+    ))
 }
 
 // ─── GET/PUT/PATCH/DELETE /api/pipelines/{id} ──────────────────────────
@@ -141,11 +146,12 @@ pub async fn pipeline_detail(
 }
 
 pub async fn pipeline_detail_payload(state: &AppState, id: &str) -> Result<Value, ApiError> {
-    let pipeline: Option<PipelineRow> =
-        sqlx::query_as(&format!("SELECT {PIPELINE_COLS} FROM pipelines WHERE id = $1"))
-            .bind(id)
-            .fetch_optional(&state.db)
-            .await?;
+    let pipeline: Option<PipelineRow> = sqlx::query_as(&format!(
+        "SELECT {PIPELINE_COLS} FROM pipelines WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(pipeline) = pipeline else {
         return Err(ApiError::not_found(format!("Pipeline '{id}' not found")));
     };
@@ -180,11 +186,10 @@ pub async fn update_pipeline(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "editor")?;
 
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM pipelines WHERE id = $1")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM pipelines WHERE id = $1")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?;
     if existing.is_none() {
         return Err(ApiError::not_found(format!("Pipeline '{id}' not found")));
     }
@@ -197,7 +202,10 @@ pub async fn update_pipeline(
     let description = collect(&mut issues, opt_string(&m, "description"));
     let graph = collect(&mut issues, opt_graph(&m, "graph"));
     let version_note = collect(&mut issues, nullish_string(&m, "versionNote"));
-    let trigger_mode = collect(&mut issues, opt_enum(&m, "triggerMode", &["manual", "upstream"]));
+    let trigger_mode = collect(
+        &mut issues,
+        opt_enum(&m, "triggerMode", &["manual", "upstream"]),
+    );
     let upstream_ids = collect(&mut issues, opt_string_array(&m, "upstreamDatasetIds", 50));
     let max_retries = collect(
         &mut issues,
@@ -221,7 +229,9 @@ pub async fn update_pipeline(
 
     // M3.1: backfill the PRE-save graph as v1 before the new graph becomes v2+.
     if graph_changed {
-        versions::ensure_pipeline_version(&state, &id).await.map_err(internal_err)?;
+        versions::ensure_pipeline_version(&state, &id)
+            .await
+            .map_err(internal_err)?;
     }
 
     // Dynamic update of only the provided fields (+ updated_at always).
@@ -322,7 +332,9 @@ pub async fn update_pipeline(
     )
     .await;
 
-    Ok(json_ok(json!({ "pipeline": crate::state::serialize_pipeline_basic(&pipeline) })))
+    Ok(json_ok(
+        json!({ "pipeline": crate::state::serialize_pipeline_basic(&pipeline) }),
+    ))
 }
 
 fn collect<T: Default>(issues: &mut Vec<String>, r: Result<T, String>) -> T {
@@ -435,12 +447,16 @@ pub async fn run_pipeline(
         return Err(ApiError::bad_request(issues.join("; ")));
     }
     if cascade_depth.unwrap_or(0) != 0 {
-        return Err(ApiError::bad_request("cascadeDepth is not supported for queued runs"));
+        return Err(ApiError::bad_request(
+            "cascadeDepth is not supported for queued runs",
+        ));
     }
 
     if let Some(schedule_id) = schedule_id {
         if !state.mode.demo && !service_authorized {
-            return Err(ApiError::bad_request("A service token is required for scheduled runs"));
+            return Err(ApiError::bad_request(
+                "A service token is required for scheduled runs",
+            ));
         }
         let schedule: Option<ScheduleRow> = sqlx::query_as(&format!(
             "SELECT {SCHEDULE_COLS} FROM schedules WHERE id = $1"
@@ -456,7 +472,9 @@ pub async fn run_pipeline(
             }
         });
         let Some(due_at) = due.filter(|d| *d <= Utc::now()) else {
-            return Err(ApiError::bad_request("Schedule is not due for this pipeline"));
+            return Err(ApiError::bad_request(
+                "Schedule is not due for this pipeline",
+            ));
         };
         let schedule = schedule.expect("checked");
 
@@ -502,7 +520,9 @@ pub async fn run_pipeline(
         .filter(|s| !s.is_empty());
     if let Some(key) = &request_key {
         if key.chars().count() > 128 {
-            return Err(ApiError::bad_request("Idempotency-Key must be at most 128 characters"));
+            return Err(ApiError::bad_request(
+                "Idempotency-Key must be at most 128 characters",
+            ));
         }
     }
     let suffix = request_key.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -539,9 +559,9 @@ pub async fn run_pipeline(
 fn nullish_string_min1(m: &Map<String, Value>, field: &str) -> Result<Option<String>, String> {
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) if s.is_empty() => {
-            Err(format!("{field}: Too small: expected string to have >=1 chars"))
-        }
+        Some(Value::String(s)) if s.is_empty() => Err(format!(
+            "{field}: Too small: expected string to have >=1 chars"
+        )),
         Some(Value::String(s)) => Ok(Some(s.clone())),
         Some(other) => Err(format!(
             "{field}: Invalid input: expected string, received {}",
@@ -636,7 +656,10 @@ pub async fn restore_pipeline(
 
 // ─── GET /api/pipelines/{id}/versions[/{version}] ───────────────────────
 
-pub async fn list_versions(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Response> {
+pub async fn list_versions(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
     let pipeline: Option<(String,)> = sqlx::query_as("SELECT id FROM pipelines WHERE id = $1")
         .bind(&id)
         .fetch_optional(&state.db)
@@ -646,7 +669,9 @@ pub async fn list_versions(State(state): State<AppState>, Path(id): Path<String>
     }
 
     // Lazily backfills v1 (no-op once the pipeline has versions).
-    versions::ensure_pipeline_version(&state, &id).await.map_err(internal_err)?;
+    versions::ensure_pipeline_version(&state, &id)
+        .await
+        .map_err(internal_err)?;
 
     let version_rows: Vec<PipelineVersionRow> = sqlx::query_as(&format!(
         "SELECT {VERSION_COLS} FROM pipeline_versions WHERE pipeline_id = $1 ORDER BY version_number DESC"
@@ -682,9 +707,8 @@ pub async fn version_detail(
     State(state): State<AppState>,
     Path((id, version)): Path<(String, String)>,
 ) -> ApiResult<Response> {
-    let not_found = || {
-        ApiError::not_found(format!("Version '{version}' not found for pipeline '{id}'"))
-    };
+    let not_found =
+        || ApiError::not_found(format!("Version '{version}' not found for pipeline '{id}'"));
     // Number(version): NaN / non-integer / < 1 all 404 (legacy behavior).
     let version_number = parse_js_version_param(&version).ok_or_else(not_found)?;
     let snapshot = versions::get_pipeline_version(&state, &id, version_number)
@@ -782,16 +806,24 @@ async fn assess(state: &AppState, id: &str, run_id: &str) -> Result<Option<Asses
         }
         Err(e) => return Err(internal_err(crate::catalog::internal_error_message(&e))),
     };
-    let dataset = detail.get("dataset").cloned().unwrap_or_else(|| detail.clone());
-    let dataset_name = dataset.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    let dataset = detail
+        .get("dataset")
+        .cloned()
+        .unwrap_or_else(|| detail.clone());
+    let dataset_name = dataset
+        .get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .to_string();
     let versions_arr = detail
         .get("versions")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
-    let Some(version) = versions_arr.iter().find(|v| {
-        v.get("versionNumber").and_then(|n| n.as_i64()) == Some(version_number)
-    }) else {
+    let Some(version) = versions_arr
+        .iter()
+        .find(|v| v.get("versionNumber").and_then(|n| n.as_i64()) == Some(version_number))
+    else {
         return Ok(Some(Assessment {
             state: "removed",
             dataset_id: Some(dataset_id),
@@ -809,7 +841,10 @@ async fn assess(state: &AppState, id: &str, run_id: &str) -> Result<Option<Asses
     if created_by != Some(run.id.as_str()) {
         reasons.push("This run is not the recorded writer of the version.".into());
     }
-    let branch = version.get("branch").and_then(|v| v.as_str()).unwrap_or("main");
+    let branch = version
+        .get("branch")
+        .and_then(|v| v.as_str())
+        .unwrap_or("main");
     if branch != "main" {
         reasons.push("Branch versions require branch cleanup.".into());
     }
@@ -827,7 +862,11 @@ async fn assess(state: &AppState, id: &str, run_id: &str) -> Result<Option<Asses
                 && v.get("versionNumber").and_then(|n| n.as_i64()).unwrap_or(0) < version_number
         })
         .max_by_key(|v| v.get("versionNumber").and_then(|n| n.as_i64()).unwrap_or(0));
-    let mode = if previous.is_some() { "version" } else { "dataset" };
+    let mode = if previous.is_some() {
+        "version"
+    } else {
+        "dataset"
+    };
     let published_version = dataset.get("publishedVersion").and_then(|v| v.as_i64());
     if let Some(prev) = previous {
         let prev_lifecycle = prev.get("lifecycle").and_then(|v| v.as_str());
@@ -877,7 +916,10 @@ async fn assess(state: &AppState, id: &str, run_id: &str) -> Result<Option<Asses
         reasons.push(format!("Referenced by pipeline: {}.", names.join(", ")));
     }
 
-    let row_count = version.get("rowCount").and_then(|n| n.as_i64()).unwrap_or(0);
+    let row_count = version
+        .get("rowCount")
+        .and_then(|n| n.as_i64())
+        .unwrap_or(0);
     Ok(Some(Assessment {
         state: "available",
         dataset_id: Some(dataset_id),
@@ -938,7 +980,10 @@ pub async fn output_delete(
     let remove = if result.mode == "dataset" {
         state.catalog.delete_dataset(&dataset_id).await
     } else {
-        state.catalog.delete_version(&dataset_id, version_number).await
+        state
+            .catalog
+            .delete_version(&dataset_id, version_number)
+            .await
     };
     remove.map_err(|e| internal_err(crate::catalog::internal_error_message(&e)))?;
 
@@ -955,7 +1000,9 @@ pub async fn output_delete(
     )
     .await;
 
-    Ok(json_ok(json!({ "removed": result.mode, "datasetId": dataset_id, "versionNumber": version_number })))
+    Ok(json_ok(
+        json!({ "removed": result.mode, "datasetId": dataset_id, "versionNumber": version_number }),
+    ))
 }
 
 // ─── shared run enqueue helpers used by runs.rs (replay/retry) ──────────

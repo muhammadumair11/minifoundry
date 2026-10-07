@@ -71,9 +71,7 @@ pub async fn run_transform(
 
     // Output preview + schema from the published version (empty on failure).
     let (preview, schema) = match (&run.output_dataset_id, run.output_version_number) {
-        (Some(dataset_id), Some(version)) => {
-            fetch_preview(&state, dataset_id, version).await
-        }
+        (Some(dataset_id), Some(version)) => fetch_preview(&state, dataset_id, version).await,
         _ => (Vec::new(), Vec::new()),
     };
 
@@ -88,7 +86,11 @@ pub async fn run_transform(
 /// Best-effort like legacy (version gone / parse failure → empty). The schema
 /// is normalized to raw `{name, type}` entries — legacy `parseSchema` read
 /// schemaJson directly (no governance `markedWith` annotation).
-async fn fetch_preview(state: &AppState, dataset_id: &str, version: i32) -> (Vec<Value>, Vec<Value>) {
+async fn fetch_preview(
+    state: &AppState,
+    dataset_id: &str,
+    version: i32,
+) -> (Vec<Value>, Vec<Value>) {
     let n = version.to_string();
     let schema = match catalog::get_version(&state.catalog, dataset_id, &n).await {
         Ok(Some(meta)) => catalog::normalize_schema(meta.get("schema")),
@@ -215,10 +217,7 @@ pub async fn replay_run(
         AuditOptions::new("transform.replay", "transform")
             .resource_id(Some(&id))
             .resource_name(Some(&transform.name))
-            .detail(Some(&format!(
-                "replay of {}: {}",
-                prior.id, replay.status
-            ))),
+            .detail(Some(&format!("replay of {}: {}", prior.id, replay.status))),
     )
     .await;
 

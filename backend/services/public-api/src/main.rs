@@ -30,7 +30,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(mf_web::healthz))
         // ── foundry/v1 (token-authed; the gateway allowlists this prefix) ──
         .route("/api/foundry/v1/whoami", get(routes::whoami::whoami))
-        .route("/api/foundry/v1/datasets", get(routes::datasets::list_datasets))
+        .route(
+            "/api/foundry/v1/datasets",
+            get(routes::datasets::list_datasets),
+        )
         .route(
             "/api/foundry/v1/datasets/{id}",
             get(routes::datasets::dataset_detail),
@@ -51,7 +54,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/foundry/v1/objects/{type}/{pk}",
             get(routes::objects::get_object),
         )
-        .route("/api/foundry/v1/ontology", get(routes::ontology::get_ontology))
+        .route(
+            "/api/foundry/v1/ontology",
+            get(routes::ontology::get_ontology),
+        )
         .route(
             "/api/foundry/v1/pipelines",
             get(routes::pipelines::list_pipelines),

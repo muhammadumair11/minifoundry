@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::state::{
-    audit_local, create_notification, ApprovalRow, AppState, AuditOptions, NotificationInput,
+    audit_local, create_notification, AppState, ApprovalRow, AuditOptions, NotificationInput,
     APPROVAL_COLS,
 };
 
@@ -134,7 +134,9 @@ pub async fn create_approval(
     .fetch_optional(&state.db)
     .await?;
     if let Some(a) = existing {
-        return Ok(json_ok(serde_json::json!({ "id": a.id, "status": a.status })));
+        return Ok(json_ok(
+            serde_json::json!({ "id": a.id, "status": a.status }),
+        ));
     }
 
     let id = mf_db::new_id();
@@ -182,7 +184,9 @@ pub async fn create_approval(
     )
     .await;
 
-    Ok(json_ok(serde_json::json!({ "id": id, "status": "pending" })))
+    Ok(json_ok(
+        serde_json::json!({ "id": id, "status": "pending" }),
+    ))
 }
 
 /// GET /internal/stats — `{markings, approvals, approvalsPending,
@@ -190,16 +194,21 @@ pub async fn create_approval(
 pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
 
-    let (markings, approvals, approvals_pending, audit_entries, notifications): (i64, i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT (SELECT count(*) FROM markings), \
+    let (markings, approvals, approvals_pending, audit_entries, notifications): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM markings), \
                     (SELECT count(*) FROM approval_requests), \
                     (SELECT count(*) FROM approval_requests WHERE status = 'pending'), \
                     (SELECT count(*) FROM audit_entries), \
                     (SELECT count(*) FROM notifications)",
-        )
-        .fetch_one(&state.db)
-        .await?;
+    )
+    .fetch_one(&state.db)
+    .await?;
 
     Ok(json_ok(serde_json::json!({
         "markings": markings,

@@ -6,9 +6,7 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use mf_types::{Row, Value};
-use mf_web::{
-    actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult,
-};
+use mf_web::{actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult};
 
 use crate::audit::{self, AuditOptions};
 use crate::dbx;
@@ -234,7 +232,9 @@ pub async fn delete_dashboard(
             .resource_name(Some(&existing.title)),
     )
     .await;
-    Ok(json_ok(serde_json::json!({ "ok": true, "deleted": existing.id })))
+    Ok(json_ok(
+        serde_json::json!({ "ok": true, "deleted": existing.id }),
+    ))
 }
 
 /// POST /api/dashboards/{id}/data — server-side widget aggregation.
@@ -296,7 +296,11 @@ pub async fn widget_data(
     // Consumer rows (masked at the caller's role by catalog — the single
     // masking authority; its envelope carries the masked column list) plus
     // the resolved version's rowCount.
-    let Some(payload) = state.catalog.head_rows_full(&dataset_id, Some(&role)).await? else {
+    let Some(payload) = state
+        .catalog
+        .head_rows_full(&dataset_id, Some(&role))
+        .await?
+    else {
         return Err(ApiError::bad_request(format!(
             "Source '{}' has no published data",
             source_name.clone().unwrap_or_else(|| dataset_id.clone())

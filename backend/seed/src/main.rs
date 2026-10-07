@@ -116,7 +116,10 @@ async fn main() -> anyhow::Result<()> {
             let mut stage = |name: &str, res: Result<String, String>| match res {
                 Ok(status) => println!(r#"{{"stage":"{name}","status":"{status}"}}"#),
                 Err(e) => {
-                    eprintln!(r#"{{"stage":"{name}","status":"failed","error":{}}}"#, json_str(&e));
+                    eprintln!(
+                        r#"{{"stage":"{name}","status":"failed","error":{}}}"#,
+                        json_str(&e)
+                    );
                     failed.push(name.to_string());
                 }
             };
@@ -213,7 +216,9 @@ async fn seed_demo_pipeline(pool: &PgPool) -> anyhow::Result<String> {
             .fetch_optional(pool)
             .await?;
     let (shipments_id,) = shipments.ok_or_else(|| {
-        anyhow::anyhow!("Seed error: Shipments dataset was not created (run the workspace stage first)")
+        anyhow::anyhow!(
+            "Seed error: Shipments dataset was not created (run the workspace stage first)"
+        )
     })?;
 
     let graph = demo_pipeline_graph(&shipments_id);
@@ -259,7 +264,10 @@ async fn run_demo_pipeline() -> anyhow::Result<String> {
     let id = pipelines
         .get("pipelines")
         .and_then(|p| p.as_array())
-        .and_then(|arr| arr.iter().find(|p| p.get("name").and_then(|n| n.as_str()) == Some(DEMO_PIPELINE_NAME)))
+        .and_then(|arr| {
+            arr.iter()
+                .find(|p| p.get("name").and_then(|n| n.as_str()) == Some(DEMO_PIPELINE_NAME))
+        })
         .and_then(|p| p.get("id"))
         .and_then(|i| i.as_str())
         .ok_or_else(|| anyhow::anyhow!("demo pipeline '{DEMO_PIPELINE_NAME}' not found"))?
@@ -297,11 +305,17 @@ async fn run_demo_pipeline() -> anyhow::Result<String> {
             },
             Err(_) => continue,
         };
-        let status = job.pointer("/job/status").and_then(|s| s.as_str()).unwrap_or("");
+        let status = job
+            .pointer("/job/status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
         match status {
             "succeeded" => return Ok(format!("ok (job {job_id} succeeded)")),
             "failed" => {
-                let err = job.pointer("/job/error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                let err = job
+                    .pointer("/job/error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("unknown");
                 anyhow::bail!("demo pipeline run failed: {err}");
             }
             _ => {}

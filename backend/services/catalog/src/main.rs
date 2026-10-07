@@ -53,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/healthz", get(mf_web::healthz))
         // ── public surface (gateway-routed; contracts = fixtures + legacy) ──
-        .route("/api/projects", get(routes::projects::list_projects).post(routes::projects::create_project))
+        .route(
+            "/api/projects",
+            get(routes::projects::list_projects).post(routes::projects::create_project),
+        )
         .route(
             "/api/projects/{id}",
             patch(routes::projects::update_project).delete(routes::projects::delete_project),
@@ -67,9 +70,18 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/datasets/{id}/rows", get(routes::rows::get_rows))
         .route("/api/datasets/{id}/diff", get(routes::rows::get_diff))
-        .route("/api/datasets/{id}/export", get(routes::rows::export_dataset))
-        .route("/api/datasets/{id}/publish", post(routes::publish::publish_dataset))
-        .route("/api/datasets/{id}/prune", post(routes::publish::prune_versions))
+        .route(
+            "/api/datasets/{id}/export",
+            get(routes::rows::export_dataset),
+        )
+        .route(
+            "/api/datasets/{id}/publish",
+            post(routes::publish::publish_dataset),
+        )
+        .route(
+            "/api/datasets/{id}/prune",
+            post(routes::publish::prune_versions),
+        )
         .route(
             "/api/datasets/{id}/branches",
             get(routes::branches::get_branches).post(routes::branches::post_branches),
@@ -115,28 +127,45 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/connectors/{id}",
-            patch(routes::connectors::update_connector).delete(routes::connectors::delete_connector),
+            patch(routes::connectors::update_connector)
+                .delete(routes::connectors::delete_connector),
         )
-        .route("/api/connectors/{id}/ingest", post(routes::connectors::ingest_connector))
-        .route("/api/connectors/test-config", post(routes::connectors::test_config))
+        .route(
+            "/api/connectors/{id}/ingest",
+            post(routes::connectors::ingest_connector),
+        )
+        .route(
+            "/api/connectors/test-config",
+            post(routes::connectors::test_config),
+        )
         .route("/api/ingest", post(routes::ingest::post_ingest))
         .route("/api/ingestions", get(routes::ingest::list_ingestions))
         .route("/api/lineage", get(routes::lineage::get_lineage))
         .route("/api/lineage/impact", get(routes::lineage::get_impact))
-        .route("/api/lineage/versions", get(routes::lineage::get_version_lineage))
+        .route(
+            "/api/lineage/versions",
+            get(routes::lineage::get_version_lineage),
+        )
         .route("/api/seed", post(routes::seed_route::post_seed))
         // ── internal (service-token guarded; never routed by the gateway) ──
         .route(
             "/internal/datasets",
-            get(routes::internal::internal_list_datasets).post(routes::internal::internal_create_dataset),
+            get(routes::internal::internal_list_datasets)
+                .post(routes::internal::internal_create_dataset),
         )
-        .route("/internal/datasets/by-name/{name}", get(routes::internal::internal_dataset_by_name))
+        .route(
+            "/internal/datasets/by-name/{name}",
+            get(routes::internal::internal_dataset_by_name),
+        )
         .route(
             "/internal/datasets/{id}",
             get(routes::internal::internal_dataset_detail)
                 .delete(routes::internal::internal_delete_dataset),
         )
-        .route("/internal/datasets/{id}/versions", post(routes::internal::internal_append_version))
+        .route(
+            "/internal/datasets/{id}/versions",
+            post(routes::internal::internal_append_version),
+        )
         .route(
             "/internal/datasets/{id}/versions/{n}",
             get(routes::internal::internal_get_version)
@@ -154,11 +183,20 @@ async fn main() -> anyhow::Result<()> {
             "/internal/datasets/{id}/publish-approved",
             post(routes::internal::internal_publish_approved),
         )
-        .route("/internal/lineage/dataset/{id}", get(routes::internal::internal_lineage_dataset))
-        .route("/internal/health/datasets", get(routes::internal::internal_health_datasets))
+        .route(
+            "/internal/lineage/dataset/{id}",
+            get(routes::internal::internal_lineage_dataset),
+        )
+        .route(
+            "/internal/health/datasets",
+            get(routes::internal::internal_health_datasets),
+        )
         .route("/internal/search", get(routes::internal::internal_search))
         .route("/internal/stats", get(routes::internal::internal_stats))
-        .route("/internal/curriculum-state", get(routes::internal::internal_curriculum_state))
+        .route(
+            "/internal/curriculum-state",
+            get(routes::internal::internal_curriculum_state),
+        )
         .route("/internal/reset", post(routes::internal::internal_reset))
         .with_state(state);
 

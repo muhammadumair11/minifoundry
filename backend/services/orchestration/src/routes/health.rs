@@ -43,10 +43,11 @@ pub async fn compute_runs_health(state: &AppState) -> Result<Value, sqlx::Error>
     .bind(week_ago)
     .fetch_one(&state.db)
     .await?;
-    let finished_runs: Vec<(DateTime<Utc>, DateTime<Utc>)> =
-        sqlx::query_as("SELECT started_at, finished_at FROM pipeline_runs WHERE finished_at IS NOT NULL")
-            .fetch_all(&state.db)
-            .await?;
+    let finished_runs: Vec<(DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT started_at, finished_at FROM pipeline_runs WHERE finished_at IS NOT NULL",
+    )
+    .fetch_all(&state.db)
+    .await?;
 
     let finished_total = success_count + failed_count;
     let success_rate = if finished_total == 0 {
@@ -83,8 +84,10 @@ pub async fn compute_runs_health(state: &AppState) -> Result<Value, sqlx::Error>
                 .bind(&ids)
                 .fetch_all(&state.db)
                 .await?;
-        let name_by: std::collections::HashMap<&str, &str> =
-            names.iter().map(|(id, n)| (id.as_str(), n.as_str())).collect();
+        let name_by: std::collections::HashMap<&str, &str> = names
+            .iter()
+            .map(|(id, n)| (id.as_str(), n.as_str()))
+            .collect();
         failing_groups
             .iter()
             .map(|(id, count, last)| {

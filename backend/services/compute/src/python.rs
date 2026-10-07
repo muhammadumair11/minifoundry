@@ -163,11 +163,8 @@ async fn run_python(
     let stdout_task = spawn_reader(child.stdout.take(), stdout_buf.clone());
     let stderr_task = spawn_reader(child.stderr.take(), stderr_buf.clone());
 
-    let waited = tokio::time::timeout(
-        std::time::Duration::from_millis(timeout_ms),
-        child.wait(),
-    )
-    .await;
+    let waited =
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), child.wait()).await;
 
     let timed_out = waited.is_err();
     let status: Option<i32> = match waited {
@@ -311,8 +308,7 @@ def transform(input):
     print("hello from python")
     return [{"a": r["a"], "double": r["a"] * 2} for r in input["rows"]]
 "#;
-        let (outcome, lines) =
-            execute_python_isolated(code, &input(), 10_000, 50_000).await;
+        let (outcome, lines) = execute_python_isolated(code, &input(), 10_000, 50_000).await;
         let rows = outcome.expect("python run ok");
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].get("double"), Some(&json!(2)));
@@ -326,8 +322,7 @@ def transform(input):
             return;
         };
         let code = "def transform(input):\n    raise ValueError('boom')\n";
-        let (outcome, _lines) =
-            execute_python_isolated(code, &input(), 10_000, 50_000).await;
+        let (outcome, _lines) = execute_python_isolated(code, &input(), 10_000, 50_000).await;
         let err = outcome.unwrap_err();
         assert!(err.starts_with("Python exited with code 1:\n"), "got {err}");
         assert!(err.contains("ValueError: boom"), "got {err}");

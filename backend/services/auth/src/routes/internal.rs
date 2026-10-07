@@ -185,16 +185,21 @@ pub async fn rate_limit(
 pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
 
-    let (users, api_tokens, active_tokens, api_request_logs, refresh_tokens): (i64, i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT (SELECT count(*) FROM users), \
+    let (users, api_tokens, active_tokens, api_request_logs, refresh_tokens): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM users), \
                     (SELECT count(*) FROM api_tokens), \
                     (SELECT count(*) FROM api_tokens WHERE revoked_at IS NULL), \
                     (SELECT count(*) FROM api_request_logs), \
                     (SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL)",
-        )
-        .fetch_one(&state.db)
-        .await?;
+    )
+    .fetch_one(&state.db)
+    .await?;
 
     Ok(json_ok(serde_json::json!({
         "users": users,

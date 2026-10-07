@@ -52,19 +52,24 @@ pub async fn create_dataset_from_rows(
     let schema = infer_schema(&normalized);
     let data_json = data_json_string(&normalized);
 
-    let existing: Option<DatasetRow> =
-        sqlx::query_as(&format!("SELECT {DATASET_COLS} FROM datasets WHERE name = $1 LIMIT 1"))
-            .bind(opts.name)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())?;
+    let existing: Option<DatasetRow> = sqlx::query_as(&format!(
+        "SELECT {DATASET_COLS} FROM datasets WHERE name = $1 LIMIT 1"
+    ))
+    .bind(opts.name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     if let Some(existing) = existing {
         let next_version_number = head_version_number(pool, &existing.id)
             .await
             .map_err(|e| e.to_string())?
             + 1;
-        let lifecycle = if existing.quality_gate { "draft" } else { "published" };
+        let lifecycle = if existing.quality_gate {
+            "draft"
+        } else {
+            "published"
+        };
         let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
         let version: VersionRow = sqlx::query_as(&format!(
             "INSERT INTO dataset_versions (id, dataset_id, version_number, schema_json, row_count, \
@@ -90,7 +95,13 @@ pub async fn create_dataset_from_rows(
              WHERE id = $1 RETURNING {DATASET_COLS}"
         ))
         .bind(&existing.id)
-        .bind(if opts.connector_id.map(|s| !s.is_empty()).unwrap_or(false) { opts.connector_id } else { None })
+        .bind(
+            if opts.connector_id.map(|s| !s.is_empty()).unwrap_or(false) {
+                opts.connector_id
+            } else {
+                None
+            },
+        )
         .bind(existing.quality_gate)
         .bind(next_version_number)
         .fetch_one(&mut *tx)
@@ -159,11 +170,12 @@ pub async fn create_dataset_from_rows(
 /// Latest versionNumber for a dataset across ALL branches (0 when empty) —
 /// port of `getHeadVersionNumber`.
 pub async fn head_version_number(pool: &PgPool, dataset_id: &str) -> Result<i32, sqlx::Error> {
-    let n: Option<i32> =
-        sqlx::query_scalar("SELECT max(version_number) FROM dataset_versions WHERE dataset_id = $1")
-            .bind(dataset_id)
-            .fetch_one(pool)
-            .await?;
+    let n: Option<i32> = sqlx::query_scalar(
+        "SELECT max(version_number) FROM dataset_versions WHERE dataset_id = $1",
+    )
+    .bind(dataset_id)
+    .fetch_one(pool)
+    .await?;
     Ok(n.unwrap_or(0))
 }
 
@@ -213,7 +225,11 @@ pub async fn resolve_consumer_version(
             }
         }
     };
-    Ok(Some(ConsumerVersion { version_number, gated, published_version }))
+    Ok(Some(ConsumerVersion {
+        version_number,
+        gated,
+        published_version,
+    }))
 }
 
 /// Port of `getDatasetVersion`: a specific version, or the main-branch head.
@@ -278,11 +294,12 @@ pub async fn prune_dataset_versions(
     if let Some(Some(p)) = published {
         protected.insert(p);
     }
-    let branch_refs: Vec<(i32, i32)> =
-        sqlx::query_as("SELECT head_version, base_version FROM dataset_branches WHERE dataset_id = $1")
-            .bind(dataset_id)
-            .fetch_all(pool)
-            .await?;
+    let branch_refs: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT head_version, base_version FROM dataset_branches WHERE dataset_id = $1",
+    )
+    .bind(dataset_id)
+    .fetch_all(pool)
+    .await?;
     for (head, base) in branch_refs {
         protected.insert(head);
         protected.insert(base);
@@ -371,10 +388,7 @@ pub struct VersionLineageInput {
 }
 
 /// Version-level lineage inserts (additive telemetry — never fails the caller).
-pub async fn write_version_lineage_edges(
-    pool: &PgPool,
-    edges: &[VersionLineageInput],
-) {
+pub async fn write_version_lineage_edges(pool: &PgPool, edges: &[VersionLineageInput]) {
     for e in edges {
         let result = sqlx::query(
             "INSERT INTO version_lineage_edges (id, run_id, pipeline_id, transform_run_id, \

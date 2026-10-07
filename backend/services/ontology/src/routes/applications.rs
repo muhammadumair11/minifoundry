@@ -6,9 +6,7 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use mf_types::Value;
-use mf_web::{
-    actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult,
-};
+use mf_web::{actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult};
 use serde_json::Map;
 
 use crate::audit::{self, AuditOptions};
@@ -52,7 +50,11 @@ pub async fn list_applications(State(state): State<AppState>) -> ApiResult<Respo
                 "filters": [],
             })
         });
-        let widget_count = safe.get("widgets").and_then(|w| w.as_array()).map(|w| w.len()).unwrap_or(0);
+        let widget_count = safe
+            .get("widgets")
+            .and_then(|w| w.as_array())
+            .map(|w| w.len())
+            .unwrap_or(0);
         out.push(serde_json::json!({
             "id": a.id,
             "name": a.name,
@@ -166,9 +168,7 @@ pub async fn get_application(
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
     let Some(application) = fetch_application(&state.db, &id).await? else {
-        return Err(ApiError::not_found(format!(
-            "Application '{id}' not found"
-        )));
+        return Err(ApiError::not_found(format!("Application '{id}' not found")));
     };
     Ok(json_ok(serde_json::json!({
         "application": serialize_application(&application)
@@ -213,9 +213,7 @@ pub async fn update_application(
     };
 
     let Some(existing) = fetch_application(&state.db, &id).await? else {
-        return Err(ApiError::not_found(format!(
-            "Application '{id}' not found"
-        )));
+        return Err(ApiError::not_found(format!("Application '{id}' not found")));
     };
 
     let new_name = name.clone().unwrap_or_else(|| existing.name.clone());
@@ -244,8 +242,16 @@ pub async fn update_application(
 
     let detail: Option<String> = match &config {
         Some(c) => {
-            let widgets = c.get("widgets").and_then(|w| w.as_array()).map(|w| w.len()).unwrap_or(0);
-            let filters = c.get("filters").and_then(|f| f.as_array()).map(|f| f.len()).unwrap_or(0);
+            let widgets = c
+                .get("widgets")
+                .and_then(|w| w.as_array())
+                .map(|w| w.len())
+                .unwrap_or(0);
+            let filters = c
+                .get("filters")
+                .and_then(|f| f.as_array())
+                .map(|f| f.len())
+                .unwrap_or(0);
             Some(format!(
                 "widgets={widgets} filters={filters}{}",
                 if name.is_some() { " (renamed)" } else { "" }
@@ -284,9 +290,7 @@ pub async fn delete_application(
     require_role(&actor, "editor")?;
 
     let Some(existing) = fetch_application(&state.db, &id).await? else {
-        return Err(ApiError::not_found(format!(
-            "Application '{id}' not found"
-        )));
+        return Err(ApiError::not_found(format!("Application '{id}' not found")));
     };
     sqlx::query("DELETE FROM applications WHERE id = $1")
         .bind(&id)
@@ -300,7 +304,9 @@ pub async fn delete_application(
             .resource_name(Some(&existing.name)),
     )
     .await;
-    Ok(json_ok(serde_json::json!({ "ok": true, "deleted": existing.id })))
+    Ok(json_ok(
+        serde_json::json!({ "ok": true, "deleted": existing.id }),
+    ))
 }
 
 /// POST /api/applications/data — governed chart aggregation over ontology
@@ -440,7 +446,11 @@ pub async fn app_data(
                         )))
                     }
                 };
-                out.push(ObjectViewFilter { property, op, value });
+                out.push(ObjectViewFilter {
+                    property,
+                    op,
+                    value,
+                });
             }
             out
         }
@@ -501,9 +511,7 @@ pub async fn app_data(
         || value_property
             .as_deref()
             .is_some_and(|vp| masked.iter().any(|c| c == vp))
-        || filters_in
-            .iter()
-            .any(|f| masked.contains(&f.property));
+        || filters_in.iter().any(|f| masked.contains(&f.property));
     if uses_hidden {
         return Err(ApiError::bad_request(
             "This chart uses a property hidden for your role",
@@ -562,5 +570,7 @@ pub async fn app_data(
         })
         .collect();
 
-    Ok(json_ok(serde_json::json!({ "rows": out, "total": result.total })))
+    Ok(json_ok(
+        serde_json::json!({ "rows": out, "total": result.total }),
+    ))
 }

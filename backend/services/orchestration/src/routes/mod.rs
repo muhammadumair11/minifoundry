@@ -62,7 +62,13 @@ pub fn opt_string(m: &Map<String, Value>, field: &str) -> Result<Option<String>,
     match m.get(field) {
         None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(issue(field, &format!("Invalid input: expected string, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!(
+                "Invalid input: expected string, received {}",
+                kind_of(other)
+            ),
+        )),
     }
 }
 
@@ -90,10 +96,19 @@ pub fn req_string_min1_custom(
     empty_msg: &str,
 ) -> Result<String, String> {
     match m.get(field) {
-        None => Err(issue(field, "Invalid input: expected string, received undefined")),
+        None => Err(issue(
+            field,
+            "Invalid input: expected string, received undefined",
+        )),
         Some(Value::String(s)) if s.is_empty() => Err(issue(field, empty_msg)),
         Some(Value::String(s)) => Ok(s.clone()),
-        Some(other) => Err(issue(field, &format!("Invalid input: expected string, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!(
+                "Invalid input: expected string, received {}",
+                kind_of(other)
+            ),
+        )),
     }
 }
 
@@ -102,7 +117,13 @@ pub fn nullish_string(m: &Map<String, Value>, field: &str) -> Result<Option<Stri
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(issue(field, &format!("Invalid input: expected string, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!(
+                "Invalid input: expected string, received {}",
+                kind_of(other)
+            ),
+        )),
     }
 }
 
@@ -111,7 +132,13 @@ pub fn opt_bool(m: &Map<String, Value>, field: &str) -> Result<Option<bool>, Str
     match m.get(field) {
         None => Ok(None),
         Some(Value::Bool(b)) => Ok(Some(*b)),
-        Some(other) => Err(issue(field, &format!("Invalid input: expected boolean, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!(
+                "Invalid input: expected boolean, received {}",
+                kind_of(other)
+            ),
+        )),
     }
 }
 
@@ -141,7 +168,10 @@ pub fn opt_int_range(
         other => {
             return Err(issue(
                 field,
-                &format!("Invalid input: expected number, received {}", kind_of(other)),
+                &format!(
+                    "Invalid input: expected number, received {}",
+                    kind_of(other)
+                ),
             ))
         }
     };
@@ -164,7 +194,10 @@ pub fn opt_int_range(
 /// `z.number().int().min(1)` (required, restore route).
 pub fn req_int_min1(m: &Map<String, Value>, field: &str) -> Result<i64, String> {
     match m.get(field) {
-        None => Err(issue(field, "Invalid input: expected number, received undefined")),
+        None => Err(issue(
+            field,
+            "Invalid input: expected number, received undefined",
+        )),
         Some(v) => {
             let m2 = {
                 let mut x = Map::new();
@@ -188,7 +221,11 @@ pub fn req_int_min1(m: &Map<String, Value>, field: &str) -> Result<i64, String> 
 }
 
 /// `z.enum([...]).optional()`
-pub fn opt_enum<'a>(m: &'a Map<String, Value>, field: &str, options: &[&str]) -> Result<Option<&'a str>, String> {
+pub fn opt_enum<'a>(
+    m: &'a Map<String, Value>,
+    field: &str,
+    options: &[&str],
+) -> Result<Option<&'a str>, String> {
     match m.get(field) {
         None => Ok(None),
         Some(Value::String(s)) => {
@@ -199,17 +236,31 @@ pub fn opt_enum<'a>(m: &'a Map<String, Value>, field: &str, options: &[&str]) ->
                     field,
                     &format!(
                         "Invalid option: expected one of {}",
-                        options.iter().map(|o| format!("\"{o}\"")).collect::<Vec<_>>().join("|")
+                        options
+                            .iter()
+                            .map(|o| format!("\"{o}\""))
+                            .collect::<Vec<_>>()
+                            .join("|")
                     ),
                 ))
             }
         }
-        Some(other) => Err(issue(field, &format!("Invalid input: expected string, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!(
+                "Invalid input: expected string, received {}",
+                kind_of(other)
+            ),
+        )),
     }
 }
 
 /// `z.array(z.string()).max(<max>).optional()`
-pub fn opt_string_array(m: &Map<String, Value>, field: &str, max: usize) -> Result<Option<Vec<String>>, String> {
+pub fn opt_string_array(
+    m: &Map<String, Value>,
+    field: &str,
+    max: usize,
+) -> Result<Option<Vec<String>>, String> {
     match m.get(field) {
         None => Ok(None),
         Some(Value::Array(arr)) => {
@@ -220,12 +271,18 @@ pub fn opt_string_array(m: &Map<String, Value>, field: &str, max: usize) -> Resu
                     Value::String(s) => out.push(s.clone()),
                     other => issues.push(issue(
                         &format!("{field}.{i}"),
-                        &format!("Invalid input: expected string, received {}", kind_of(other)),
+                        &format!(
+                            "Invalid input: expected string, received {}",
+                            kind_of(other)
+                        ),
                     )),
                 }
             }
             if arr.len() > max {
-                issues.push(issue(field, &format!("Too big: expected array to have <={max} items")));
+                issues.push(issue(
+                    field,
+                    &format!("Too big: expected array to have <={max} items"),
+                ));
             }
             if issues.is_empty() {
                 Ok(Some(out))
@@ -233,7 +290,10 @@ pub fn opt_string_array(m: &Map<String, Value>, field: &str, max: usize) -> Resu
                 Err(issues.join("; "))
             }
         }
-        Some(other) => Err(issue(field, &format!("Invalid input: expected array, received {}", kind_of(other)))),
+        Some(other) => Err(issue(
+            field,
+            &format!("Invalid input: expected array, received {}", kind_of(other)),
+        )),
     }
 }
 
@@ -241,9 +301,14 @@ pub fn opt_string_array(m: &Map<String, Value>, field: &str, max: usize) -> Resu
 /// z.array(z.record(...)) })).optional() — returns the raw graph value to
 /// store (input key order preserved).
 pub fn opt_graph(m: &Map<String, Value>, field: &str) -> Result<Option<Value>, String> {
-    let Some(v) = m.get(field) else { return Ok(None) };
+    let Some(v) = m.get(field) else {
+        return Ok(None);
+    };
     if !v.is_object() {
-        return Err(issue(field, &format!("Invalid input: expected object, received {}", kind_of(v))));
+        return Err(issue(
+            field,
+            &format!("Invalid input: expected object, received {}", kind_of(v)),
+        ));
     }
     let mut issues = Vec::new();
     for sub in ["nodes", "edges"] {
@@ -283,7 +348,9 @@ pub fn coerce_query_int(
     max: i64,
     default: i64,
 ) -> Result<i64, String> {
-    let Some(raw) = params.get(field) else { return Ok(default) };
+    let Some(raw) = params.get(field) else {
+        return Ok(default);
+    };
     // JS Number(raw): "" → 0, whitespace trimmed, decimal/hex/exponent ok.
     let n = if raw.trim().is_empty() {
         0.0
@@ -298,10 +365,16 @@ pub fn coerce_query_int(
     }
     let i = n as i64;
     if i < min {
-        return Err(issue(field, &format!("Too small: expected number to be >={min}")));
+        return Err(issue(
+            field,
+            &format!("Too small: expected number to be >={min}"),
+        ));
     }
     if i > max {
-        return Err(issue(field, &format!("Too big: expected number to be <={max}")));
+        return Err(issue(
+            field,
+            &format!("Too big: expected number to be <={max}"),
+        ));
     }
     Ok(i)
 }
@@ -312,7 +385,9 @@ pub fn query_enum<'a>(
     field: &str,
     options: &[&str],
 ) -> Result<Option<&'a str>, String> {
-    let Some(raw) = params.get(field) else { return Ok(None) };
+    let Some(raw) = params.get(field) else {
+        return Ok(None);
+    };
     if options.contains(&raw.as_str()) {
         Ok(Some(raw.as_str()))
     } else {
@@ -320,7 +395,11 @@ pub fn query_enum<'a>(
             field,
             &format!(
                 "Invalid option: expected one of {}",
-                options.iter().map(|o| format!("\"{o}\"")).collect::<Vec<_>>().join("|")
+                options
+                    .iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join("|")
             ),
         ))
     }
@@ -333,7 +412,9 @@ pub fn query_string_min1(
 ) -> Result<Option<String>, String> {
     match params.get(field) {
         None => Ok(None),
-        Some(s) if s.is_empty() => Err(issue(field, "Too small: expected string to have >=1 chars")),
+        Some(s) if s.is_empty() => {
+            Err(issue(field, "Too small: expected string to have >=1 chars"))
+        }
         Some(s) => Ok(Some(s.clone())),
     }
 }
@@ -407,8 +488,14 @@ mod tests {
             "intervalMinutes: intervalMinutes must be at most 10080 (7 days)"
         );
         let m = map(json!({"intervalMinutes": 60}));
-        assert_eq!(opt_int_range(&m, "intervalMinutes", &range).unwrap(), Some(60));
-        assert_eq!(opt_int_range(&map(json!({})), "intervalMinutes", &range).unwrap(), None);
+        assert_eq!(
+            opt_int_range(&m, "intervalMinutes", &range).unwrap(),
+            Some(60)
+        );
+        assert_eq!(
+            opt_int_range(&map(json!({})), "intervalMinutes", &range).unwrap(),
+            None
+        );
     }
 
     #[test]

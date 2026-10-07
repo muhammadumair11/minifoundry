@@ -116,7 +116,11 @@ pub async fn get_object(
                     "Object type '{api_name}' has no primary key configured"
                 )));
             }
-            if info.get("sourceDatasetId").map(|v| v.is_null()).unwrap_or(false) {
+            if info
+                .get("sourceDatasetId")
+                .map(|v| v.is_null())
+                .unwrap_or(false)
+            {
                 return Err(ApiError::not_found(format!(
                     "Object type '{api_name}' has no backing dataset"
                 )));

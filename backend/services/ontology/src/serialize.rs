@@ -251,12 +251,7 @@ pub fn serialize_action_full(
 
 /// Public /api/actions list entry (id..paramCount).
 pub fn serialize_action_summary(a: &ActionTypeRow, object_type: &ObjectTypeRow) -> Value {
-    let param_count = a
-        .parameters_json
-        .0
-        .as_array()
-        .map(|v| v.len())
-        .unwrap_or(0);
+    let param_count = a.parameters_json.0.as_array().map(|v| v.len()).unwrap_or(0);
     serde_json::json!({
         "id": a.id,
         "apiName": a.api_name,
@@ -777,7 +772,12 @@ fn opt_str_field(
     }
 }
 
-fn bool_field(m: &Map<String, Value>, path: &str, field: &str, default: bool) -> Result<bool, ApiError> {
+fn bool_field(
+    m: &Map<String, Value>,
+    path: &str,
+    field: &str,
+    default: bool,
+) -> Result<bool, ApiError> {
     let p = format!("{path}.{field}");
     match m.get(field) {
         None | Some(Value::Null) => Ok(default),
@@ -806,7 +806,11 @@ fn span_field(m: &Map<String, Value>, path: &str, default: i64) -> Result<i64, A
     }
 }
 
-fn placement(m: &Map<String, Value>, path: &str, out: &mut Map<String, Value>) -> Result<(), ApiError> {
+fn placement(
+    m: &Map<String, Value>,
+    path: &str,
+    out: &mut Map<String, Value>,
+) -> Result<(), ApiError> {
     for field in ["pageId", "sectionId"] {
         let p = format!("{path}.{field}");
         match m.get(field) {
@@ -840,7 +844,9 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
     };
     let wtype = match m.get("type").and_then(|t| t.as_str()) {
         Some(t) if APP_WIDGET_TYPES.contains(&t) => t,
-        Some(t) => return Err(enum_or_err(t, &format!("{path}.type"), &APP_WIDGET_TYPES).unwrap_err()),
+        Some(t) => {
+            return Err(enum_or_err(t, &format!("{path}.type"), &APP_WIDGET_TYPES).unwrap_err())
+        }
         None => {
             return Err(ApiError::bad_request(format!(
                 "{path}.type: Invalid input: expected string, received undefined"
@@ -901,7 +907,13 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                     "visible".into(),
                     Value::Bool(bool_field(lm, &lpath, "visible", true)?),
                 );
-                for f in ["latProperty", "lngProperty", "fallbackProperty", "colorBy", "sizeBy"] {
+                for f in [
+                    "latProperty",
+                    "lngProperty",
+                    "fallbackProperty",
+                    "colorBy",
+                    "sizeBy",
+                ] {
                     if let Some(v) = opt_str_field(lm, &lpath, f, 200)? {
                         lo.insert(f.into(), v);
                     }
@@ -923,7 +935,10 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                 }
             };
             out.insert("mapMode".into(), Value::String(map_mode));
-            out.insert("span".into(), crate::values::js_num(span_field(m, path, 2)? as f64));
+            out.insert(
+                "span".into(),
+                crate::values::js_num(span_field(m, path, 2)? as f64),
+            );
         }
         "objectTable" => {
             out.insert(
@@ -951,9 +966,9 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                             }
                             other => {
                                 return Err(ApiError::bad_request(format!(
-                                    "{path}.columns.{i}: Invalid input: expected string, received {}",
-                                    kind_of(other)
-                                )))
+                                "{path}.columns.{i}: Invalid input: expected string, received {}",
+                                kind_of(other)
+                            )))
                             }
                         }
                     }
@@ -966,7 +981,10 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                     )))
                 }
             }
-            out.insert("span".into(), crate::values::js_num(span_field(m, path, 2)? as f64));
+            out.insert(
+                "span".into(),
+                crate::values::js_num(span_field(m, path, 2)? as f64),
+            );
         }
         "stat" => {
             out.insert(
@@ -989,7 +1007,10 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
             if let Some(v) = opt_str_field(m, path, "valueProperty", 200)? {
                 out.insert("valueProperty".into(), v);
             }
-            out.insert("span".into(), crate::values::js_num(span_field(m, path, 1)? as f64));
+            out.insert(
+                "span".into(),
+                crate::values::js_num(span_field(m, path, 1)? as f64),
+            );
         }
         "actionButton" => {
             out.insert(
@@ -1000,7 +1021,10 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                 "useSelection".into(),
                 Value::Bool(bool_field(m, path, "useSelection", false)?),
             );
-            out.insert("span".into(), crate::values::js_num(span_field(m, path, 1)? as f64));
+            out.insert(
+                "span".into(),
+                crate::values::js_num(span_field(m, path, 1)? as f64),
+            );
         }
         _ => {
             // chart
@@ -1056,7 +1080,10 @@ fn validate_app_widget(path: &str, w: &Value) -> Result<Value, ApiError> {
                 }
             };
             out.insert("topN".into(), crate::values::js_num(top_n as f64));
-            out.insert("span".into(), crate::values::js_num(span_field(m, path, 2)? as f64));
+            out.insert(
+                "span".into(),
+                crate::values::js_num(span_field(m, path, 2)? as f64),
+            );
         }
     }
     Ok(Value::Object(out))
@@ -1093,7 +1120,9 @@ fn validate_app_filter(path: &str, f: &Value) -> Result<Value, ApiError> {
     out.insert("op".into(), Value::String(op));
     let kind = match m.get("kind") {
         None | Some(Value::Null) => "text".to_string(),
-        Some(Value::String(s)) => enum_or_err(s, &format!("{path}.kind"), &FILTER_KINDS)?.to_string(),
+        Some(Value::String(s)) => {
+            enum_or_err(s, &format!("{path}.kind"), &FILTER_KINDS)?.to_string()
+        }
         Some(other) => {
             return Err(ApiError::bad_request(format!(
                 "{path}.kind: Invalid input: expected string, received {}",
@@ -1215,10 +1244,7 @@ pub fn validate_app_config(path: &str, v: &Value) -> Result<Value, ApiError> {
     };
     // pages: min1 max12, default DEFAULT_APP_PAGES
     let pages_in = match m.get("pages") {
-        None | Some(Value::Null) => default_app_pages()
-            .as_array()
-            .cloned()
-            .unwrap_or_default(),
+        None | Some(Value::Null) => default_app_pages().as_array().cloned().unwrap_or_default(),
         Some(Value::Array(a)) => a.clone(),
         Some(other) => {
             return Err(ApiError::bad_request(format!(
@@ -1288,7 +1314,11 @@ pub fn validate_app_config(path: &str, v: &Value) -> Result<Value, ApiError> {
         }
         page_ids.insert(pid);
         let mut section_ids: HashSet<String> = HashSet::new();
-        for s in p["sections"].as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
+        for s in p["sections"]
+            .as_array()
+            .map(|a| a.as_slice())
+            .unwrap_or(&[])
+        {
             let sid = s["id"].as_str().unwrap_or("").to_string();
             if section_ids.contains(&sid) {
                 return Err(ApiError::bad_request(format!(
@@ -1333,8 +1363,14 @@ mod tests {
     #[test]
     fn humanize_matches_legacy() {
         assert_eq!(humanize_api_name("customer_id"), "Customer Id");
-        assert_eq!(humanize_api_name("productName"), "ProductName".replace("Name", " Name"));
-        assert_eq!(humanize_api_name("unit_price_at_sale"), "Unit Price At Sale");
+        assert_eq!(
+            humanize_api_name("productName"),
+            "ProductName".replace("Name", " Name")
+        );
+        assert_eq!(
+            humanize_api_name("unit_price_at_sale"),
+            "Unit Price At Sale"
+        );
         assert_eq!(humanize_api_name("etaDays"), "Eta Days");
         assert_eq!(humanize_api_name("leadTimeDays"), "Lead Time Days");
         assert_eq!(humanize_api_name("onTimePct"), "On Time Pct");
@@ -1359,9 +1395,18 @@ mod tests {
     #[test]
     fn derive_properties_marks_title() {
         let schema = vec![
-            SchemaColumn { name: "id".into(), column_type: mf_types::ColumnType::String },
-            SchemaColumn { name: "productName".into(), column_type: mf_types::ColumnType::String },
-            SchemaColumn { name: "qty".into(), column_type: mf_types::ColumnType::Number },
+            SchemaColumn {
+                name: "id".into(),
+                column_type: mf_types::ColumnType::String,
+            },
+            SchemaColumn {
+                name: "productName".into(),
+                column_type: mf_types::ColumnType::String,
+            },
+            SchemaColumn {
+                name: "qty".into(),
+                column_type: mf_types::ColumnType::Number,
+            },
         ];
         let props = derive_properties(&schema, "id", Some("productName"));
         assert_eq!(props.len(), 3);
@@ -1400,15 +1445,24 @@ mod tests {
         .unwrap();
         assert!(p2.get("oneOf").is_none());
 
-        let e = normalize_parameter("parameters.1", &json!({"apiName": "9bad", "dataType": "string", "mapsTo": "x"}))
-            .unwrap_err();
+        let e = normalize_parameter(
+            "parameters.1",
+            &json!({"apiName": "9bad", "dataType": "string", "mapsTo": "x"}),
+        )
+        .unwrap_err();
         assert_eq!(
             e.message,
             "parameters.1.apiName: parameter apiName must match [a-zA-Z][a-zA-Z0-9_]*"
         );
-        let e = normalize_parameter("parameters.0", &json!({"apiName": "a", "dataType": "string"}))
-            .unwrap_err();
-        assert_eq!(e.message, "parameters.0.mapsTo: mapsTo (dataset column) is required");
+        let e = normalize_parameter(
+            "parameters.0",
+            &json!({"apiName": "a", "dataType": "string"}),
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.message,
+            "parameters.0.mapsTo: mapsTo (dataset column) is required"
+        );
     }
 
     #[test]
@@ -1416,7 +1470,10 @@ mod tests {
         // supply-chain template validates cleanly
         let cfg = supply_chain_config();
         let norm = validate_app_config("config", &cfg).unwrap();
-        assert_eq!(referenced_object_types(&norm), vec!["shipment", "supplier", "warehouse"]);
+        assert_eq!(
+            referenced_object_types(&norm),
+            vec!["shipment", "supplier", "warehouse"]
+        );
         // widget defaults filled
         let w = &norm["widgets"][1];
         assert_eq!(w["span"], json!(1));
@@ -1454,14 +1511,20 @@ mod tests {
             &json!({"widgets": [{"id": "w", "type": "stat", "title": "t", "objectTypeApiName": "o", "pageId": "nope"}]}),
         )
         .unwrap_err();
-        assert_eq!(e.message, "config.widgets.0: Widget placement refers to a missing page or section");
+        assert_eq!(
+            e.message,
+            "config.widgets.0: Widget placement refers to a missing page or section"
+        );
 
         let e = validate_app_config(
             "config",
             &json!({"widgets": [{"id": "w", "type": "chart", "title": "t", "objectTypeApiName": "o", "chartType": "bar", "groupBy": "g", "topN": 500}]}),
         )
         .unwrap_err();
-        assert_eq!(e.message, "config.widgets.0.topN: Invalid input: expected int between 1 and 100");
+        assert_eq!(
+            e.message,
+            "config.widgets.0.topN: Invalid input: expected int between 1 and 100"
+        );
     }
 
     #[test]

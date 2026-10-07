@@ -47,11 +47,19 @@ fn empty(v: Option<&Value>) -> bool {
 }
 
 fn rows_word(n: usize) -> String {
-    if n == 1 { "row".to_string() } else { "rows".to_string() }
+    if n == 1 {
+        "row".to_string()
+    } else {
+        "rows".to_string()
+    }
 }
 
 fn values_word(n: usize) -> String {
-    if n == 1 { "value".to_string() } else { "values".to_string() }
+    if n == 1 {
+        "value".to_string()
+    } else {
+        "values".to_string()
+    }
 }
 
 /// toNumber with a fallback (the legacy `n()` helper).
@@ -118,7 +126,10 @@ pub fn evaluate_one(
             }
             RuleOutcome {
                 passed: violations == 0,
-                actual: Some(format!("{violations} duplicate {}", values_word(violations as usize))),
+                actual: Some(format!(
+                    "{violations} duplicate {}",
+                    values_word(violations as usize)
+                )),
                 message: Some(if violations == 0 {
                     format!("unique ok on '{col}' across {total} rows")
                 } else {
@@ -203,10 +214,7 @@ pub fn evaluate_one(
         }
         "regex" => {
             let col = column.unwrap_or("");
-            let pattern = config
-                .get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let pattern = config.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
             let re = match regex::Regex::new(pattern) {
                 Ok(re) => re,
                 Err(_) => {
@@ -310,7 +318,10 @@ pub async fn evaluate_rules(
             .bind(dataset_id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| QualityError { status: 500, message: e.to_string() })?;
+            .map_err(|e| QualityError {
+                status: 500,
+                message: e.to_string(),
+            })?;
     let Some((dataset_name, dataset_updated_at)) = dataset else {
         return Err(QualityError {
             status: 404,
@@ -324,7 +335,10 @@ pub async fn evaluate_rules(
     .bind(version_number)
     .fetch_optional(pool)
     .await
-    .map_err(|e| QualityError { status: 500, message: e.to_string() })?;
+    .map_err(|e| QualityError {
+        status: 500,
+        message: e.to_string(),
+    })?;
     let Some((data_json,)) = version else {
         return Err(QualityError {
             status: 400,
@@ -339,14 +353,19 @@ pub async fn evaluate_rules(
     .bind(dataset_id)
     .fetch_all(pool)
     .await
-    .map_err(|e| QualityError { status: 500, message: e.to_string() })?;
+    .map_err(|e| QualityError {
+        status: 500,
+        message: e.to_string(),
+    })?;
 
     let rows = rows_from_data_json(&data_json);
     let outcomes: Vec<(crate::state::RuleRow, RuleOutcome)> = rules
         .into_iter()
         .map(|rule| {
-            let config =
-                crate::rows::parse_json_text::<Value>(&rule.config_json, Value::Object(Default::default()));
+            let config = crate::rows::parse_json_text::<Value>(
+                &rule.config_json,
+                Value::Object(Default::default()),
+            );
             let outcome = evaluate_one(
                 &rule.kind,
                 rule.column_name.as_deref(),
@@ -454,7 +473,12 @@ pub async fn evaluate_rules(
         })
         .collect();
 
-    Ok(EvaluateQualityResponse { version_number, results, passed, failed })
+    Ok(EvaluateQualityResponse {
+        version_number,
+        results,
+        passed,
+        failed,
+    })
 }
 
 #[cfg(test)]
@@ -479,12 +503,18 @@ mod tests {
         let o = evaluate_one("not_null", Some("a"), &json!({}), &r, now());
         assert!(!o.passed);
         assert_eq!(o.actual.as_deref(), Some("3 violating rows"));
-        assert_eq!(o.message.as_deref(), Some("3 of 4 rows have null/empty 'a'"));
+        assert_eq!(
+            o.message.as_deref(),
+            Some("3 of 4 rows have null/empty 'a'")
+        );
         let r = rows(&[r#"{"a":"x"}"#]);
         let o = evaluate_one("not_null", Some("a"), &json!({}), &r, now());
         assert!(o.passed);
         assert_eq!(o.actual.as_deref(), Some("0 violating rows"));
-        assert_eq!(o.message.as_deref(), Some("not_null ok on 'a' across 1 rows"));
+        assert_eq!(
+            o.message.as_deref(),
+            Some("not_null ok on 'a' across 1 rows")
+        );
         // singular
         let r = rows(&[r#"{"a":"x"}"#, r#"{"a":""}"#]);
         let o = evaluate_one("not_null", Some("a"), &json!({}), &r, now());
@@ -511,7 +541,10 @@ mod tests {
         // nulls group under ∅null
         let r = rows(&[r#"{"id":null}"#, r#"{"id":null}"#]);
         let o = evaluate_one("unique", Some("id"), &json!({}), &r, now());
-        assert_eq!(o.message.as_deref(), Some("1 duplicate values in 'id' ('\u{2205}null'\u{d7}2)"));
+        assert_eq!(
+            o.message.as_deref(),
+            Some("1 duplicate values in 'id' ('\u{2205}null'\u{d7}2)")
+        );
     }
 
     #[test]
@@ -524,7 +557,13 @@ mod tests {
             r#"{"risk_score":140}"#,
             r#"{"risk_score":15}"#,
         ]);
-        let o = evaluate_one("range", Some("risk_score"), &json!({"min":0,"max":100}), &r, now());
+        let o = evaluate_one(
+            "range",
+            Some("risk_score"),
+            &json!({"min":0,"max":100}),
+            &r,
+            now(),
+        );
         assert!(!o.passed);
         assert_eq!(o.actual.as_deref(), Some("1 violating row"));
         assert_eq!(
@@ -561,14 +600,26 @@ mod tests {
             Some("2 of 3 rows have values outside the allowed list for 't'")
         );
         let r = rows(&[r#"{"t":"A"}"#]);
-        let o = evaluate_one("allowed_values", Some("t"), &json!({"values":["A"]}), &r, now());
+        let o = evaluate_one(
+            "allowed_values",
+            Some("t"),
+            &json!({"values":["A"]}),
+            &r,
+            now(),
+        );
         assert_eq!(
             o.message.as_deref(),
             Some("allowed_values ok on 't' (1 values) across 1 rows")
         );
         // numeric values compared as String(v)
         let r = rows(&[r#"{"t":1}"#]);
-        let o = evaluate_one("allowed_values", Some("t"), &json!({"values":[1]}), &r, now());
+        let o = evaluate_one(
+            "allowed_values",
+            Some("t"),
+            &json!({"values":[1]}),
+            &r,
+            now(),
+        );
         assert!(o.passed);
     }
 

@@ -132,7 +132,9 @@ pub async fn create_object_type(
         )));
     };
     let schema = version.schema;
-    let title = title_property.clone().unwrap_or_else(|| primary_key.clone());
+    let title = title_property
+        .clone()
+        .unwrap_or_else(|| primary_key.clone());
 
     let columns_label = || {
         let names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();

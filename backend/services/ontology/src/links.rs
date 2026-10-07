@@ -151,7 +151,11 @@ fn stringify_cell(row: &Row, col: &str) -> String {
 
 /// Port of fetchRowsByPkValues: other-type rows whose pk STRING-matches one of
 /// `pks`, capped at MAX_LINK_TARGETS (scan order preserved).
-pub fn fetch_rows_by_pk_values<'a>(other: &TypeCore, pks: &[Value], rows: &'a [Row]) -> Vec<&'a Row> {
+pub fn fetch_rows_by_pk_values<'a>(
+    other: &TypeCore,
+    pks: &[Value],
+    rows: &'a [Row],
+) -> Vec<&'a Row> {
     let (Some(pk_col), false) = (other.primary_key.as_deref(), pks.is_empty()) else {
         return vec![];
     };
@@ -243,7 +247,11 @@ pub fn resolve_link_targets(
             }
         }
         // total = every distinct match; rows fetched for the sample only.
-        let sample_pks: Vec<Value> = other_pks.iter().take(SAMPLE_LINK_TARGETS).cloned().collect();
+        let sample_pks: Vec<Value> = other_pks
+            .iter()
+            .take(SAMPLE_LINK_TARGETS)
+            .cloned()
+            .collect();
         let rows = match data.other_rows {
             Some(rows) => fetch_rows_by_pk_values(other, &sample_pks, rows),
             None => vec![],
@@ -257,9 +265,16 @@ pub fn resolve_link_targets(
     }
 
     // ── the linked type holds the FK (one-to-many from this side) ──────
-    let own_side = if direction == Direction::Outgoing { "from" } else { "to" };
+    let own_side = if direction == Direction::Outgoing {
+        "from"
+    } else {
+        "to"
+    };
     if foreign_key_side(link) != own_side {
-        let (true, Some(fk_property)) = (other.source_dataset_id.is_some(), link.fk_property.as_deref()) else {
+        let (true, Some(fk_property)) = (
+            other.source_dataset_id.is_some(),
+            link.fk_property.as_deref(),
+        ) else {
             return (vec![], 0);
         };
         let Some(other_rows) = data.other_rows else {
@@ -278,12 +293,12 @@ pub fn resolve_link_targets(
     }
 
     // ── the viewed object holds the other type's pk in its FK column ───
-    let (Some(viewed_row), Some(fk_property)) = (data.viewed_row, link.fk_property.as_deref()) else {
+    let (Some(viewed_row), Some(fk_property)) = (data.viewed_row, link.fk_property.as_deref())
+    else {
         return (vec![], 0);
     };
     let fk_value = viewed_row.get(fk_property).cloned().unwrap_or(Value::Null);
-    let empty = matches!(&fk_value, Value::Null)
-        || fk_value.as_str().is_some_and(|s| s.is_empty());
+    let empty = matches!(&fk_value, Value::Null) || fk_value.as_str().is_some_and(|s| s.is_empty());
     if empty {
         return (vec![], 0);
     }
@@ -305,7 +320,11 @@ pub fn to_link_entry(
     targets: Vec<LinkTarget>,
     total: usize,
 ) -> LinkEntry {
-    let own_side = if direction == Direction::Outgoing { "from" } else { "to" };
+    let own_side = if direction == Direction::Outgoing {
+        "from"
+    } else {
+        "to"
+    };
     let fk_property = if link.cardinality != "many-to-many" && foreign_key_side(link) != own_side {
         link.fk_property.clone()
     } else {
@@ -400,10 +419,19 @@ mod tests {
     #[test]
     fn fk_side_derivation() {
         // legacy null fkSide: many-to-one → from, everything else → to
-        assert_eq!(foreign_key_side(&link("many-to-one", Some("x"), None)), "from");
-        assert_eq!(foreign_key_side(&link("one-to-many", Some("x"), None)), "to");
+        assert_eq!(
+            foreign_key_side(&link("many-to-one", Some("x"), None)),
+            "from"
+        );
+        assert_eq!(
+            foreign_key_side(&link("one-to-many", Some("x"), None)),
+            "to"
+        );
         assert_eq!(foreign_key_side(&link("one-to-one", Some("x"), None)), "to");
-        assert_eq!(foreign_key_side(&link("one-to-many", Some("x"), Some("from"))), "from");
+        assert_eq!(
+            foreign_key_side(&link("one-to-many", Some("x"), Some("from"))),
+            "from"
+        );
         // config-time default: one-to-many → to, else from
         assert_eq!(effective_fk_side("one-to-many", None), "to");
         assert_eq!(effective_fk_side("many-to-one", None), "from");
@@ -432,7 +460,12 @@ mod tests {
             &shipment,
             Direction::Outgoing,
             &json!("SUP-1"),
-            &LinkRows { link_rows: None, link_schema: None, other_rows: Some(&ship_rows), viewed_row: None },
+            &LinkRows {
+                link_rows: None,
+                link_schema: None,
+                other_rows: Some(&ship_rows),
+                viewed_row: None,
+            },
         );
         // total counts ALL matches; targets sample capped at 5
         assert_eq!(total, 6);
@@ -445,7 +478,12 @@ mod tests {
             &shipment,
             Direction::Outgoing,
             &json!("SUP-2"),
-            &LinkRows { link_rows: None, link_schema: None, other_rows: Some(&ship_rows), viewed_row: None },
+            &LinkRows {
+                link_rows: None,
+                link_schema: None,
+                other_rows: Some(&ship_rows),
+                viewed_row: None,
+            },
         );
         assert_eq!(total2, 1);
         assert_eq!(t2[0].pk, json!("S3"));
@@ -453,7 +491,8 @@ mod tests {
         // The same link seen from the SHIPMENT side is incoming: the viewed
         // row holds the FK (supplierId) → resolves the single supplier.
         let sup_rows = rows(json!([{"id": "SUP-1", "name": "Acme"}]));
-        let viewed_ship = rows(json!([{"id": "S1", "supplierId": "SUP-1", "productName": "Widgets"}]));
+        let viewed_ship =
+            rows(json!([{"id": "S1", "supplierId": "SUP-1", "productName": "Widgets"}]));
         let (t3, total3) = resolve_link_targets(
             &l,
             &supplier,
@@ -474,7 +513,13 @@ mod tests {
     #[test]
     fn many_to_one_outgoing_uses_viewed_fk() {
         // order (viewed) → customer via order.customerId
-        let customer = tcore("cus", "customer", "customer_id", "ds-cus", Some("customer_name"));
+        let customer = tcore(
+            "cus",
+            "customer",
+            "customer_id",
+            "ds-cus",
+            Some("customer_name"),
+        );
         let l = link("many-to-one", Some("customerId"), Some("from"));
         let viewed = rows(json!([{"order_id": "O1", "customerId": "C001"}]));
         let cust_rows = rows(json!([
@@ -528,8 +573,14 @@ mod tests {
             {"supplier_id": "SUP-1", "product_sku": "P2"}
         ]));
         let schema = vec![
-            SchemaColumn { name: "supplier_id".into(), column_type: mf_types::ColumnType::String },
-            SchemaColumn { name: "product_sku".into(), column_type: mf_types::ColumnType::String },
+            SchemaColumn {
+                name: "supplier_id".into(),
+                column_type: mf_types::ColumnType::String,
+            },
+            SchemaColumn {
+                name: "product_sku".into(),
+                column_type: mf_types::ColumnType::String,
+            },
         ];
         let prod_rows = rows(json!([
             {"sku": "P1", "label": "Widget"},
@@ -593,7 +644,12 @@ mod tests {
             &product,
             Direction::Outgoing,
             &json!("SUP-1"),
-            &LinkRows { link_rows: Some(&map_rows), link_schema: Some(&schema), other_rows: Some(&prod_rows), viewed_row: None },
+            &LinkRows {
+                link_rows: Some(&map_rows),
+                link_schema: Some(&schema),
+                other_rows: Some(&prod_rows),
+                viewed_row: None,
+            },
         );
         assert_eq!(total4, 0);
         assert!(t4.is_empty());
@@ -611,7 +667,12 @@ mod tests {
             &b,
             Direction::Outgoing,
             &json!("A1"),
-            &LinkRows { link_rows: None, link_schema: None, other_rows: Some(&b_rows), viewed_row: viewed.first() },
+            &LinkRows {
+                link_rows: None,
+                link_schema: None,
+                other_rows: Some(&b_rows),
+                viewed_row: viewed.first(),
+            },
         );
         assert_eq!(total, 1);
         assert_eq!(targets[0].pk, json!("B9"));
@@ -645,7 +706,10 @@ mod tests {
             &l,
             other,
             Direction::Outgoing,
-            vec![LinkTarget { pk: json!("C1"), title: json!("Amina") }],
+            vec![LinkTarget {
+                pk: json!("C1"),
+                title: json!("Amina"),
+            }],
             1,
         );
         let v = e.to_json();
@@ -653,9 +717,19 @@ mod tests {
         assert_eq!(
             keys,
             vec![
-                "id", "apiName", "displayName", "direction", "cardinality", "toTypeId",
-                "toTypeApiName", "toTypeDisplayName", "toTypeIcon", "toTypeColor", "total",
-                "fkProperty", "targets"
+                "id",
+                "apiName",
+                "displayName",
+                "direction",
+                "cardinality",
+                "toTypeId",
+                "toTypeApiName",
+                "toTypeDisplayName",
+                "toTypeIcon",
+                "toTypeColor",
+                "total",
+                "fkProperty",
+                "targets"
             ]
         );
         assert_eq!(v["direction"], "outgoing");

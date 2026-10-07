@@ -79,7 +79,10 @@ pub async fn failing_error_rules(
 }
 
 /// Latest draft version of a dataset (highest versionNumber on main), or None.
-pub async fn latest_draft_version(pool: &PgPool, dataset_id: &str) -> Result<Option<i32>, sqlx::Error> {
+pub async fn latest_draft_version(
+    pool: &PgPool,
+    dataset_id: &str,
+) -> Result<Option<i32>, sqlx::Error> {
     let n: Option<i32> = sqlx::query_scalar(
         "SELECT max(version_number) FROM dataset_versions \
          WHERE dataset_id = $1 AND branch = 'main' AND lifecycle = 'draft'",
@@ -103,7 +106,11 @@ pub async fn validate_publication(
             .bind(dataset_id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+            .map_err(|e| PublicationError {
+                status: 500,
+                message: e.to_string(),
+                reasons: vec![],
+            })?;
     let Some((dataset_name, quality_gate)) = dataset else {
         return Err(PublicationError {
             status: 404,
@@ -126,7 +133,11 @@ pub async fn validate_publication(
     .bind(version_number)
     .fetch_optional(pool)
     .await
-    .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+    .map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
     let Some((lifecycle, quality_state, quality_summary, branch)) = version else {
         return Err(PublicationError {
             status: 404,
@@ -144,7 +155,9 @@ pub async fn validate_publication(
     if lifecycle == "published" {
         return Err(PublicationError {
             status: 400,
-            message: format!("v{version_number} is already published (only drafts can be published)"),
+            message: format!(
+                "v{version_number} is already published (only drafts can be published)"
+            ),
             reasons: vec![],
         });
     }
@@ -171,7 +184,10 @@ pub async fn validate_publication(
                 .collect(),
         });
     }
-    Ok((dataset_name, quality_state.unwrap_or_else(|| "not_evaluated".to_string())))
+    Ok((
+        dataset_name,
+        quality_state.unwrap_or_else(|| "not_evaluated".to_string()),
+    ))
 }
 
 /// Flip a validated draft to published (the legacy publish transaction):
@@ -191,7 +207,11 @@ pub async fn publish_approved(
             .bind(dataset_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+            .map_err(|e| PublicationError {
+                status: 500,
+                message: e.to_string(),
+                reasons: vec![],
+            })?;
     if dataset_exists.is_none() {
         return Err(PublicationError {
             status: 404,
@@ -210,7 +230,11 @@ pub async fn publish_approved(
     .bind(version_number)
     .fetch_optional(&state.db)
     .await
-    .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+    .map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
     if let Some((lifecycle, quality_state)) = &existing {
         if lifecycle == "published" {
             let (name, _published) = current_dataset_name_state(&state.db, dataset_id).await?;
@@ -218,7 +242,9 @@ pub async fn publish_approved(
                 dataset_id: dataset_id.to_string(),
                 dataset_name: name,
                 version_number,
-                quality_state: quality_state.clone().unwrap_or_else(|| "not_evaluated".to_string()),
+                quality_state: quality_state
+                    .clone()
+                    .unwrap_or_else(|| "not_evaluated".to_string()),
                 published_version: version_number,
                 flipped: false,
             });
@@ -231,16 +257,21 @@ pub async fn publish_approved(
         crate::quality::evaluate_rules(state, dataset_id, version_number, "manual").await
     {
         // Missing version → PublicationError-style 400; dataset issues 404.
-        return Err(PublicationError { status: e.status, message: e.message, reasons: vec![] });
+        return Err(PublicationError {
+            status: e.status,
+            message: e.message,
+            reasons: vec![],
+        });
     }
 
-    let (dataset_name, quality_state) = validate_publication(&state.db, dataset_id, version_number).await?;
+    let (dataset_name, quality_state) =
+        validate_publication(&state.db, dataset_id, version_number).await?;
 
-    let mut tx = state
-        .db
-        .begin()
-        .await
-        .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+    let mut tx = state.db.begin().await.map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
     let published = sqlx::query(
         "UPDATE dataset_versions SET lifecycle = 'published' \
          WHERE dataset_id = $1 AND version_number = $2 AND branch = 'main' AND lifecycle = 'draft' \
@@ -250,7 +281,11 @@ pub async fn publish_approved(
     .bind(version_number)
     .execute(&mut *tx)
     .await
-    .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+    .map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
     if published.rows_affected() != 1 {
         return Err(PublicationError {
             status: 409,
@@ -262,7 +297,11 @@ pub async fn publish_approved(
         .bind(dataset_id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+        .map_err(|e| PublicationError {
+            status: 500,
+            message: e.to_string(),
+            reasons: vec![],
+        })?;
     let mut tags: Vec<String> = serde_json::from_value(tags_raw.0).unwrap_or_default();
     if !tags.iter().any(|t| t == "production") {
         tags.push("production".to_string());
@@ -275,10 +314,16 @@ pub async fn publish_approved(
     .bind(sqlx::types::Json(&tags))
     .execute(&mut *tx)
     .await
-    .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
-    tx.commit()
-        .await
-        .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+    .map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
+    tx.commit().await.map_err(|e| PublicationError {
+        status: 500,
+        message: e.to_string(),
+        reasons: vec![],
+    })?;
 
     // Only a published version may trigger downstream consumers (legacy
     // handleVersionCreated({source:'publication'}) → the version event).
@@ -338,7 +383,11 @@ async fn current_dataset_name_state(
             .bind(dataset_id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+            .map_err(|e| PublicationError {
+                status: 500,
+                message: e.to_string(),
+                reasons: vec![],
+            })?;
     match row {
         Some((name, published)) => Ok((name, published)),
         None => Err(PublicationError {
@@ -362,8 +411,14 @@ pub async fn set_quality_gate(
             .bind(dataset_id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
-    let Some((current,)) = dataset else { return Ok(()) };
+            .map_err(|e| PublicationError {
+                status: 500,
+                message: e.to_string(),
+                reasons: vec![],
+            })?;
+    let Some((current,)) = dataset else {
+        return Ok(());
+    };
     if current == enabled {
         return Ok(());
     }
@@ -375,7 +430,11 @@ pub async fn set_quality_gate(
         .bind(dataset_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| PublicationError { status: 500, message: e.to_string(), reasons: vec![] })?;
+        .map_err(|e| PublicationError {
+            status: 500,
+            message: e.to_string(),
+            reasons: vec![],
+        })?;
         sqlx::query("UPDATE datasets SET quality_gate = TRUE, published_version = $2, updated_at = now() WHERE id = $1")
             .bind(dataset_id)
             .bind(head)
@@ -430,12 +489,18 @@ mod tests {
         assert_eq!(api.status, axum::http::StatusCode::FORBIDDEN);
         let detail = api.detail.unwrap();
         assert_eq!(detail["reasons"].as_array().unwrap().len(), 1);
-        assert!(detail["reasons"][0].as_str().unwrap().contains("1 of 5 rows outside range [0, 100]"));
+        assert!(detail["reasons"][0]
+            .as_str()
+            .unwrap()
+            .contains("1 of 5 rows outside range [0, 100]"));
     }
 
     #[test]
     fn reasons_format_uses_em_dash() {
-        let failures = vec![("rule".to_string(), Some("msg".to_string())), ("bare".to_string(), None)];
+        let failures = vec![
+            ("rule".to_string(), Some("msg".to_string())),
+            ("bare".to_string(), None),
+        ];
         let reasons: Vec<String> = failures
             .into_iter()
             .map(|(name, message)| match message {

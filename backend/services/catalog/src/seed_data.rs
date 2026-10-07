@@ -43,20 +43,22 @@ fn suppliers() -> Vec<Row> {
         ("SUP-012", "Chennai VoltSource", "India", "APAC", 3.5, 26, 87.2, "Chennai", 13.08, 80.27),
     ];
     S.iter()
-        .map(|(id, name, country, region, rating, lead, on_time, city, lat, lon)| {
-            let mut m = Map::new();
-            m.insert("id".into(), Value::String((*id).to_string()));
-            m.insert("name".into(), Value::String((*name).to_string()));
-            m.insert("country".into(), Value::String((*country).to_string()));
-            m.insert("region".into(), Value::String((*region).to_string()));
-            m.insert("rating".into(), num(*rating));
-            m.insert("leadTimeDays".into(), Value::Number((*lead).into()));
-            m.insert("onTimePct".into(), num(*on_time));
-            m.insert("city".into(), Value::String((*city).to_string()));
-            m.insert("latitude".into(), num(*lat));
-            m.insert("longitude".into(), num(*lon));
-            m
-        })
+        .map(
+            |(id, name, country, region, rating, lead, on_time, city, lat, lon)| {
+                let mut m = Map::new();
+                m.insert("id".into(), Value::String((*id).to_string()));
+                m.insert("name".into(), Value::String((*name).to_string()));
+                m.insert("country".into(), Value::String((*country).to_string()));
+                m.insert("region".into(), Value::String((*region).to_string()));
+                m.insert("rating".into(), num(*rating));
+                m.insert("leadTimeDays".into(), Value::Number((*lead).into()));
+                m.insert("onTimePct".into(), num(*on_time));
+                m.insert("city".into(), Value::String((*city).to_string()));
+                m.insert("latitude".into(), num(*lat));
+                m.insert("longitude".into(), num(*lon));
+                m
+            },
+        )
         .collect()
 }
 
@@ -283,7 +285,18 @@ mod tests {
         let keys: Vec<&String> = first.keys().collect();
         assert_eq!(
             keys,
-            vec!["id", "name", "country", "region", "rating", "leadTimeDays", "onTimePct", "city", "latitude", "longitude"]
+            vec![
+                "id",
+                "name",
+                "country",
+                "region",
+                "rating",
+                "leadTimeDays",
+                "onTimePct",
+                "city",
+                "latitude",
+                "longitude"
+            ]
         );
         // integer-valued floats render like JS (4.0 → 4)
         let sup11 = &packs[0].rows[10];

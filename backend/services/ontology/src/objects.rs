@@ -219,11 +219,10 @@ pub fn sort_rows(rows: &mut [Row], sort_by: &str, desc: bool) {
 /// Find one object row by pk (loose match) — port of the detail-route lookup.
 pub fn find_row_by_pk<'a>(rows: &'a [Row], pk_column: &str, pk: &str) -> Option<&'a Row> {
     let wanted = Value::String(pk.to_string());
-    rows.iter()
-        .find(|row| match row.get(pk_column) {
-            Some(cell) => loose_equal(cell, &wanted),
-            None => false,
-        })
+    rows.iter().find(|row| match row.get(pk_column) {
+        Some(cell) => loose_equal(cell, &wanted),
+        None => false,
+    })
 }
 
 // ─── getLinksFor ──────────────────────────────────────────────────────────

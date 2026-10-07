@@ -96,7 +96,10 @@ pub enum Nullish<'a> {
     Value(&'a str),
 }
 
-pub fn opt_str_nullish<'a>(m: &'a Map<String, Value>, field: &str) -> Result<Nullish<'a>, ApiError> {
+pub fn opt_str_nullish<'a>(
+    m: &'a Map<String, Value>,
+    field: &str,
+) -> Result<Nullish<'a>, ApiError> {
     match m.get(field) {
         None => Ok(Nullish::Absent),
         Some(Value::Null) => Ok(Nullish::Null),
@@ -153,7 +156,11 @@ pub fn req_enum<'a>(
     } else {
         Err(ApiError::bad_request(format!(
             "{field}: Invalid option: expected one of {}",
-            options.iter().map(|o| format!("\"{o}\"")).collect::<Vec<_>>().join("|")
+            options
+                .iter()
+                .map(|o| format!("\"{o}\""))
+                .collect::<Vec<_>>()
+                .join("|")
         )))
     }
 }
@@ -186,9 +193,10 @@ pub fn opt_bool(m: &Map<String, Value>, field: &str) -> Result<Option<bool>, Api
 pub fn opt_int(m: &Map<String, Value>, field: &str) -> Result<Option<i64>, ApiError> {
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(n)) => n.as_i64().map(Some).ok_or_else(|| {
-            ApiError::bad_request(format!("{field}: Invalid input: expected int"))
-        }),
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| ApiError::bad_request(format!("{field}: Invalid input: expected int"))),
         Some(other) => Err(ApiError::bad_request(format!(
             "{field}: Invalid input: expected number, received {}",
             kind_of(other)
@@ -203,7 +211,9 @@ pub fn opt_int_bounded(
     lo: i64,
     hi: i64,
 ) -> Result<Option<i64>, ApiError> {
-    let Some(v) = opt_int(m, field)? else { return Ok(None) };
+    let Some(v) = opt_int(m, field)? else {
+        return Ok(None);
+    };
     if v < lo {
         return Err(ApiError::bad_request(format!(
             "{field}: Too small: expected number to be >={lo}"
@@ -273,7 +283,10 @@ pub fn opt_int_positive_null(
 
 /// Object field (`z.record(z.string(), z.unknown())`), with default when
 /// absent/null.
-pub fn opt_object(m: &Map<String, Value>, field: &str) -> Result<Option<Map<String, Value>>, ApiError> {
+pub fn opt_object(
+    m: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<Map<String, Value>>, ApiError> {
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Object(o)) => Ok(Some(o.clone())),
@@ -285,7 +298,10 @@ pub fn opt_object(m: &Map<String, Value>, field: &str) -> Result<Option<Map<Stri
 }
 
 /// Array-of-objects field (`z.array(z.record(z.string(), z.unknown()))`).
-pub fn req_rows_array(m: &Map<String, Value>, field: &str) -> Result<Vec<Map<String, Value>>, ApiError> {
+pub fn req_rows_array(
+    m: &Map<String, Value>,
+    field: &str,
+) -> Result<Vec<Map<String, Value>>, ApiError> {
     match m.get(field) {
         Some(Value::Array(arr)) => {
             let mut out = Vec::with_capacity(arr.len());
@@ -340,7 +356,9 @@ pub fn coerce_int_param(
     };
     let n = crate::jsval::js_parse_number(raw);
     if n.is_nan() {
-        issues.push(format!("{field}: Invalid input: expected number, received nan"));
+        issues.push(format!(
+            "{field}: Invalid input: expected number, received nan"
+        ));
         return default;
     }
     if n.fract() != 0.0 {
@@ -382,10 +400,16 @@ mod tests {
         let m = map(json!({"a": "x"}));
         assert_eq!(req_str(&m, "a").unwrap(), "x");
         let e = req_str(&m, "b").unwrap_err();
-        assert_eq!(e.message, "b: Invalid input: expected string, received undefined");
+        assert_eq!(
+            e.message,
+            "b: Invalid input: expected string, received undefined"
+        );
         let m = map(json!({"a": 5}));
         let e = req_str(&m, "a").unwrap_err();
-        assert_eq!(e.message, "a: Invalid input: expected string, received number");
+        assert_eq!(
+            e.message,
+            "a: Invalid input: expected string, received number"
+        );
     }
 
     #[test]
@@ -399,7 +423,10 @@ mod tests {
     fn enum_messages() {
         let m = map(json!({"kind": "nope"}));
         let e = req_enum(&m, "kind", &["a", "b"]).unwrap_err();
-        assert_eq!(e.message, "kind: Invalid option: expected one of \"a\"|\"b\"");
+        assert_eq!(
+            e.message,
+            "kind: Invalid option: expected one of \"a\"|\"b\""
+        );
     }
 
     #[test]
@@ -409,7 +436,10 @@ mod tests {
         assert_eq!(e.message, "keepLastN: Too small: expected number to be >=0");
         let m = map(json!({"keepLastN": 2000}));
         let e = opt_int_bounded(&m, "keepLastN", 0, 1000).unwrap_err();
-        assert_eq!(e.message, "keepLastN: Too large: expected number to be <=1000");
+        assert_eq!(
+            e.message,
+            "keepLastN: Too large: expected number to be <=1000"
+        );
         let m = map(json!({"keepLastN": 20}));
         assert_eq!(opt_int_bounded(&m, "keepLastN", 0, 1000).unwrap(), Some(20));
     }
@@ -430,27 +460,51 @@ mod tests {
     fn rows_array_validation() {
         let m = map(json!({"rows": [{"a": 1}, "x"]}));
         let e = req_rows_array(&m, "rows").unwrap_err();
-        assert_eq!(e.message, "rows.1: Invalid input: expected object, received string");
+        assert_eq!(
+            e.message,
+            "rows.1: Invalid input: expected object, received string"
+        );
         let m = map(json!({"rows": [{"a": 1}]}));
         assert_eq!(req_rows_array(&m, "rows").unwrap().len(), 1);
         let m = map(json!({}));
         let e = req_rows_array(&m, "rows").unwrap_err();
-        assert_eq!(e.message, "rows: Invalid input: expected array, received undefined");
+        assert_eq!(
+            e.message,
+            "rows: Invalid input: expected array, received undefined"
+        );
     }
 
     #[test]
     fn query_coercion_matches_zod() {
         let mut issues = Vec::new();
-        assert_eq!(coerce_int_param(None, "limit", 1, 200, 100, &mut issues), 100);
-        assert_eq!(coerce_int_param(Some("50"), "limit", 1, 200, 100, &mut issues), 50);
+        assert_eq!(
+            coerce_int_param(None, "limit", 1, 200, 100, &mut issues),
+            100
+        );
+        assert_eq!(
+            coerce_int_param(Some("50"), "limit", 1, 200, 100, &mut issues),
+            50
+        );
         assert!(issues.is_empty());
-        assert_eq!(coerce_int_param(Some("abc"), "limit", 1, 200, 100, &mut issues), 100);
-        assert_eq!(issues, vec!["limit: Invalid input: expected number, received nan"]);
+        assert_eq!(
+            coerce_int_param(Some("abc"), "limit", 1, 200, 100, &mut issues),
+            100
+        );
+        assert_eq!(
+            issues,
+            vec!["limit: Invalid input: expected number, received nan"]
+        );
         issues.clear();
-        assert_eq!(coerce_int_param(Some("0"), "limit", 1, 200, 100, &mut issues), 100);
+        assert_eq!(
+            coerce_int_param(Some("0"), "limit", 1, 200, 100, &mut issues),
+            100
+        );
         assert_eq!(issues, vec!["limit: Too small: expected number to be >=1"]);
         issues.clear();
-        assert_eq!(coerce_int_param(Some("1.5"), "limit", 1, 200, 100, &mut issues), 100);
+        assert_eq!(
+            coerce_int_param(Some("1.5"), "limit", 1, 200, 100, &mut issues),
+            100
+        );
         assert_eq!(issues, vec!["limit: Invalid input: expected int"]);
     }
 }

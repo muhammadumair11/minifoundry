@@ -20,10 +20,7 @@ pub mod rows;
 pub mod seed_route;
 
 /// Load a dataset's (id, name) or the exact legacy 404 message.
-pub async fn require_dataset(
-    pool: &PgPool,
-    id: &str,
-) -> Result<(String, String), ApiError> {
+pub async fn require_dataset(pool: &PgPool, id: &str) -> Result<(String, String), ApiError> {
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT id, name FROM datasets WHERE id = $1")
             .bind(id)
@@ -56,7 +53,10 @@ pub async fn require_dataset_plain(
 pub fn identity_of(actor: &Actor) -> (String, String) {
     match &actor.email {
         Some(email) => (email.clone(), email.clone()),
-        None => (format!("sim:{}", actor.role), format!("{} (demo)", actor.role)),
+        None => (
+            format!("sim:{}", actor.role),
+            format!("{} (demo)", actor.role),
+        ),
     }
 }
 
@@ -104,10 +104,7 @@ pub fn require_service(
 
 /// Role forwarded for internal rows masking (opt-in per INTERNAL_API.md).
 pub fn internal_role_param(params: &std::collections::HashMap<String, String>) -> Option<String> {
-    params
-        .get("role")
-        .filter(|r| !r.is_empty())
-        .cloned()
+    params.get("role").filter(|r| !r.is_empty()).cloned()
 }
 
 /// Best-effort pipeline id→name map from orchestration (tolerant: any error →
@@ -116,7 +113,11 @@ pub async fn pipeline_names(
     state: &crate::state::AppState,
 ) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
-    match state.orchestration.get_json::<Value>("/internal/pipelines").await {
+    match state
+        .orchestration
+        .get_json::<Value>("/internal/pipelines")
+        .await
+    {
         Ok(v) => {
             if let Some(list) = v.get("pipelines").and_then(|p| p.as_array()) {
                 for p in list {
@@ -154,7 +155,9 @@ pub async fn run_infos(
                             (
                                 r.get("trigger").and_then(|x| x.as_str()).map(String::from),
                                 r.get("status").and_then(|x| x.as_str()).map(String::from),
-                                r.get("startedAt").and_then(|x| x.as_str()).map(String::from),
+                                r.get("startedAt")
+                                    .and_then(|x| x.as_str())
+                                    .map(String::from),
                             ),
                         );
                     }

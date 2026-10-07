@@ -54,13 +54,19 @@ pub(crate) fn find_array_value(obj: &Map<String, Value>) -> Option<Vec<Value>> {
 /// rows (exact legacy message).
 pub fn parse_raw_text(text: &str) -> Result<ParsedSource, String> {
     if let Some(rows) = parse_json_rows(text) {
-        return Ok(ParsedSource { rows, format: "json" });
+        return Ok(ParsedSource {
+            rows,
+            format: "json",
+        });
     }
     let rows = crate::csvutil::parse_csv_rows(text);
     if rows.is_empty() {
         return Err("No parseable rows found — payload is neither valid JSON nor CSV".to_string());
     }
-    Ok(ParsedSource { rows, format: "csv" })
+    Ok(ParsedSource {
+        rows,
+        format: "csv",
+    })
 }
 
 /// Fetch a URL and parse the response as JSON or CSV (sniffed from
@@ -93,14 +99,20 @@ pub async fn fetch_rows_from_url(url: &str) -> Result<ParsedSource, String> {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_lowercase();
-    let text = resp.text().await.map_err(|e| format!("URL fetch failed: {e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("URL fetch failed: {e}"))?;
     let looks_json = content_type.contains("json") || {
         let t = text.trim_start();
         t.starts_with('[') || t.starts_with('{')
     };
     if looks_json {
         return match parse_json_rows(&text) {
-            Some(rows) => Ok(ParsedSource { rows, format: "json" }),
+            Some(rows) => Ok(ParsedSource {
+                rows,
+                format: "json",
+            }),
             None => Err("URL returned JSON but no array of objects could be found".to_string()),
         };
     }
@@ -108,7 +120,10 @@ pub async fn fetch_rows_from_url(url: &str) -> Result<ParsedSource, String> {
     if rows.is_empty() {
         return Err("URL response contained no parseable CSV rows".to_string());
     }
-    Ok(ParsedSource { rows, format: "csv" })
+    Ok(ParsedSource {
+        rows,
+        format: "csv",
+    })
 }
 
 #[cfg(test)]
@@ -148,6 +163,9 @@ mod tests {
         assert_eq!(p.format, "csv");
         assert_eq!(p.rows[0]["b"], json!("2"));
         let err = parse_raw_text("   ").unwrap_err();
-        assert_eq!(err, "No parseable rows found — payload is neither valid JSON nor CSV");
+        assert_eq!(
+            err,
+            "No parseable rows found — payload is neither valid JSON nor CSV"
+        );
     }
 }

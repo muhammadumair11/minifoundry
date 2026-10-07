@@ -47,14 +47,20 @@ pub fn is_private_v4(ip: &str) -> bool {
         if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
             return true;
         }
-        let Ok(v) = part.parse::<u32>() else { return true };
+        let Ok(v) = part.parse::<u32>() else {
+            return true;
+        };
         if v > 255 {
             return true;
         }
         n = (n << 8) | v;
     }
     for (base, bits) in BLOCKED_V4 {
-        let mask: u32 = if bits == 0 { 0 } else { 0xffffffffu32 << (32 - bits) };
+        let mask: u32 = if bits == 0 {
+            0
+        } else {
+            0xffffffffu32 << (32 - bits)
+        };
         if (n & mask) == (base & mask) {
             return true;
         }
@@ -219,7 +225,10 @@ pub fn resolve_public_http_url(raw_url: &str) -> Result<ResolvedTarget, String> 
              Connectors may only reach the public internet."
         ));
     }
-    Ok(ResolvedTarget { url, address: addresses[0] })
+    Ok(ResolvedTarget {
+        url,
+        address: addresses[0],
+    })
 }
 
 /// DNS resolution of ALL A/AAAA records (node `lookup(host, {all:true})`).
@@ -273,10 +282,7 @@ pub async fn egress_fetch(
     for hop in 0.. {
         let resp = request_pinned(&current, &header_list, timeout).await?;
         let status = resp.status();
-        if matches!(
-            status.as_u16(),
-            301 | 302 | 303 | 307 | 308
-        ) {
+        if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
             if hop >= MAX_REDIRECTS {
                 return Err(format!("Blocked: more than {MAX_REDIRECTS} redirects"));
             }
@@ -286,7 +292,10 @@ pub async fn egress_fetch(
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
             let Some(location) = location else {
-                return Err(format!("Redirect {} without a Location header", status.as_u16()));
+                return Err(format!(
+                    "Redirect {} without a Location header",
+                    status.as_u16()
+                ));
             };
             // Relative Locations resolve against the current URL; every hop is
             // re-validated (scheme + public host) before following.
@@ -343,15 +352,42 @@ mod tests {
     #[test]
     fn blocked_v4_ranges_match_legacy() {
         for ip in [
-            "0.0.0.0", "0.1.2.3", "10.0.0.1", "10.255.255.255", "100.64.0.1", "100.127.0.1",
-            "127.0.0.1", "127.9.9.9", "169.254.169.254", "172.16.0.1", "172.31.255.255",
-            "192.0.0.1", "192.0.2.1", "198.18.0.1", "198.19.255.255", "198.51.100.1",
-            "203.0.113.1", "192.168.0.1", "192.168.255.255", "224.0.0.1", "239.255.255.250",
-            "240.0.0.1", "255.255.255.255",
+            "0.0.0.0",
+            "0.1.2.3",
+            "10.0.0.1",
+            "10.255.255.255",
+            "100.64.0.1",
+            "100.127.0.1",
+            "127.0.0.1",
+            "127.9.9.9",
+            "169.254.169.254",
+            "172.16.0.1",
+            "172.31.255.255",
+            "192.0.0.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "198.19.255.255",
+            "198.51.100.1",
+            "203.0.113.1",
+            "192.168.0.1",
+            "192.168.255.255",
+            "224.0.0.1",
+            "239.255.255.250",
+            "240.0.0.1",
+            "255.255.255.255",
         ] {
             assert!(is_private_v4(ip), "{ip} must be blocked");
         }
-        for ip in ["8.8.8.8", "1.1.1.1", "100.63.0.1", "100.128.0.1", "172.15.0.1", "172.32.0.1", "192.169.0.1", "93.184.216.34"] {
+        for ip in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "100.63.0.1",
+            "100.128.0.1",
+            "172.15.0.1",
+            "172.32.0.1",
+            "192.169.0.1",
+            "93.184.216.34",
+        ] {
             assert!(!is_private_v4(ip), "{ip} must be allowed");
         }
         // hostile non-quads
@@ -365,18 +401,28 @@ mod tests {
     #[test]
     fn blocked_v6_ranges_match_legacy() {
         for ip in [
-            "::", "::1", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "2001:db8::1",
-            "2001::1", // Teredo (hextets[1] == 0)
-            "2002:c000:0204::1", // 6to4
-            "::ffff:127.0.0.1", // mapped loopback
-            "::ffff:a9fe:a9fe", // mapped 169.254.169.254 (embedded-v4 rule)
+            "::",
+            "::1",
+            "fe80::1",
+            "fc00::1",
+            "fd12:3456::1",
+            "ff02::1",
+            "2001:db8::1",
+            "2001::1",               // Teredo (hextets[1] == 0)
+            "2002:c000:0204::1",     // 6to4
+            "::ffff:127.0.0.1",      // mapped loopback
+            "::ffff:a9fe:a9fe",      // mapped 169.254.169.254 (embedded-v4 rule)
             "0:0:0:0:0:ffff:7f00:1", // expanded mapped loopback
-            "::2", // IPv4-compatible
-            "1234::1", // outside 2000::/3
+            "::2",                   // IPv4-compatible
+            "1234::1",               // outside 2000::/3
         ] {
             assert!(is_private_v6(ip), "{ip} must be blocked");
         }
-        for ip in ["2001:4860:4860::8888", "2606:2800:220:1:248:1893:25c8:1946", "2001:500::1"] {
+        for ip in [
+            "2001:4860:4860::8888",
+            "2606:2800:220:1:248:1893:25c8:1946",
+            "2001:500::1",
+        ] {
             assert!(!is_private_v6(ip), "{ip} must be allowed");
         }
         // malformed → hostile
@@ -400,7 +446,9 @@ mod tests {
         assert_eq!(err, "Invalid URL");
         // IP literals never touch DNS
         let err = resolve_public_http_url("http://127.0.0.1/x").unwrap_err();
-        assert!(err.starts_with("Blocked: '127.0.0.1' resolves to a non-public address (127.0.0.1)"));
+        assert!(
+            err.starts_with("Blocked: '127.0.0.1' resolves to a non-public address (127.0.0.1)")
+        );
         assert!(err.ends_with("Connectors may only reach the public internet."));
         let err = resolve_public_http_url("http://[::1]:8080/x").unwrap_err();
         assert!(err.contains("non-public address"));

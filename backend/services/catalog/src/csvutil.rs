@@ -189,7 +189,10 @@ mod tests {
     fn schema(names: &[(&str, ColumnType)]) -> Vec<SchemaColumn> {
         names
             .iter()
-            .map(|(n, t)| SchemaColumn { name: n.to_string(), column_type: *t })
+            .map(|(n, t)| SchemaColumn {
+                name: n.to_string(),
+                column_type: *t,
+            })
             .collect()
     }
 
@@ -205,7 +208,7 @@ mod tests {
         assert_eq!(csv_cell(&json!(97.2)), "97.2");
         // objects → compact JSON, then quoted (contains quotes) — like JS
         assert_eq!(csv_cell(&json!({"a":1})), "\"{\"\"a\"\":1}\"");
-        assert_eq!(csv_cell(&json!([1,"x"])), "\"[1,\"\"x\"\"]\"");
+        assert_eq!(csv_cell(&json!([1, "x"])), "\"[1,\"\"x\"\"]\"");
     }
 
     #[test]
@@ -218,11 +221,26 @@ mod tests {
             ("tier", ColumnType::String),
         ]);
         let rows: Vec<Row> = vec![
-            serde_json::from_str(r#"{"supplier":"Northline Foods","region":"EMEA","risk_score":22,"tier":"A"}"#).unwrap(),
-            serde_json::from_str(r#"{"supplier":"Pacific Metals","region":"APAC","risk_score":58,"tier":"B"}"#).unwrap(),
-            serde_json::from_str(r#"{"supplier":"Andes Textiles","region":"LATAM","risk_score":41,"tier":"B"}"#).unwrap(),
-            serde_json::from_str(r#"{"supplier":"Gulf Plastics","region":"EMEA","risk_score":140,"tier":"C"}"#).unwrap(),
-            serde_json::from_str(r#"{"supplier":"Baltic Grain Co","region":"EMEA","risk_score":15,"tier":"A"}"#).unwrap(),
+            serde_json::from_str(
+                r#"{"supplier":"Northline Foods","region":"EMEA","risk_score":22,"tier":"A"}"#,
+            )
+            .unwrap(),
+            serde_json::from_str(
+                r#"{"supplier":"Pacific Metals","region":"APAC","risk_score":58,"tier":"B"}"#,
+            )
+            .unwrap(),
+            serde_json::from_str(
+                r#"{"supplier":"Andes Textiles","region":"LATAM","risk_score":41,"tier":"B"}"#,
+            )
+            .unwrap(),
+            serde_json::from_str(
+                r#"{"supplier":"Gulf Plastics","region":"EMEA","risk_score":140,"tier":"C"}"#,
+            )
+            .unwrap(),
+            serde_json::from_str(
+                r#"{"supplier":"Baltic Grain Co","region":"EMEA","risk_score":15,"tier":"A"}"#,
+            )
+            .unwrap(),
         ];
         let expected = "supplier,region,risk_score,tier\n\
              Northline Foods,EMEA,22,A\n\
@@ -246,7 +264,10 @@ mod tests {
     #[test]
     fn slugify_matches_legacy() {
         assert_eq!(slugify_name("Active Shipments"), "active-shipments");
-        assert_eq!(slugify_name("  Supplier Risk Scores  "), "supplier-risk-scores");
+        assert_eq!(
+            slugify_name("  Supplier Risk Scores  "),
+            "supplier-risk-scores"
+        );
         assert_eq!(slugify_name("--x--"), "x");
         assert_eq!(slugify_name("!!!"), "dataset");
         assert_eq!(slugify_name("a_b.c-d"), "a-b-c-d");
@@ -262,7 +283,8 @@ mod tests {
 
     #[test]
     fn csv_parse_quotes_commas_newlines_crlf() {
-        let rows = parse_csv_rows("name,note\r\n\"Doe, John\",\"line1\nline2\"\r\n\"say \"\"hi\"\"\",x\n");
+        let rows =
+            parse_csv_rows("name,note\r\n\"Doe, John\",\"line1\nline2\"\r\n\"say \"\"hi\"\"\",x\n");
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["name"], json!("Doe, John"));
         assert_eq!(rows[0]["note"], json!("line1\nline2"));

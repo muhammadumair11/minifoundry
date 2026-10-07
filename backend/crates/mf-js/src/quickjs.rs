@@ -42,12 +42,18 @@ impl Default for QuickJsEngine {
 
 impl QuickJsEngine {
     pub fn new() -> Self {
-        Self { memory_limit: DEFAULT_MEMORY_LIMIT, derive_timeout: JsLimits::default().timeout }
+        Self {
+            memory_limit: DEFAULT_MEMORY_LIMIT,
+            derive_timeout: JsLimits::default().timeout,
+        }
     }
 
     /// Override the limits (used by tests; production callers use [`new`]).
     pub fn with_limits(memory_limit: usize, derive_timeout: Duration) -> Self {
-        Self { memory_limit, derive_timeout }
+        Self {
+            memory_limit,
+            derive_timeout,
+        }
     }
 
     fn runtime(&self) -> Result<Runtime, JsError> {
@@ -102,9 +108,9 @@ fn json_from_js<'js>(ctx: &Ctx<'js>, v: &Value<'js>) -> Result<Json, JsError> {
     if v.is_undefined() {
         return Ok(Json::Null);
     }
-    let stringified = ctx
-        .json_stringify(v.clone())
-        .map_err(|_| JsError::Runtime("script error: result is not JSON-serializable".to_string()))?;
+    let stringified = ctx.json_stringify(v.clone()).map_err(|_| {
+        JsError::Runtime("script error: result is not JSON-serializable".to_string())
+    })?;
     let Some(js_str) = stringified else {
         // JSON.stringify(undefined | function | symbol) === undefined
         return Ok(Json::Null);
@@ -166,15 +172,25 @@ fn cell_to_json(v: &Value<'_>) -> Json {
         if n == n.trunc() && n.abs() < 2.0f64.powi(53) {
             return Json::from(n as i64);
         }
-        return serde_json::Number::from_f64(n).map(Json::Number).unwrap_or(Json::Null);
+        return serde_json::Number::from_f64(n)
+            .map(Json::Number)
+            .unwrap_or(Json::Null);
     }
     Json::Null
 }
 
 /// Port of isolated-runner.ts `validateRunnerRows` — exact error messages.
-fn validate_rows<'js>(ctx: &Ctx<'js>, result: &Value<'js>, max_rows: usize) -> Result<Vec<Json>, JsError> {
+fn validate_rows<'js>(
+    ctx: &Ctx<'js>,
+    result: &Value<'js>,
+    max_rows: usize,
+) -> Result<Vec<Json>, JsError> {
     let Some(array) = result.as_array() else {
-        let got = if result.is_null() { "null" } else { js_typeof(result) };
+        let got = if result.is_null() {
+            "null"
+        } else {
+            js_typeof(result)
+        };
         return Err(JsError::InvalidResult(format!(
             "transform must return an array of row objects (got {got})"
         )));
@@ -206,8 +222,12 @@ fn validate_rows<'js>(ctx: &Ctx<'js>, result: &Value<'js>, max_rows: usize) -> R
             let (key, value): (Value<'js>, Value<'js>) =
                 prop.map_err(|e| JsError::Runtime(format!("script error: {e}")))?;
             // Object.entries() only sees string keys — symbols are skipped.
-            let Some(key_str) = key.as_string() else { continue };
-            let Ok(name) = key_str.to_string() else { continue };
+            let Some(key_str) = key.as_string() else {
+                continue;
+            };
+            let Ok(name) = key_str.to_string() else {
+                continue;
+            };
             let ok = value.is_string() || value.is_number() || value.is_bool() || value.is_null();
             if !ok {
                 return Err(JsError::InvalidResult(format!(
@@ -239,8 +259,11 @@ impl JsEngine for QuickJsEngine {
             // Legacy two-step compile: destructured bare identifiers first,
             // then the row-only fallback; Compile carries the FIRST error
             // (`compileError ?? fallbackError` in execDerive).
-            let ident_cols: Vec<&str> =
-                columns.iter().map(|s| s.as_str()).filter(|s| is_identifier(s)).collect();
+            let ident_cols: Vec<&str> = columns
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|s| is_identifier(s))
+                .collect();
             let mut first_error: Option<String> = None;
             let mut func: Option<Function<'_>> = None;
             if !ident_cols.is_empty() {
@@ -296,7 +319,12 @@ impl JsEngine for QuickJsEngine {
         })
     }
 
-    fn eval_workbook(&self, source: &str, input: &Json, limits: &JsLimits) -> Result<Vec<Json>, JsError> {
+    fn eval_workbook(
+        &self,
+        source: &str,
+        input: &Json,
+        limits: &JsLimits,
+    ) -> Result<Vec<Json>, JsError> {
         let timeout_ms = limits.timeout.as_millis();
         let rt = self.runtime()?;
         let ctx = Self::context(&rt)?;
@@ -360,7 +388,10 @@ mod tests {
     #[test]
     fn derive_string_and_ternary() {
         let engine = QuickJsEngine::new();
-        let rows = vec![json!({"status": "ok", "name": "x"}), json!({"status": "bad", "name": "y"})];
+        let rows = vec![
+            json!({"status": "ok", "name": "x"}),
+            json!({"status": "bad", "name": "y"}),
+        ];
         let (values, failed) = engine
             .eval_derive(
                 "status === 'ok' ? 'green:' + name : 'red'",
@@ -404,9 +435,7 @@ mod tests {
     fn derive_per_row_failure_yields_null() {
         let engine = QuickJsEngine::new();
         let rows = vec![json!({"a": {"b": 1}}), json!({"a": null}), json!({})];
-        let (values, failed) = engine
-            .eval_derive("a.b.c", &["a".into()], &rows)
-            .unwrap();
+        let (values, failed) = engine.eval_derive("a.b.c", &["a".into()], &rows).unwrap();
         // row 0: (1).c === undefined in JS → null WITHOUT counting as failure
         // (legacy: value === undefined → null); row 1: null.b → TypeError;
         // row 2: undefined.b → TypeError.
@@ -418,7 +447,9 @@ mod tests {
     fn derive_undefined_result_is_null_not_failure() {
         let engine = QuickJsEngine::new();
         let rows = vec![json!({"a": 1})];
-        let (values, failed) = engine.eval_derive("row.missing", &["a".into()], &rows).unwrap();
+        let (values, failed) = engine
+            .eval_derive("row.missing", &["a".into()], &rows)
+            .unwrap();
         assert_eq!(failed, 0);
         assert_eq!(values, vec![json!(null)]);
     }
@@ -512,15 +543,33 @@ mod tests {
     fn workbook_non_array_result_exact_message() {
         let engine = QuickJsEngine::new();
         let err = engine
-            .eval_workbook("return 42", &json!({}), &limits(Duration::from_secs(2), 100))
+            .eval_workbook(
+                "return 42",
+                &json!({}),
+                &limits(Duration::from_secs(2), 100),
+            )
             .unwrap_err();
-        assert_eq!(err.to_string(), "transform must return an array of row objects (got number)");
+        assert_eq!(
+            err.to_string(),
+            "transform must return an array of row objects (got number)"
+        );
         let err = engine
-            .eval_workbook("return null", &json!({}), &limits(Duration::from_secs(2), 100))
+            .eval_workbook(
+                "return null",
+                &json!({}),
+                &limits(Duration::from_secs(2), 100),
+            )
             .unwrap_err();
-        assert_eq!(err.to_string(), "transform must return an array of row objects (got null)");
+        assert_eq!(
+            err.to_string(),
+            "transform must return an array of row objects (got null)"
+        );
         let err = engine
-            .eval_workbook("var x = 1", &json!({}), &limits(Duration::from_secs(2), 100))
+            .eval_workbook(
+                "var x = 1",
+                &json!({}),
+                &limits(Duration::from_secs(2), 100),
+            )
             .unwrap_err();
         assert_eq!(
             err.to_string(),
@@ -545,11 +594,23 @@ mod tests {
     fn workbook_non_object_element_exact_messages() {
         let engine = QuickJsEngine::new();
         let l = limits(Duration::from_secs(2), 100);
-        let err = engine.eval_workbook("return [1, 2]", &json!({}), &l).unwrap_err();
-        assert_eq!(err.to_string(), "row 0: expected a plain object (got number)");
-        let err = engine.eval_workbook("return [{a:1}, [2]]", &json!({}), &l).unwrap_err();
-        assert_eq!(err.to_string(), "row 1: expected a plain object (got array)");
-        let err = engine.eval_workbook("return [null]", &json!({}), &l).unwrap_err();
+        let err = engine
+            .eval_workbook("return [1, 2]", &json!({}), &l)
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "row 0: expected a plain object (got number)"
+        );
+        let err = engine
+            .eval_workbook("return [{a:1}, [2]]", &json!({}), &l)
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "row 1: expected a plain object (got array)"
+        );
+        let err = engine
+            .eval_workbook("return [null]", &json!({}), &l)
+            .unwrap_err();
         assert_eq!(err.to_string(), "row 0: expected a plain object (got null)");
     }
 
@@ -557,12 +618,16 @@ mod tests {
     fn workbook_bad_cell_exact_message() {
         let engine = QuickJsEngine::new();
         let l = limits(Duration::from_secs(2), 100);
-        let err = engine.eval_workbook("return [{ a: { b: 1 } }]", &json!({}), &l).unwrap_err();
+        let err = engine
+            .eval_workbook("return [{ a: { b: 1 } }]", &json!({}), &l)
+            .unwrap_err();
         assert_eq!(
             err.to_string(),
             "row 0 column \"a\": value must be string|number|boolean|null (got object)"
         );
-        let err = engine.eval_workbook("return [{ ok: 1, bad: undefined }]", &json!({}), &l).unwrap_err();
+        let err = engine
+            .eval_workbook("return [{ ok: 1, bad: undefined }]", &json!({}), &l)
+            .unwrap_err();
         assert_eq!(
             err.to_string(),
             "row 0 column \"bad\": value must be string|number|boolean|null (got undefined)"
@@ -597,7 +662,11 @@ mod tests {
         assert_eq!(err.to_string(), "script error: boom");
         // non-Error throws keep their string form
         let err = engine
-            .eval_workbook("throw 'plain'", &json!({}), &limits(Duration::from_secs(2), 100))
+            .eval_workbook(
+                "throw 'plain'",
+                &json!({}),
+                &limits(Duration::from_secs(2), 100),
+            )
             .unwrap_err();
         assert_eq!(err.to_string(), "script error: plain");
     }
@@ -623,7 +692,10 @@ mod tests {
             )
             .unwrap_err();
         assert!(started.elapsed() < Duration::from_secs(5));
-        assert_eq!(err.to_string(), "JavaScript execution timed out after 300ms");
+        assert_eq!(
+            err.to_string(),
+            "JavaScript execution timed out after 300ms"
+        );
     }
 
     #[test]
@@ -654,7 +726,10 @@ mod tests {
                 &limits(Duration::from_secs(2), 100),
             )
             .unwrap();
-        assert_eq!(out, vec![json!({"count": 1, "first": 1, "col": "id", "label": "x"})]);
+        assert_eq!(
+            out,
+            vec![json!({"count": 1, "first": 1, "col": "id", "label": "x"})]
+        );
     }
 
     #[test]
@@ -665,7 +740,11 @@ mod tests {
             .eval_workbook("globalThis.__leak = 'x'; return []", &json!({}), &l)
             .unwrap();
         let out = engine
-            .eval_workbook("return [{ leaked: typeof globalThis.__leak }]", &json!({}), &l)
+            .eval_workbook(
+                "return [{ leaked: typeof globalThis.__leak }]",
+                &json!({}),
+                &l,
+            )
             .unwrap();
         assert_eq!(out, vec![json!({"leaked": "undefined"})]);
     }

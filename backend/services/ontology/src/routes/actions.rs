@@ -56,7 +56,10 @@ async fn action_by_id(db: &sqlx::PgPool, id: &str) -> Result<Option<ActionTypeRo
         .await?)
 }
 
-async fn object_type_for(db: &sqlx::PgPool, action: &ActionTypeRow) -> Result<ObjectTypeRow, ApiError> {
+async fn object_type_for(
+    db: &sqlx::PgPool,
+    action: &ActionTypeRow,
+) -> Result<ObjectTypeRow, ApiError> {
     dbx::object_type_by_id(db, &action.object_type_id)
         .await?
         .ok_or_else(|| ApiError::internal("action's object type vanished"))
@@ -65,9 +68,7 @@ async fn object_type_for(db: &sqlx::PgPool, action: &ActionTypeRow) -> Result<Ob
 // ─── GET /api/ontology/actions ────────────────────────────────────────────
 
 pub async fn list_action_types(State(state): State<AppState>) -> ApiResult<Response> {
-    let q = format!(
-        "SELECT {ACTION_COLS} FROM action_types ORDER BY created_at ASC, api_name ASC"
-    );
+    let q = format!("SELECT {ACTION_COLS} FROM action_types ORDER BY created_at ASC, api_name ASC");
     let actions: Vec<ActionTypeRow> = sqlx::query_as(&q).fetch_all(&state.db).await?;
     let datasets = dataset_map(&state).await;
     let mut out = Vec::with_capacity(actions.len());
@@ -137,7 +138,11 @@ fn parse_writeback(v: &Value, path: &str) -> Result<WritebackInput, ApiError> {
             )))
         }
     };
-    Ok(WritebackInput { target_dataset_id, write_mode, key_property })
+    Ok(WritebackInput {
+        target_dataset_id,
+        write_mode,
+        key_property,
+    })
 }
 
 /// Resolve + validate the write-back target against the catalog schema.
@@ -161,7 +166,11 @@ async fn resolve_writeback(
     let columns: Vec<String> = version.schema.iter().map(|c| c.name.clone()).collect();
     let mut key_property: Option<String> = None;
     if wb.write_mode == "upsert" {
-        let key = wb.key_property.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let key = wb
+            .key_property
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
         let Some(key) = key else {
             return Err(ApiError::bad_request(
                 "upsert write-back needs a keyProperty (column of the target dataset)",
@@ -303,10 +312,11 @@ pub async fn create_action_type(
             derived
         }
     };
-    let taken: Option<(String,)> = sqlx::query_as("SELECT id FROM action_types WHERE api_name = $1")
-        .bind(&api_name)
-        .fetch_optional(&state.db)
-        .await?;
+    let taken: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM action_types WHERE api_name = $1")
+            .bind(&api_name)
+            .fetch_optional(&state.db)
+            .await?;
     if taken.is_some() {
         return Err(ApiError::bad_request(format!(
             "apiName '{api_name}' is already in use"
@@ -480,7 +490,9 @@ pub async fn update_action_type(
         }
     }
 
-    let operation_eff = operation.clone().unwrap_or_else(|| existing.operation.clone());
+    let operation_eff = operation
+        .clone()
+        .unwrap_or_else(|| existing.operation.clone());
     let parameters_eff: Vec<Value> = match &parameters {
         Some(p) => p.clone(),
         None => existing
@@ -503,10 +515,7 @@ pub async fn update_action_type(
         Some((tid, ..)) => tid.is_some(),
         None => existing.target_dataset_id.is_some(),
     };
-    if !has_writeback
-        && (operation_eff == "update" || operation_eff == "delete")
-        && pk_count == 0
-    {
+    if !has_writeback && (operation_eff == "update" || operation_eff == "delete") && pk_count == 0 {
         return Err(ApiError::bad_request(format!(
             "{operation_eff} actions need one parameter marked isPk (maps to the object key column)"
         )));
@@ -581,8 +590,14 @@ pub async fn update_action_type(
             "target_dataset_id",
             tid.clone().map(Value::String).unwrap_or(Value::Null)
         );
-        push_set!("write_mode", wm.clone().map(Value::String).unwrap_or(Value::Null));
-        push_set!("key_property", kp.clone().map(Value::String).unwrap_or(Value::Null));
+        push_set!(
+            "write_mode",
+            wm.clone().map(Value::String).unwrap_or(Value::Null)
+        );
+        push_set!(
+            "key_property",
+            kp.clone().map(Value::String).unwrap_or(Value::Null)
+        );
     }
     let sql = format!(
         "UPDATE action_types SET {} WHERE id = ${idx}",
@@ -681,9 +696,7 @@ pub async fn delete_action_type(
 
 /// GET /api/actions — all action types with object type + param count.
 pub async fn list_actions_public(State(state): State<AppState>) -> ApiResult<Response> {
-    let q = format!(
-        "SELECT {ACTION_COLS} FROM action_types ORDER BY created_at ASC, api_name ASC"
-    );
+    let q = format!("SELECT {ACTION_COLS} FROM action_types ORDER BY created_at ASC, api_name ASC");
     let actions: Vec<ActionTypeRow> = sqlx::query_as(&q).fetch_all(&state.db).await?;
     let mut out = Vec::with_capacity(actions.len());
     for a in &actions {
@@ -761,7 +774,9 @@ pub async fn get_action_public(
     Path(api_name): Path<String>,
 ) -> ApiResult<Response> {
     let Some(action) = dbx::find_action_type(&state.db, &api_name).await? else {
-        return Err(ApiError::not_found(format!("Action '{api_name}' not found")));
+        return Err(ApiError::not_found(format!(
+            "Action '{api_name}' not found"
+        )));
     };
     let ot = object_type_for(&state.db, &action).await?;
     Ok(json_ok(serde_json::json!({
@@ -780,7 +795,9 @@ pub async fn apply(
     require_role(&actor, "editor")?;
 
     let Some(action) = dbx::find_action_type(&state.db, &api_name).await? else {
-        return Err(ApiError::not_found(format!("Action '{api_name}' not found")));
+        return Err(ApiError::not_found(format!(
+            "Action '{api_name}' not found"
+        )));
     };
 
     let v = parse_body(&body)?;
@@ -799,7 +816,10 @@ pub async fn apply(
     let object_type = object_type_for(&state.db, &action).await?;
     match apply_action(&state, &action, &object_type, &params).await {
         Ok(mut result) => {
-            let version_number = result.get("versionNumber").and_then(|v| v.as_i64()).unwrap_or(0);
+            let version_number = result
+                .get("versionNumber")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             let row_count = result.get("rowCount").and_then(|v| v.as_i64()).unwrap_or(0);
             let object_pk = result
                 .get("objectPk")

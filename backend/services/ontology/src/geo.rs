@@ -200,7 +200,8 @@ static LAT_NAME: Lazy<Regex> =
 static LNG_NAME: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(lng|lon|long|longitude|x|geo_?l(n)?g|geo_?lon)(itude)?$").unwrap()
 });
-static CITY_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(city|town|municipality)$").unwrap());
+static CITY_NAME: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^(city|town|municipality)$").unwrap());
 static COUNTRY_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(country|nation)$").unwrap());
 static LOCATION_NAME: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^(location|place|address|geo|coordinates?)$").unwrap());
@@ -285,7 +286,13 @@ fn hash01(key: &str) -> f64 {
 /// JS `Math.round(x * 10000) / 10000` (half-up toward +∞).
 fn round4(x: f64) -> f64 {
     let scaled = x * 10000.0;
-    (scaled.floor() + if scaled - scaled.floor() >= 0.5 { 1.0 } else { 0.0 }) / 10000.0
+    (scaled.floor()
+        + if scaled - scaled.floor() >= 0.5 {
+            1.0
+        } else {
+            0.0
+        })
+        / 10000.0
 }
 
 /// Deterministic jitter (±0.7° lat, ±0.9° lng scaled by cosine) so multiple
@@ -432,7 +439,9 @@ pub const CATEGORY_PALETTE: [&str; 10] = [
 
 /// Stable category → palette color assignment (sorted unique keys; sort
 /// approximates JS localeCompare with case-insensitive primary order).
-pub fn category_colors<'a, I: IntoIterator<Item = &'a String>>(values: I) -> Vec<(String, &'static str)> {
+pub fn category_colors<'a, I: IntoIterator<Item = &'a String>>(
+    values: I,
+) -> Vec<(String, &'static str)> {
     let mut unique: Vec<&String> = values.into_iter().collect();
     unique.sort_by(|a, b| {
         a.to_lowercase()
@@ -514,19 +523,37 @@ mod tests {
     #[test]
     fn detect_lat_lng_by_name() {
         let props = vec![
-            PropertyLike { api_name: "geoLat", data_type: "number" },
-            PropertyLike { api_name: "lon", data_type: "number" },
-            PropertyLike { api_name: "lat", data_type: "string" }, // non-numeric ignored
+            PropertyLike {
+                api_name: "geoLat",
+                data_type: "number",
+            },
+            PropertyLike {
+                api_name: "lon",
+                data_type: "number",
+            },
+            PropertyLike {
+                api_name: "lat",
+                data_type: "string",
+            }, // non-numeric ignored
         ];
         let d = detect_lat_lng_properties(&props);
         assert_eq!(d.lat.as_deref(), Some("geoLat"));
         assert_eq!(d.lng.as_deref(), Some("lon"));
-        let none = detect_lat_lng_properties(&[PropertyLike { api_name: "x1", data_type: "number" }]);
+        let none = detect_lat_lng_properties(&[PropertyLike {
+            api_name: "x1",
+            data_type: "number",
+        }]);
         assert_eq!(none, LatLngProps::default());
         // 'x'/'y' are coordinate names
         let xy = detect_lat_lng_properties(&[
-            PropertyLike { api_name: "y", data_type: "number" },
-            PropertyLike { api_name: "x", data_type: "number" },
+            PropertyLike {
+                api_name: "y",
+                data_type: "number",
+            },
+            PropertyLike {
+                api_name: "x",
+                data_type: "number",
+            },
         ]);
         assert_eq!(xy.lat.as_deref(), Some("y"));
         assert_eq!(xy.lng.as_deref(), Some("x"));
@@ -535,18 +562,42 @@ mod tests {
     #[test]
     fn fallback_detection_city_beats_country() {
         let props = vec![
-            PropertyLike { api_name: "country", data_type: "string" },
-            PropertyLike { api_name: "city", data_type: "string" },
-            PropertyLike { api_name: "address", data_type: "string" },
+            PropertyLike {
+                api_name: "country",
+                data_type: "string",
+            },
+            PropertyLike {
+                api_name: "city",
+                data_type: "string",
+            },
+            PropertyLike {
+                api_name: "address",
+                data_type: "string",
+            },
         ];
         assert_eq!(detect_fallback_property(&props).as_deref(), Some("city"));
         let only_country = vec![
-            PropertyLike { api_name: "nation", data_type: "string" },
-            PropertyLike { api_name: "address", data_type: "string" },
+            PropertyLike {
+                api_name: "nation",
+                data_type: "string",
+            },
+            PropertyLike {
+                api_name: "address",
+                data_type: "string",
+            },
         ];
-        assert_eq!(detect_fallback_property(&only_country).as_deref(), Some("nation"));
-        let only_loc = vec![PropertyLike { api_name: "location", data_type: "string" }];
-        assert_eq!(detect_fallback_property(&only_loc).as_deref(), Some("location"));
+        assert_eq!(
+            detect_fallback_property(&only_country).as_deref(),
+            Some("nation")
+        );
+        let only_loc = vec![PropertyLike {
+            api_name: "location",
+            data_type: "string",
+        }];
+        assert_eq!(
+            detect_fallback_property(&only_loc).as_deref(),
+            Some("location")
+        );
         let none: Vec<PropertyLike> = vec![];
         assert_eq!(detect_fallback_property(&none), None);
     }
@@ -627,7 +678,12 @@ mod tests {
 
     #[test]
     fn category_colors_stable_assignment() {
-        let values = ["NA".to_string(), "EMEA".to_string(), "NA".to_string(), "APAC".to_string()];
+        let values = [
+            "NA".to_string(),
+            "EMEA".to_string(),
+            "NA".to_string(),
+            "APAC".to_string(),
+        ];
         let colors = category_colors(values.iter());
         assert_eq!(
             colors,

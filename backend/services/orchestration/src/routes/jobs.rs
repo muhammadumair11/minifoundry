@@ -37,15 +37,20 @@ pub async fn list_jobs(State(state): State<AppState>, headers: HeaderMap) -> Api
             .fetch_all(&state.db)
             .await?
     };
-    let name_by: std::collections::HashMap<&str, &str> =
-        names.iter().map(|(id, name)| (id.as_str(), name.as_str())).collect();
+    let name_by: std::collections::HashMap<&str, &str> = names
+        .iter()
+        .map(|(id, name)| (id.as_str(), name.as_str()))
+        .collect();
 
     let items: Vec<Value> = jobs
         .iter()
         .map(|job| {
             serialize_job_list_item(
                 job,
-                name_by.get(job.pipeline_id.as_str()).copied().unwrap_or(job.pipeline_id.as_str()),
+                name_by
+                    .get(job.pipeline_id.as_str())
+                    .copied()
+                    .unwrap_or(job.pipeline_id.as_str()),
             )
         })
         .collect();
@@ -61,11 +66,12 @@ pub async fn job_detail(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "viewer")?;
 
-    let job: Option<JobRow> =
-        sqlx::query_as(&format!("SELECT {JOB_COLS} FROM execution_jobs WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let job: Option<JobRow> = sqlx::query_as(&format!(
+        "SELECT {JOB_COLS} FROM execution_jobs WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(job) = job else {
         return Err(ApiError::not_found(format!("Job '{id}' not found")));
     };

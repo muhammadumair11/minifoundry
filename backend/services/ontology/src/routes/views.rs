@@ -12,7 +12,7 @@ use mf_web::{
 use serde_json::Map;
 
 use crate::dbx;
-use crate::filters::{VIEW_FILTER_OPS, MAX_VIEW_FILTERS};
+use crate::filters::{MAX_VIEW_FILTERS, VIEW_FILTER_OPS};
 use crate::jsonutil::{
     as_object, check_max_len, enum_or_err, kind_of, nullish_str, parse_body, query_param,
 };
@@ -21,10 +21,7 @@ use crate::state::*;
 
 /// GET /api/objects/views?type={objectTypeId|apiName} — views for one type
 /// (any role may READ; creation order).
-pub async fn list_views(
-    State(state): State<AppState>,
-    uri: Uri,
-) -> ApiResult<Response> {
+pub async fn list_views(State(state): State<AppState>, uri: Uri) -> ApiResult<Response> {
     let type_param = query_param(&uri, "type")
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -185,13 +182,12 @@ pub async fn create_view(
         )));
     };
 
-    let dup: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM object_views WHERE object_type_id = $1 AND name = $2",
-    )
-    .bind(&object_type.id)
-    .bind(&name)
-    .fetch_optional(&state.db)
-    .await?;
+    let dup: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM object_views WHERE object_type_id = $1 AND name = $2")
+            .bind(&object_type.id)
+            .bind(&name)
+            .fetch_optional(&state.db)
+            .await?;
     if dup.is_some() {
         return Err(ApiError::conflict(format!(
             "A view named '{name}' already exists for {}",
@@ -251,7 +247,9 @@ pub async fn create_view(
     )
     .await;
 
-    Ok(json_created(serde_json::json!({ "view": serialize_view(&view) })))
+    Ok(json_created(
+        serde_json::json!({ "view": serialize_view(&view) }),
+    ))
 }
 
 /// DELETE /api/objects/views/{view_id} — remove a saved view (editor+).

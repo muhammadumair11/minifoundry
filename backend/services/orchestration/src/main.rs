@@ -49,7 +49,12 @@ async fn main() -> anyhow::Result<()> {
 
     let catalog = Arc::new(catalog::CatalogClient::from_env(mode.demo));
 
-    let state = AppState { db, nats: nats.clone(), mode, catalog };
+    let state = AppState {
+        db,
+        nats: nats.clone(),
+        mode,
+        catalog,
+    };
 
     // Background: durable job worker (+sweep), upstream triggers, scheduler.
     worker::spawn_job_worker(state.clone());
@@ -59,7 +64,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/healthz", get(mf_web::healthz))
         // pipelines
-        .route("/api/pipelines", get(routes::pipelines::list_pipelines).post(routes::pipelines::create_pipeline))
+        .route(
+            "/api/pipelines",
+            get(routes::pipelines::list_pipelines).post(routes::pipelines::create_pipeline),
+        )
         .route(
             "/api/pipelines/{id}",
             get(routes::pipelines::pipeline_detail)
@@ -67,10 +75,22 @@ async fn main() -> anyhow::Result<()> {
                 .patch(routes::pipelines::update_pipeline)
                 .delete(routes::pipelines::delete_pipeline),
         )
-        .route("/api/pipelines/{id}/run", post(routes::pipelines::run_pipeline))
-        .route("/api/pipelines/{id}/restore", post(routes::pipelines::restore_pipeline))
-        .route("/api/pipelines/{id}/versions", get(routes::pipelines::list_versions))
-        .route("/api/pipelines/{id}/versions/{version}", get(routes::pipelines::version_detail))
+        .route(
+            "/api/pipelines/{id}/run",
+            post(routes::pipelines::run_pipeline),
+        )
+        .route(
+            "/api/pipelines/{id}/restore",
+            post(routes::pipelines::restore_pipeline),
+        )
+        .route(
+            "/api/pipelines/{id}/versions",
+            get(routes::pipelines::list_versions),
+        )
+        .route(
+            "/api/pipelines/{id}/versions/{version}",
+            get(routes::pipelines::version_detail),
+        )
         .route(
             "/api/pipelines/{id}/runs/{runId}/output",
             get(routes::pipelines::output_status).delete(routes::pipelines::output_delete),
@@ -84,7 +104,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/execution-jobs", get(routes::jobs::list_jobs))
         .route("/api/execution-jobs/{id}", get(routes::jobs::job_detail))
         // schedules (the static /due segment wins over /{id} in axum's matcher)
-        .route("/api/schedules", get(routes::schedules::list_schedules).post(routes::schedules::create_schedule))
+        .route(
+            "/api/schedules",
+            get(routes::schedules::list_schedules).post(routes::schedules::create_schedule),
+        )
         .route("/api/schedules/due", get(routes::schedules::due_schedules))
         .route(
             "/api/schedules/{id}",
@@ -93,13 +116,25 @@ async fn main() -> anyhow::Result<()> {
         // platform health (gateway-routed; aggregates runs + catalog datasets)
         .route("/api/health", get(routes::health::health))
         // internal (service-token guarded; never routed by the gateway)
-        .route("/internal/pipelines", get(routes::internal::internal_pipelines))
-        .route("/internal/pipelines/{id}", get(routes::internal::internal_pipeline_detail))
+        .route(
+            "/internal/pipelines",
+            get(routes::internal::internal_pipelines),
+        )
+        .route(
+            "/internal/pipelines/{id}",
+            get(routes::internal::internal_pipeline_detail),
+        )
         .route("/internal/runs", get(routes::internal::internal_runs))
-        .route("/internal/health/runs", get(routes::internal::internal_health_runs))
+        .route(
+            "/internal/health/runs",
+            get(routes::internal::internal_health_runs),
+        )
         .route("/internal/search", get(routes::internal::internal_search))
         .route("/internal/stats", get(routes::internal::internal_stats))
-        .route("/internal/curriculum-state", get(routes::internal::internal_curriculum_state))
+        .route(
+            "/internal/curriculum-state",
+            get(routes::internal::internal_curriculum_state),
+        )
         .route("/internal/reset", post(routes::internal::internal_reset))
         .with_state(state);
 
