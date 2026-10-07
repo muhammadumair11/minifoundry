@@ -13,10 +13,10 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 | 1 | auth-service (users/JWT/refresh/tokens/usage), gateway (routing/actor/demo-mode/auth wall/transparent refresh), SPA conversion (Vite + TanStack Router; vite build + tsc green; proxy chain verified) — E2E 27/27; frontend Docker image verified (SPA + nginx /api proxy + deep-link fallback) | ✅ done |
 | 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | 🔨 in progress (agent) |
 | 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | 🔨 in progress (agent) |
-| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ⏳ queued (wave B) |
-| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | ⏳ queued (wave B) |
-| 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | ⏳ queued (wave C) |
-| 7 | full smoke, compose hardening, README rewrite, DELETE legacy Next.js app, final CI | ⏳ pending |
+| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | 🔨 in progress (agent) |
+| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | 🔨 in progress (agent) |
+| 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | 🔨 in progress (agent) |
+| 7 | full smoke (`scripts/integrate.ps1` gate), compose hardening, README rewrite, DELETE legacy Next.js app, final CI | ⏳ pending |
 
 ## How to run (current partial stack)
 
