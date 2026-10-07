@@ -431,18 +431,21 @@ async function verifyReads() {
 
   const ontology = await replay('reads', 'ontology-list', { cookie, shape: true })
   // Pick the object type the FIXTURE was captured with (ordering/content can
-  // drift); fall back to the first.
+  // drift); the QA workspace had manually-created types (e.g. 'customer')
+  // that a fresh seed does not reproduce — skip cleanly in that case rather
+  // than comparing a different entity's rows.
   let wantApi = null
   try {
     const ontoFixture = await loadFixture('reads', 'ontology-list')
     wantApi = ontoFixture.body?.objectTypes?.[0]?.apiName ?? null
   } catch { /* fixture missing — first type */ }
-  const ot =
-    (ontology?.objectTypes ?? []).find((t) => t.apiName === wantApi) ??
-    ontology?.objectTypes?.[0]
+  const types = ontology?.objectTypes ?? []
+  const ot = wantApi ? types.find((t) => t.apiName === wantApi) : types[0]
   if (ot) {
     await replay('reads', 'objects-list', { cookie, path: `/api/objects?type=${encodeURIComponent(ot.apiName)}&limit=5`, shape: true })
     await replay('reads', 'object-views', { cookie, path: `/api/objects/views?type=${encodeURIComponent(ot.apiName)}`, shape: true })
+  } else if (wantApi) {
+    console.log(`  - reads/objects-* skipped (fixture object type '${wantApi}' is QA-workspace-only; fresh seed has: ${types.map((t) => t.apiName).join(',')})`)
   }
   await replay('reads', 'actions-list', { cookie, shape: true })
   await replay('reads', 'action-logs', { cookie, shape: true })
