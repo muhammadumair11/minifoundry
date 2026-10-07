@@ -11,7 +11,6 @@ use mf_web::{
 };
 
 use crate::audit::{self, AuditOptions};
-use crate::catalog::masked_columns_for;
 use crate::dbx;
 use crate::jsonutil::{as_object, check_max_len, kind_of, nullish_str, parse_body};
 use crate::routes::effective_role;
@@ -294,14 +293,15 @@ pub async fn widget_data(
         return Err(ApiError::bad_request("Widget source is missing"));
     };
 
-    // Consumer rows (masked at the caller's role) + version meta for rowCount.
-    let Some(all_rows_raw) = state.catalog.head_rows(&dataset_id, Some(&role)).await? else {
+    // Consumer rows (masked at the caller's role by catalog — the single
+    // masking authority; its envelope carries the masked column list) plus
+    // the resolved version's rowCount.
+    let Some(payload) = state.catalog.head_rows_full(&dataset_id, Some(&role)).await? else {
         return Err(ApiError::bad_request(format!(
             "Source '{}' has no published data",
             source_name.clone().unwrap_or_else(|| dataset_id.clone())
         )));
     };
-    let version_meta = state.catalog.head_version(&dataset_id).await?;
     let Some(dataset) = state.catalog.get_dataset(&dataset_id).await? else {
         return Err(ApiError::not_found(format!(
             "Dataset '{dataset_id}' not found"
@@ -311,10 +311,11 @@ pub async fn widget_data(
         source_name = Some(dataset.name.clone());
     }
 
-    let masked_columns = {
-        let markings = state.governance.dataset_markings(&dataset_id).await;
-        masked_columns_for(&markings, &role)
-    };
+    let masked_columns = payload.masked_columns;
+    let all_rows_raw = payload.rows;
+    // legacy: version.rowCount ?? allRows.length — the envelope `total` IS the
+    // resolved version's row count (parser falls back to rows.len()).
+    let row_count = payload.total;
 
     // Ontology widgets project rows onto the object type's property columns
     // (missing columns drop out, exactly like the legacy Object.fromEntries +
@@ -334,10 +335,6 @@ pub async fn widget_data(
             .collect(),
         None => all_rows_raw,
     };
-    let row_count = version_meta
-        .as_ref()
-        .and_then(|v| v.row_count)
-        .unwrap_or(all_rows.len() as i64);
 
     let rows = compute_widget_rows(
         &widget.widget_type,

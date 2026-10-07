@@ -1,12 +1,15 @@
-//! Internal cross-domain clients (catalog + governance).
+//! Internal cross-domain client (catalog).
 //!
 //! Catalog owns dataset rows/schemas/versions; per contracts/INTERNAL_API.md
 //! masking is OPT-IN via the `role` query param on the rows endpoints — this
-//! service passes the caller's effective actor role so governance masking
-//! survives the hop (single masking implementation in catalog).
+//! service passes the caller's effective actor role on every display read, so
+//! governance masking survives the hop and the rows envelope's
+//! `maskedColumns` (single masking authority) feeds the `_masked` lists.
+//! The action-apply write path reads RAW (no role) exactly like the legacy
+//! applyAction, so masked literals never round-trip into a new version.
 //!
-//! All parses are TOLERANT: a missing catalog/governance degrades to clean
-//! `{ error }` transport messages (502) or empty metadata, never a panic.
+//! All parses are TOLERANT: a missing catalog degrades to clean `{ error }`
+//! transport messages (502), never a panic.
 
 use mf_internal::{InternalError, ServiceClient};
 use mf_types::{Row, Value};
@@ -58,6 +61,23 @@ pub struct AppendVersionResult {
     pub dataset_id: String,
     pub version_number: i64,
     pub row_count: i64,
+}
+
+/// Full payload of a rows endpoint response (catalog internal rows envelope:
+/// { rows, total, versionNumber, schema, maskedColumns }).
+#[derive(Debug, Clone, Default)]
+pub struct RowsPayload {
+    pub rows: Vec<Row>,
+    /// Total row count of the resolved version.
+    pub total: i64,
+    #[allow(dead_code)]
+    pub version_number: Option<i64>,
+    /// Schema of the resolved version (first-two-columns fallback for m2m
+    /// link datasets + explorer column fallback).
+    pub schema: Vec<mf_types::SchemaColumn>,
+    /// Columns the catalog masked for the requested role (single masking
+    /// authority — surfaced as `_masked` on object rows).
+    pub masked_columns: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -140,24 +160,33 @@ impl CatalogClient {
     }
 
     /// GET /internal/datasets/{id}/versions/head/rows/all — full consumer rows
-    /// with masking applied at `role` (None → raw rows; only for internal
-    /// callers that must never see governed values... which is never: public
-    /// routes always pass the caller's role). Ok(None) when the dataset has
-    /// no consumable version (legacy: empty object list).
-    pub async fn head_rows(
+    /// with masking applied at `role` (None → raw rows: ONLY for the action
+    /// write path, which mutates data and must never round-trip MASK_LITERAL).
+    /// Ok(None) when the dataset has no consumable version (legacy: empty
+    /// object list).
+    pub async fn head_rows_full(
         &self,
         id: &str,
         role: Option<&str>,
-    ) -> Result<Option<Vec<Row>>, ApiError> {
+    ) -> Result<Option<RowsPayload>, ApiError> {
         let mut path = format!("/internal/datasets/{}/versions/head/rows/all", pct(id));
         if let Some(r) = role {
             path.push_str(&format!("?role={}", pct(r)));
         }
         match self.inner.get_json::<Value>(&path).await {
-            Ok(v) => Ok(Some(extract_rows(&v))),
+            Ok(v) => Ok(Some(parse_rows_payload(&v))),
             Err(e) if is_not_found(&e) => Ok(None),
             Err(e) => Err(to_api_error(e)),
         }
+    }
+
+    /// Rows-only convenience wrapper over [`Self::head_rows_full`].
+    pub async fn head_rows(
+        &self,
+        id: &str,
+        role: Option<&str>,
+    ) -> Result<Option<Vec<Row>>, ApiError> {
+        Ok(self.head_rows_full(id, role).await?.map(|p| p.rows))
     }
 
     /// POST /internal/datasets/{id}/versions — append a new version (the
@@ -203,6 +232,44 @@ fn extract_rows(v: &Value) -> Vec<Row> {
         .collect()
 }
 
+/// Parse the catalog internal rows envelope tolerantly (bare arrays and
+/// flatter variants degrade to defaults).
+fn parse_rows_payload(v: &Value) -> RowsPayload {
+    let rows = extract_rows(v);
+    let total = v
+        .get("total")
+        .and_then(|t| t.as_i64())
+        .unwrap_or(rows.len() as i64);
+    let version_number = v.get("versionNumber").and_then(|n| n.as_i64());
+    let schema = match v.get("schema") {
+        Some(Value::Array(cols)) => cols
+            .iter()
+            .filter_map(|c| {
+                Some(mf_types::SchemaColumn {
+                    name: c.get("name")?.as_str()?.to_string(),
+                    column_type: match c.get("type").and_then(|t| t.as_str()) {
+                        Some("number") => mf_types::ColumnType::Number,
+                        Some("boolean") => mf_types::ColumnType::Boolean,
+                        _ => mf_types::ColumnType::String,
+                    },
+                })
+            })
+            .collect(),
+        _ => vec![],
+    };
+    let masked_columns = v
+        .get("maskedColumns")
+        .and_then(|m| m.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|c| c.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    RowsPayload { rows, total, version_number, schema, masked_columns }
+}
+
 /// Tolerant version-meta parse: { versionNumber, schema | schemaJson, rowCount }.
 fn parse_version_meta(v: &Value) -> VersionMeta {
     let inner = if v.get("version").is_some() {
@@ -238,92 +305,6 @@ fn parse_version_meta(v: &Value) -> VersionMeta {
 fn pct(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>()
         .replace('+', "%20")
-}
-
-// ─── Governance (markings for `_masked` lists) ────────────────────────────
-
-/// One column marking attached to a dataset (governance-owned).
-#[derive(Debug, Clone)]
-pub struct ColumnMarkingInfo {
-    pub column_name: String,
-    #[allow(dead_code)]
-    pub marking_name: String,
-    pub min_role: String,
-}
-
-#[derive(Clone)]
-pub struct GovernanceClient {
-    inner: ServiceClient,
-}
-
-impl GovernanceClient {
-    pub fn from_env() -> Self {
-        Self {
-            inner: ServiceClient::from_env("governance", "GOVERNANCE_INTERNAL_URL", 8086),
-        }
-    }
-
-    /// GET /internal/markings/dataset/{id}. Governance being down degrades to
-    /// "no markings" (no elevation, warn log) — matching catalog's masking
-    /// degradation rule.
-    pub async fn dataset_markings(&self, dataset_id: &str) -> Vec<ColumnMarkingInfo> {
-        let path = format!("/internal/markings/dataset/{}", pct(dataset_id));
-        match self.inner.get_json::<Value>(&path).await {
-            Ok(v) => {
-                let items = match &v {
-                    Value::Array(a) => a.clone(),
-                    obj => obj
-                        .get("markings")
-                        .and_then(|m| m.as_array())
-                        .cloned()
-                        .unwrap_or_default(),
-                };
-                let mut out: Vec<ColumnMarkingInfo> = items
-                    .iter()
-                    .filter_map(|m| {
-                        Some(ColumnMarkingInfo {
-                            column_name: m.get("columnName")?.as_str()?.to_string(),
-                            marking_name: m
-                                .get("markingName")
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                            min_role: m.get("minRole").and_then(|r| r.as_str())?.to_string(),
-                        })
-                    })
-                    .collect();
-                // legacy getColumnMarkings ordered by columnName asc
-                out.sort_by(|a, b| a.column_name.cmp(&b.column_name));
-                out
-            }
-            Err(e) => {
-                tracing::warn!(dataset_id, error = %describe(&e), "governance markings unreachable; treating as unmarked");
-                vec![]
-            }
-        }
-    }
-}
-
-fn describe(e: &InternalError) -> String {
-    match e {
-        InternalError::Transport(m) => format!("transport: {m}"),
-        InternalError::Api { status, message } => format!("{status}: {message}"),
-    }
-}
-
-/// Column names whose marking minRole is ABOVE the given role's level — port
-/// of governance.maskedColumnsFor (unknown minRoles rank 99, always masked).
-pub fn masked_columns_for(markings: &[ColumnMarkingInfo], role: &str) -> Vec<String> {
-    let role_lvl = mf_auth::role_level(role);
-    markings
-        .iter()
-        .filter(|m| {
-            let lvl = mf_auth::role_level(&m.min_role);
-            let lvl = if lvl >= 0 { lvl } else { 99 };
-            lvl > role_lvl
-        })
-        .map(|m| m.column_name.clone())
-        .collect()
 }
 
 #[cfg(test)]
@@ -372,17 +353,22 @@ mod tests {
     }
 
     #[test]
-    fn masked_columns_by_role_level() {
-        let markings = vec![
-            ColumnMarkingInfo { column_name: "a".into(), marking_name: "PII".into(), min_role: "admin".into() },
-            ColumnMarkingInfo { column_name: "b".into(), marking_name: "X".into(), min_role: "viewer".into() },
-            ColumnMarkingInfo { column_name: "c".into(), marking_name: "Y".into(), min_role: "weird".into() },
-        ];
-        assert_eq!(masked_columns_for(&markings, "viewer"), vec!["a", "c"]);
-        // unknown minRole ranks 99 — masked even for admin (legacy rule)
-        assert_eq!(masked_columns_for(&markings, "admin"), vec!["c"]);
-        // anonymous (-1): even viewer-marked columns mask
-        assert_eq!(masked_columns_for(&markings, "anonymous"), vec!["a", "b", "c"]);
+    fn rows_payload_parses_catalog_envelope() {
+        let v: Value = serde_json::from_str(
+            r#"{"rows":[{"a":1},{"a":2}],"total":2,"versionNumber":5,"schema":[{"name":"a","type":"number"}],"maskedColumns":["a"]}"#,
+        )
+        .unwrap();
+        let p = parse_rows_payload(&v);
+        assert_eq!(p.rows.len(), 2);
+        assert_eq!(p.total, 2);
+        assert_eq!(p.version_number, Some(5));
+        assert_eq!(p.schema[0].column_type, mf_types::ColumnType::Number);
+        assert_eq!(p.masked_columns, vec!["a"]);
+        // bare array tolerance: total falls back to rows.len()
+        let bare: Value = serde_json::from_str(r#"[{"a":1}]"#).unwrap();
+        let p2 = parse_rows_payload(&bare);
+        assert_eq!(p2.total, 1);
+        assert!(p2.masked_columns.is_empty());
     }
 
     #[test]

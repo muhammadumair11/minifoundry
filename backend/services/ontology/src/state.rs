@@ -14,10 +14,9 @@ pub struct AppState {
     pub nats: async_nats::Client,
     pub mode: Arc<RuntimeMode>,
     /// Catalog service client (dataset rows/schemas/versions; masking via the
-    /// `role` query param — see contracts/INTERNAL_API.md).
+    /// `role` query param, `maskedColumns` echoed on the rows envelope — see
+    /// contracts/INTERNAL_API.md).
     pub catalog: crate::catalog::CatalogClient,
-    /// Governance service client (column markings for `_masked` lists).
-    pub governance: crate::catalog::GovernanceClient,
 }
 
 // ─── DB rows ──────────────────────────────────────────────────────────────

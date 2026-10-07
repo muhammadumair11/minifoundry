@@ -53,7 +53,6 @@ async fn main() -> anyhow::Result<()> {
         nats: nats.clone(),
         mode,
         catalog: catalog::CatalogClient::from_env(),
-        governance: catalog::GovernanceClient::from_env(),
     };
 
     let app = Router::new()

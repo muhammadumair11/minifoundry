@@ -41,6 +41,9 @@ pub struct ObjectRowsResult {
     pub total: usize,
     /// Column list for the explorer table (properties or schema fallback).
     pub columns: Vec<crate::links::PropLike>,
+    /// Columns the catalog masked for the requested role (empty for raw
+    /// reads) — surfaced as `_masked` on every row.
+    pub masked_columns: Vec<String>,
 }
 
 pub struct GetObjectRowsOpts<'a> {
@@ -99,6 +102,7 @@ pub async fn get_object_rows(
         rows: vec![],
         total: 0,
         columns: object_type.properties.clone(),
+        masked_columns: vec![],
     };
     let Some(dataset_id) = object_type.source_dataset_id.as_deref() else {
         return Ok(empty);
@@ -107,14 +111,14 @@ pub async fn get_object_rows(
     // P2: the object layer is a CONSUMER — catalog resolves the gated head.
     // Masking is applied in catalog at the caller's role BEFORE the query
     // filter and pagination, so search can never leak governed values.
-    let Some(data) = state.catalog.head_rows(dataset_id, role).await? else {
+    let Some(payload) = state.catalog.head_rows_full(dataset_id, role).await? else {
         return Ok(empty);
     };
 
     let pk_column = object_type.primary_key.clone();
     let title_column = title_column_of(object_type).or_else(|| pk_column.clone());
 
-    let mut rows = data;
+    let mut rows = payload.rows;
     let query = opts.query.map(|q| q.trim()).filter(|q| !q.is_empty());
     if let Some(q) = query {
         rows = query_filter(rows, q);
@@ -136,17 +140,12 @@ pub async fn get_object_rows(
         rows.into_iter().skip(start).take(page_size).collect()
     };
 
-    // Fallback when a type somehow has no Property rows: derive from schema.
+    // Fallback when a type somehow has no Property rows: derive from the
+    // resolved version's schema (carried on the rows payload).
     let columns = if !object_type.properties.is_empty() {
         object_type.properties.clone()
     } else {
-        let schema = state
-            .catalog
-            .head_version(dataset_id)
-            .await?
-            .map(|v| v.schema)
-            .unwrap_or_default();
-        derive_properties(&schema, pk_column.as_deref().unwrap_or(""), None)
+        derive_properties(&payload.schema, pk_column.as_deref().unwrap_or(""), None)
             .into_iter()
             .map(|p| crate::links::PropLike {
                 api_name: p.api_name,
@@ -175,6 +174,7 @@ pub async fn get_object_rows(
             .collect(),
         total,
         columns,
+        masked_columns: payload.masked_columns,
     })
 }
 

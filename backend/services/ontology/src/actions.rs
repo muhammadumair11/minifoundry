@@ -378,18 +378,14 @@ async fn apply_target_writeback(
         )
         .await);
     };
-    // head version meta (schema carried over) + rows
-    let Some(version) = state.catalog.head_version(&target_id).await? else {
+    // head rows (RAW — write path) carry the resolved version's schema too
+    let Some(payload) = state.catalog.head_rows_full(&target_id, None).await? else {
         return Err(fail(state, &action.id, raw_params, format!("Target dataset '{}' has no versions to write back onto", target.name),
         )
         .await);
     };
-    let Some(mut rows) = state.catalog.head_rows(&target_id, None).await? else {
-        return Err(fail(state, &action.id, raw_params, format!("Target dataset '{}' has no versions to write back onto", target.name),
-        )
-        .await);
-    };
-    let schema = version.schema;
+    let schema = payload.schema;
+    let mut rows = payload.rows;
 
     let mode = if action.write_mode.as_deref() == Some("upsert") {
         "upsert"

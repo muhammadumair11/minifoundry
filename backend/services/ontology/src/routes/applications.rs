@@ -12,7 +12,6 @@ use mf_web::{
 use serde_json::Map;
 
 use crate::audit::{self, AuditOptions};
-use crate::catalog::masked_columns_for;
 use crate::dbx;
 use crate::filters::ObjectViewFilter;
 use crate::jsonutil::{as_object, check_max_len, enum_or_err, kind_of, nullish_str, parse_body};
@@ -483,13 +482,21 @@ pub async fn app_data(
         return Err(ApiError::bad_request("Filter property not found"));
     }
 
-    let masked = match &core.source_dataset_id {
-        Some(ds) => {
-            let markings = state.governance.dataset_markings(ds).await;
-            masked_columns_for(&markings, &role)
-        }
-        None => vec![],
-    };
+    // Governed read: catalog masks at the caller's role and the rows envelope
+    // carries the masked column list (single masking authority). A chart over
+    // a hidden property is refused (legacy 'hidden for your role' guard).
+    let result = get_object_rows(
+        &state,
+        &core,
+        Some(role.as_str()),
+        GetObjectRowsOpts {
+            all: true,
+            filters: &filters_in,
+            ..Default::default()
+        },
+    )
+    .await?;
+    let masked = &result.masked_columns;
     let uses_hidden = masked.contains(&group_by)
         || value_property
             .as_deref()
@@ -502,18 +509,6 @@ pub async fn app_data(
             "This chart uses a property hidden for your role",
         ));
     }
-
-    let result = get_object_rows(
-        &state,
-        &core,
-        Some(role.as_str()),
-        GetObjectRowsOpts {
-            all: true,
-            filters: &filters_in,
-            ..Default::default()
-        },
-    )
-    .await?;
 
     // group aggregation (exact legacy semantics)
     let mut keys: Vec<String> = Vec::new();

@@ -1,7 +1,7 @@
 //! /api/objects — object explorer list + detail (ports of
 //! src/app/api/objects/route.ts and [type]/[pk]/route.ts). Masking is applied
-//! by catalog (role query param); `_masked` lists are computed from
-//! governance markings exactly like legacy maskedColumnsFor.
+//! by catalog (role query param); the rows envelope's `maskedColumns` (single
+//! masking authority) is surfaced as the additive `_masked` list.
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Uri};
@@ -9,7 +9,6 @@ use axum::response::Response;
 use mf_types::Value;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 
-use crate::catalog::masked_columns_for;
 use crate::dbx;
 use crate::filters::parse_filters_param;
 use crate::jsonutil::query_param;
@@ -75,14 +74,6 @@ pub async fn objects_listing(
     let properties = dbx::load_properties(&state.db, &row.id).await?;
     let core = dbx::type_core_of(&row, &properties);
 
-    let masked_columns = match (&core.source_dataset_id, role) {
-        (Some(ds), Some(r)) => {
-            let markings = state.governance.dataset_markings(ds).await;
-            masked_columns_for(&markings, r)
-        }
-        _ => vec![],
-    };
-
     let result = get_object_rows(
         state,
         &core,
@@ -102,7 +93,7 @@ pub async fn objects_listing(
     let rows: Vec<Value> = result
         .rows
         .iter()
-        .map(|r| r.to_json(&masked_columns))
+        .map(|r| r.to_json(&result.masked_columns))
         .collect();
     Ok(serde_json::json!({
         "objectType": object_type_summary(&core),
@@ -191,13 +182,15 @@ pub async fn get_object(
     };
 
     // P2: consumer read — catalog resolves the gated head; rows arrive masked
-    // at the caller's role.
-    let Some(rows) = state.catalog.head_rows(&dataset_id, Some(&role)).await? else {
+    // at the caller's role and the envelope carries the masked column list.
+    let Some(payload) = state.catalog.head_rows_full(&dataset_id, Some(&role)).await? else {
         return Err(ApiError::not_found(format!(
             "Dataset for object type '{}' has no versions",
             core.api_name
         )));
     };
+    let rows = payload.rows;
+    let masked_columns = payload.masked_columns;
     let Some(viewed_row) = find_row_by_pk(&rows, &pk_column, &pk) else {
         return Err(ApiError::not_found(format!(
             "Object '{pk}' not found in type '{}'",
@@ -216,11 +209,6 @@ pub async fn get_object(
         in_links,
     )
     .await?;
-
-    let masked_columns = {
-        let markings = state.governance.dataset_markings(&dataset_id).await;
-        masked_columns_for(&markings, &role)
-    };
 
     let mut values = serde_json::Map::new();
     for (k, v) in viewed_row {
