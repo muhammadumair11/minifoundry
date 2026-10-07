@@ -113,10 +113,15 @@ Consumers are durable with explicit acks, `max_deliver=5`, DLQ `mf.dlq.>`.
 ## Cross-cutting rules
 
 1. **Masking lives in catalog's internal rows endpoints, opt-in via `role`
-   query param** (see above for the per-consumer parity map). Public row
-   egress (catalog `/api/datasets/{id}/rows|diff|export`) always masks at the
-   CALLER's role. Ontology object/dashboard/application data masks at the
-   caller's role via the `role` param. Public-api always uses `role=viewer`.
+   query param** (see above for the per-consumer parity map). Legacy-verified
+   rule: **display surfaces mask, mutation paths never mask.**
+   - MASKED (caller role): catalog `/api/datasets/{id}/rows|diff|export`;
+     ontology objects list/detail, dashboards data, applications data,
+     `/internal/objects/{type}?role=`; governance search preview rows;
+     public-api everything (`role=viewer`); orchestration engine source reads
+     (`role=viewer`, shared mode only).
+   - RAW (no role param): compute transform inputs; ontology action-apply
+     mutations/write-back/responses; orchestration engine in demo mode.
 2. **Version writes go through exactly one door**: catalog's
    `POST /internal/datasets/{id}/versions` (idempotent via `outputJobId`).
 3. **Audit/notify are fire-and-forget events** — a broken consumer can never
