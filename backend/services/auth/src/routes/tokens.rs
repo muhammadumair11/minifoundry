@@ -327,10 +327,13 @@ pub async fn clear_usage(State(state): State<AppState>, headers: HeaderMap) -> A
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM (DELETE FROM api_request_logs RETURNING id) d")
-            .fetch_one(&state.db)
-            .await?;
+    // Data-modifying statements are only legal in a WITH clause (not a FROM
+    // subquery) in Postgres.
+    let count: i64 = sqlx::query_scalar(
+        "WITH deleted AS (DELETE FROM api_request_logs RETURNING id) SELECT count(*) FROM deleted",
+    )
+    .fetch_one(&state.db)
+    .await?;
     audit::audit(
         &state,
         &actor,

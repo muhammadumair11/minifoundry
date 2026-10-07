@@ -81,6 +81,8 @@ async fn main() -> anyhow::Result<()> {
             "/internal/tokens/rate-limit",
             post(routes::internal::rate_limit),
         )
+        .route("/internal/stats", get(routes::internal::stats))
+        .route("/internal/reset", post(routes::internal::reset))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

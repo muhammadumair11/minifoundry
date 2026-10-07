@@ -154,6 +154,10 @@ pub async fn verify_token(
                     "name": t.name,
                     "prefix": t.prefix,
                     "requestCount": t.request_count,
+                    // Additive (governance/public-api request): saves the
+                    // whoami enrichment hop through /api/tokens.
+                    "createdAt": mf_types::ts::format(&t.created_at),
+                    "lastUsedAt": t.last_used_at.map(|d| mf_types::ts::format(&d)),
                 }
             })))
         }
@@ -175,4 +179,57 @@ pub async fn rate_limit(
     let token_id = req_str(&m, "tokenId")?;
     let result = state.rate_limiter.check(token_id, TOKEN_RATE_LIMIT);
     Ok(json_ok(serde_json::to_value(result).unwrap_or_default()))
+}
+
+/// GET /internal/stats — auth-domain counts for governance settings/overview.
+pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+    require_service(&state, &headers)?;
+
+    let (users, api_tokens, active_tokens, api_request_logs, refresh_tokens): (i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT (SELECT count(*) FROM users), \
+                    (SELECT count(*) FROM api_tokens), \
+                    (SELECT count(*) FROM api_tokens WHERE revoked_at IS NULL), \
+                    (SELECT count(*) FROM api_request_logs), \
+                    (SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL)",
+        )
+        .fetch_one(&state.db)
+        .await?;
+
+    Ok(json_ok(serde_json::json!({
+        "users": users,
+        "apiTokens": api_tokens,
+        "activeTokens": active_tokens,
+        "apiRequestLogs": api_request_logs,
+        "refreshTokens": refresh_tokens,
+    })))
+}
+
+/// POST /internal/reset — wipe tokens/usage/refresh (KEEP users: legacy
+/// settings/reset preserved accounts). Called by governance's reset fan-out.
+pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+    require_service(&state, &headers)?;
+
+    let logs: i64 = sqlx::query_scalar(
+        "WITH deleted AS (DELETE FROM api_request_logs RETURNING id) SELECT count(*) FROM deleted",
+    )
+    .fetch_one(&state.db)
+    .await?;
+    let tokens: i64 = sqlx::query_scalar(
+        "WITH deleted AS (DELETE FROM api_tokens RETURNING id) SELECT count(*) FROM deleted",
+    )
+    .fetch_one(&state.db)
+    .await?;
+    let refresh: i64 = sqlx::query_scalar(
+        "WITH deleted AS (DELETE FROM refresh_tokens RETURNING id) SELECT count(*) FROM deleted",
+    )
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(json_ok(serde_json::json!({
+        "ok": true,
+        "apiRequestLogs": logs,
+        "apiTokens": tokens,
+        "refreshTokens": refresh,
+    })))
 }
