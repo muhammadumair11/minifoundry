@@ -1,4 +1,4 @@
-# MiniFoundry — dev-stack runner (pre-compose integration loop on Windows).
+# MiniFoundry - dev-stack runner (pre-compose integration loop on Windows).
 #
 # Builds the requested services via the Docker cargo wrapper and (re)starts
 # them as containers wired to the dev infra (docker-compose.dev.yml:
@@ -9,7 +9,10 @@
 #   .\scripts\dev-stack.ps1                          # auth + gateway
 #   .\scripts\dev-stack.ps1 -Services auth,catalog,gateway
 #   .\scripts\dev-stack.ps1 -Services all
-#   .\scripts\dev-stack.ps1 -Services all -SkipBuild   # restart only
+#   .\scripts\dev-stack.ps1 -Services all -SkipBuild # restart only
+#
+# NOTE: pure ASCII on purpose - Windows PowerShell 5.1 reads BOM-less files
+# as ANSI and UTF-8 punctuation breaks string literals.
 
 param(
     [string[]]$Services = @('auth', 'gateway'),
@@ -24,14 +27,15 @@ if ($Services -contains 'all') {
 }
 
 $spec = @{
-    'auth'          = @{ pkg = 'mf-auth-service'; port = 8081; db = 'mf_auth:<redacted>' }
-    'catalog'       = @{ pkg = 'mf-catalog';      port = 8082; db = 'mf_catalog:<redacted>' }
-    'orchestration' = @{ pkg = 'mf-orchestration'; port = 8083; db = 'mf_orchestration:<redacted>' }
-    'compute'       = @{ pkg = 'mf-compute';      port = 8084; db = 'mf_compute:<redacted>' }
-    'ontology'      = @{ pkg = 'mf-ontology';     port = 8085; db = 'mf_ontology:<redacted>' }
-    'governance'    = @{ pkg = 'mf-governance';   port = 8086; db = 'mf_governance:<redacted>' }
-    'public-api'    = @{ pkg = 'mf-public-api';   port = 8087; db = $null }
-    'gateway'       = @{ pkg = 'mf-gateway';      port = 8080; db = $null }
+    'auth'          = @{ pkg = 'mf-auth-service'; port = 8081; db = 'mf_auth:<redacted>'; image = 'debian:bookworm-slim' }
+    'catalog'       = @{ pkg = 'mf-catalog';      port = 8082; db = 'mf_catalog:<redacted>'; image = 'debian:bookworm-slim' }
+    'orchestration' = @{ pkg = 'mf-orchestration'; port = 8083; db = 'mf_orchestration:<redacted>'; image = 'debian:bookworm-slim' }
+    # compute executes Python workbooks -> runtime image must carry python3
+    'compute'       = @{ pkg = 'mf-compute';      port = 8084; db = 'mf_compute:<redacted>'; image = 'python:3.12-slim' }
+    'ontology'      = @{ pkg = 'mf-ontology';     port = 8085; db = 'mf_ontology:<redacted>'; image = 'debian:bookworm-slim' }
+    'governance'    = @{ pkg = 'mf-governance';   port = 8086; db = 'mf_governance:<redacted>'; image = 'debian:bookworm-slim' }
+    'public-api'    = @{ pkg = 'mf-public-api';   port = 8087; db = $null; image = 'debian:bookworm-slim' }
+    'gateway'       = @{ pkg = 'mf-gateway';      port = 8080; db = $null; image = 'debian:bookworm-slim' }
 }
 
 $commonEnv = @(
@@ -51,9 +55,10 @@ $commonEnv = @(
     '-e', 'RUST_LOG=info,sqlx=warn'
 )
 
-# ── build ──
+# -- build --
 if (-not $SkipBuild) {
-    $pkgs = $Services | ForEach-Object { @('-p', $spec[$_].pkg) }
+    $pkgs = @()
+    foreach ($s in $Services) { $pkgs += @('-p', $spec[$s].pkg) }
     Write-Host "building: $($pkgs -join ' ')"
     Push-Location (Join-Path $root 'backend')
     & .\cargo.ps1 build @pkgs
@@ -61,7 +66,7 @@ if (-not $SkipBuild) {
     Pop-Location
 }
 
-# ── (re)start ──
+# -- (re)start --
 foreach ($svc in $Services) {
     $s = $spec[$svc]
     $name = "mf-$svc"
@@ -72,11 +77,12 @@ foreach ($svc in $Services) {
     }
     docker run -d --name $name --init -p "$($s.port):$($s.port)" `
         -v mf-cargo-target:/t:ro @commonEnv @envArgs `
-        debian:bookworm-slim "/t/debug/$($s.pkg)" | Out-Null
+        $s.image "/t/debug/$($s.pkg)" | Out-Null
     Write-Host "started $name on :$($s.port)"
 }
 
-# ── health wait ──
+# -- health wait --
+$failed = @()
 foreach ($svc in $Services) {
     $port = $spec[$svc].port
     $ok = $false
@@ -87,10 +93,13 @@ foreach ($svc in $Services) {
             if ($r.StatusCode -eq 200) { $ok = $true; break }
         } catch { }
     }
-    if ($ok) { Write-Host "  ✓ $svc healthy" -ForegroundColor Green }
-    else {
-        Write-Host "  ✗ $svc NOT healthy — logs:" -ForegroundColor Red
+    if ($ok) {
+        Write-Host "  [OK]   $svc healthy"
+    } else {
+        Write-Host "  [FAIL] $svc NOT healthy - logs:"
         docker logs "mf-$svc" --tail 15 2>&1 | Write-Host
+        $failed += $svc
     }
 }
-Write-Host "stack: $($Services -join ', ') — gateway http://localhost:8080, SPA (bun dev) http://localhost:3000"
+Write-Host "stack: $($Services -join ', ') | gateway http://localhost:8080 | SPA (bun dev) http://localhost:3000"
+if ($failed.Count -gt 0) { throw "unhealthy services: $($failed -join ', ')" }
