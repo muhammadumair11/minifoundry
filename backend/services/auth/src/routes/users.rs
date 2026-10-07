@@ -8,7 +8,7 @@ use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 
 use crate::audit::{self, AuditOptions};
 use crate::routes::{as_object, opt_bool, opt_enum, parse_body};
-use crate::state::{AppState, UserRow, serialize_admin_user};
+use crate::state::{serialize_admin_user, AppState, UserRow};
 
 const ROLES: &[&str] = &["viewer", "editor", "admin"];
 
@@ -21,10 +21,11 @@ pub async fn list_users(State(state): State<AppState>, headers: HeaderMap) -> Ap
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let users: Vec<UserRow> =
-        sqlx::query_as(&format!("SELECT {USER_COLS} FROM users ORDER BY created_at ASC"))
-            .fetch_all(&state.db)
-            .await?;
+    let users: Vec<UserRow> = sqlx::query_as(&format!(
+        "SELECT {USER_COLS} FROM users ORDER BY created_at ASC"
+    ))
+    .fetch_all(&state.db)
+    .await?;
     let out: Vec<serde_json::Value> = users.iter().map(serialize_admin_user).collect();
     Ok(json_ok(serde_json::json!({ "users": out })))
 }
@@ -82,9 +83,14 @@ pub async fn update_user(
         AuditOptions::new("user.update", "user")
             .resource_id(Some(&updated.id))
             .resource_name(Some(&updated.email))
-            .detail(Some(&format!("role={} isActive={}", updated.role, updated.is_active))),
+            .detail(Some(&format!(
+                "role={} isActive={}",
+                updated.role, updated.is_active
+            ))),
     )
     .await;
 
-    Ok(json_ok(serde_json::json!({ "user": serialize_admin_user(&updated) })))
+    Ok(json_ok(
+        serde_json::json!({ "user": serialize_admin_user(&updated) }),
+    ))
 }

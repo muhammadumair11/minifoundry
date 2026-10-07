@@ -97,7 +97,10 @@ async fn gateway_handler(
     // Legacy GET /api — platform hello.
     if path == "/api" || path == "/api/" {
         if method == Method::GET {
-            return (StatusCode::OK, Json(serde_json::json!({ "message": "Hello, world!" })))
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({ "message": "Hello, world!" })),
+            )
                 .into_response();
         }
         return not_found();
@@ -112,6 +115,7 @@ async fn gateway_handler(
     let Some(rule) = routing::resolve(&path, &state.routes) else {
         return not_found();
     };
+    tracing::debug!(service = rule.service, path = %path, "routing");
 
     // Resolve the actor (may transparently refresh the session).
     let resolved = actor::resolve(&state, &headers).await;
@@ -143,8 +147,12 @@ async fn gateway_handler(
         );
         if let Some(rt) = &r.refresh {
             extra_cookies.push(
-                mf_web::cookie::refresh_cookie(rt.clone(), state.cookie_secure, actor::refresh_ttl())
-                    .to_header(),
+                mf_web::cookie::refresh_cookie(
+                    rt.clone(),
+                    state.cookie_secure,
+                    actor::refresh_ttl(),
+                )
+                .to_header(),
             );
         }
     }
@@ -152,13 +160,15 @@ async fn gateway_handler(
     let actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
     proxy::forward(
         &state,
-        &rule.base_url,
-        method,
-        uri,
-        headers,
-        body,
-        actor_headers,
-        extra_cookies,
+        proxy::ForwardRequest {
+            base_url: rule.base_url.clone(),
+            method,
+            uri,
+            headers,
+            body,
+            actor_headers,
+            extra_set_cookies: extra_cookies,
+        },
     )
     .await
 }
@@ -167,7 +177,7 @@ async fn gateway_handler(
 /// were stripped in proxy::forward before these are appended).
 fn build_actor_headers(actor: &mf_auth::Actor, demo: bool) -> Vec<(HeaderName, HeaderValue)> {
     let mut out: Vec<(HeaderName, HeaderValue)> = Vec::with_capacity(7);
-    let mut push = |out: &mut Vec<_>, name: &'static str, value: String| {
+    let push = |out: &mut Vec<_>, name: &'static str, value: String| {
         if let Ok(v) = HeaderValue::from_str(&value) {
             out.push((HeaderName::from_static(name), v));
         }
@@ -179,13 +189,21 @@ fn build_actor_headers(actor: &mf_auth::Actor, demo: bool) -> Vec<(HeaderName, H
         (if demo { "1" } else { "0" }).to_string(),
     );
     if let Some(email) = &actor.email {
-        push(&mut out, mf_auth::HEADER_ACTOR_EMAIL, mf_auth::hdr_encode(email));
+        push(
+            &mut out,
+            mf_auth::HEADER_ACTOR_EMAIL,
+            mf_auth::hdr_encode(email),
+        );
     }
     if let Some(uid) = &actor.uid {
         push(&mut out, mf_auth::HEADER_ACTOR_UID, uid.clone());
     }
     if let Some(name) = &actor.name {
-        push(&mut out, mf_auth::HEADER_ACTOR_NAME, mf_auth::hdr_encode(name));
+        push(
+            &mut out,
+            mf_auth::HEADER_ACTOR_NAME,
+            mf_auth::hdr_encode(name),
+        );
     }
     if let Some(real_role) = &actor.real_role {
         push(&mut out, mf_auth::HEADER_ACTOR_REAL_ROLE, real_role.clone());

@@ -19,6 +19,11 @@ if (Test-Path $cargoConfig) {
     $configMount = @('-v', "${cargoConfig}:/usr/local/cargo/config.toml:ro")
 }
 
+# Prefer the local dev image (rust + clippy + rustfmt); fall back to plain rust.
+$image = 'rust:1-bookworm'
+docker image inspect mf-rust-dev *> $null
+if ($LASTEXITCODE -eq 0) { $image = 'mf-rust-dev' }
+
 docker run --rm `
     -v "${backend}:/app" `
     -v "mf-cargo-registry:/usr/local/cargo/registry" `
@@ -26,7 +31,7 @@ docker run --rm `
     -v "mf-cargo-target:/app/target" `
     @configMount `
     -w /app `
-    rust:1-bookworm `
+    $image `
     cargo @args
 
 exit $LASTEXITCODE

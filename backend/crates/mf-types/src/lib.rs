@@ -84,7 +84,9 @@ pub mod ts_opt {
     {
         let opt = Option::<String>::deserialize(d)?;
         match opt {
-            Some(raw) => super::ts::parse_ts(&raw).map(Some).map_err(serde::de::Error::custom),
+            Some(raw) => super::ts::parse_ts(&raw)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
             None => Ok(None),
         }
     }
@@ -138,10 +140,18 @@ impl LogEntry {
             msg: msg.into(),
         }
     }
-    pub fn info(msg: impl Into<String>) -> Self { Self::new(LogLevel::Info, msg) }
-    pub fn warn(msg: impl Into<String>) -> Self { Self::new(LogLevel::Warn, msg) }
-    pub fn error(msg: impl Into<String>) -> Self { Self::new(LogLevel::Error, msg) }
-    pub fn success(msg: impl Into<String>) -> Self { Self::new(LogLevel::Success, msg) }
+    pub fn info(msg: impl Into<String>) -> Self {
+        Self::new(LogLevel::Info, msg)
+    }
+    pub fn warn(msg: impl Into<String>) -> Self {
+        Self::new(LogLevel::Warn, msg)
+    }
+    pub fn error(msg: impl Into<String>) -> Self {
+        Self::new(LogLevel::Error, msg)
+    }
+    pub fn success(msg: impl Into<String>) -> Self {
+        Self::new(LogLevel::Success, msg)
+    }
 }
 
 // ─── JSON boundary helpers ──────────────────────────────────────────────
@@ -180,8 +190,14 @@ mod tests {
 
     #[test]
     fn schema_column_round_trip() {
-        let col = SchemaColumn { name: "id".into(), column_type: ColumnType::String };
-        assert_eq!(serde_json::to_string(&col).unwrap(), r#"{"name":"id","type":"string"}"#);
+        let col = SchemaColumn {
+            name: "id".into(),
+            column_type: ColumnType::String,
+        };
+        assert_eq!(
+            serde_json::to_string(&col).unwrap(),
+            r#"{"name":"id","type":"string"}"#
+        );
         let back: SchemaColumn = serde_json::from_str(r#"{"name":"n","type":"number"}"#).unwrap();
         assert_eq!(back.column_type, ColumnType::Number);
     }
@@ -197,9 +213,18 @@ mod tests {
 
     #[test]
     fn parse_json_safe_falls_back() {
-        assert_eq!(parse_json_safe::<Vec<String>>(None, vec![]), Vec::<String>::new());
-        assert_eq!(parse_json_safe::<Vec<String>>(Some("not json"), vec!["fb".into()]), vec!["fb".to_string()]);
-        assert_eq!(parse_json_safe::<Vec<String>>(Some(r#"["a"]"#), vec![]), vec!["a".to_string()]);
+        assert_eq!(
+            parse_json_safe::<Vec<String>>(None, vec![]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            parse_json_safe::<Vec<String>>(Some("not json"), vec!["fb".into()]),
+            vec!["fb".to_string()]
+        );
+        assert_eq!(
+            parse_json_safe::<Vec<String>>(Some(r#"["a"]"#), vec![]),
+            vec!["a".to_string()]
+        );
     }
 
     #[test]

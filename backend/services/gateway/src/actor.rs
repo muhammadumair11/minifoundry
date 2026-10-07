@@ -2,15 +2,17 @@
 //!
 //! Precedence (ports `getActor()` in governance.ts + middleware.ts, plus the
 //! new transparent refresh):
-//!   1. valid access JWT (`foundry-session` cookie or `Authorization: Bearer`)
-//!      → session actor (role/email/uid/name/realRole from claims);
-//!   1b. no valid access JWT but a `foundry-refresh` cookie → single-flight
-//!      refresh through the auth service; on success the request proceeds as
-//!      the refreshed session and the response carries the new cookies;
-//!   2. demo mode only: the `foundry-role` simulator cookie (valid roles
-//!      only) + `foundry-learner-id` → `learner:<uuid>` email;
-//!   3. else: demo → trusted `admin` (machine callers the sandbox was built
-//!      around); shared → `anonymous` (every role guard 403s).
+//!
+//! 1. valid access JWT (`foundry-session` cookie or `Authorization: Bearer`)
+//!    → session actor (role/email/uid/name/realRole from claims);
+//! 2. no valid access JWT but a `foundry-refresh` cookie → single-flight
+//!    refresh through the auth service; on success the request proceeds as
+//!    the refreshed session and the response carries the new cookies;
+//! 3. demo mode only: the `foundry-role` simulator cookie (valid roles
+//!    only) + `foundry-learner-id` → `learner:<uuid>` email;
+//! 4. else: demo → trusted `admin` (machine callers the sandbox was built
+//!    around); shared → `anonymous` (every role guard 403s).
+//!
 //! A valid `x-service-token` additionally marks the actor `is_service`
 //! (bypasses role guards exactly like `isServiceAuthorized()` did).
 
@@ -61,7 +63,11 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
     let mut payload = cookie_token
         .as_deref()
         .and_then(|t| mf_auth::verify_token(t, &state.secret).ok())
-        .or_else(|| bearer.as_deref().and_then(|t| mf_auth::verify_token(t, &state.secret).ok()));
+        .or_else(|| {
+            bearer
+                .as_deref()
+                .and_then(|t| mf_auth::verify_token(t, &state.secret).ok())
+        });
 
     let mut refreshed = None;
 
@@ -111,12 +117,19 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
                     is_service,
                 }
             } else {
-                Actor { is_service, ..Actor::anonymous() }
+                Actor {
+                    is_service,
+                    ..Actor::anonymous()
+                }
             }
         }
     };
 
-    ResolvedActor { actor, refreshed, has_session }
+    ResolvedActor {
+        actor,
+        refreshed,
+        has_session,
+    }
 }
 
 /// Legacy learner-id shape: /^[a-f0-9-]{36}$/.
@@ -138,7 +151,11 @@ fn get_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 fn authorization_bearer(headers: &HeaderMap) -> Option<String> {
-    let header = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?.trim();
+    let header = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .trim();
     let rest = header.strip_prefix("Bearer ").or_else(|| {
         header
             .to_lowercase()
@@ -146,7 +163,11 @@ fn authorization_bearer(headers: &HeaderMap) -> Option<String> {
             .map(|_| &header["bearer ".len()..])
     })?;
     let t = rest.trim();
-    if t.is_empty() { None } else { Some(t.to_string()) }
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
 }
 
 /// Single-flight refresh: concurrent requests carrying the SAME refresh token
@@ -182,7 +203,7 @@ async fn single_flight_refresh(
             .map_err(|()| "refresh failed".to_string()),
         Role::Leader(tx) => {
             let outcome = call_refresh(state, refresh_token).await;
-            let _ = tx.send(outcome.clone().map_err(|()| ()));
+            let _ = tx.send(outcome.clone());
             state.inflight.lock().await.remove(&key);
             outcome.map_err(|()| "refresh failed".to_string())
         }
@@ -205,17 +226,31 @@ async fn call_refresh(state: &GatewayState, refresh_token: &str) -> Result<Refre
         return Err(());
     }
     let body: serde_json::Value = resp.json().await.map_err(|_| ())?;
-    let access = body.get("accessToken").and_then(|v| v.as_str()).ok_or(())?.to_string();
-    let refresh = body.get("refreshToken").and_then(|v| v.as_str()).map(String::from);
+    let access = body
+        .get("accessToken")
+        .and_then(|v| v.as_str())
+        .ok_or(())?
+        .to_string();
+    let refresh = body
+        .get("refreshToken")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     // Decode the freshly issued access token for the actor claims (never trust
     // the body's user object for authorization data).
     let payload = mf_auth::verify_token(&access, &state.secret).map_err(|_| ())?;
-    Ok(Refreshed { access, refresh, payload })
+    Ok(Refreshed {
+        access,
+        refresh,
+        payload,
+    })
 }
 
 /// Access-JWT cookie TTL — must match the auth service (same env knob).
 pub fn access_ttl() -> i64 {
-    std::env::var("MF_ACCESS_TTL_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(15 * 60)
+    std::env::var("MF_ACCESS_TTL_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(15 * 60)
 }
 
 /// Refresh cookie TTL — must match the auth service.

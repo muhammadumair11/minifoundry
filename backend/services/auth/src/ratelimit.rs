@@ -29,7 +29,9 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Record one request for `token_id` and decide whether it fits the window.
     pub fn check(&self, token_id: &str, limit: i64) -> RateLimitResult {
@@ -87,7 +89,9 @@ mod tests {
     #[test]
     fn reset_clears_window() {
         let rl = RateLimiter::new();
-        for _ in 0..3 { rl.check("t3", 3); }
+        for _ in 0..3 {
+            rl.check("t3", 3);
+        }
         assert!(!rl.check("t3", 3).allowed);
         rl.reset("t3");
         assert!(rl.check("t3", 3).allowed);

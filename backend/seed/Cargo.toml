@@ -20,3 +20,4 @@ mf-db.workspace = true
 mf-auth.workspace = true
 mf-types.workspace = true
 sqlx.workspace = true
+reqwest.workspace = true

@@ -29,11 +29,26 @@ impl<'a> AuditOptions<'a> {
             detail: None,
         }
     }
-    pub fn actor_role(mut self, role: &'a str) -> Self { self.actor_role = Some(role); self }
-    pub fn actor_email(mut self, email: Option<&'a str>) -> Self { self.actor_email = Some(email); self }
-    pub fn resource_id(mut self, id: Option<&'a str>) -> Self { self.resource_id = id; self }
-    pub fn resource_name(mut self, name: Option<&'a str>) -> Self { self.resource_name = name; self }
-    pub fn detail(mut self, detail: Option<&'a str>) -> Self { self.detail = detail; self }
+    pub fn actor_role(mut self, role: &'a str) -> Self {
+        self.actor_role = Some(role);
+        self
+    }
+    pub fn actor_email(mut self, email: Option<&'a str>) -> Self {
+        self.actor_email = Some(email);
+        self
+    }
+    pub fn resource_id(mut self, id: Option<&'a str>) -> Self {
+        self.resource_id = id;
+        self
+    }
+    pub fn resource_name(mut self, name: Option<&'a str>) -> Self {
+        self.resource_name = name;
+        self
+    }
+    pub fn detail(mut self, detail: Option<&'a str>) -> Self {
+        self.detail = detail;
+        self
+    }
 }
 
 /// Never-throws audit emit (legacy `audit()` swallowed write failures).

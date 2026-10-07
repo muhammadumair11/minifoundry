@@ -1,5 +1,13 @@
 # MiniFoundry
 
+> **⚠️ Migration in progress (branch `feat/rust-microservices`)** — this app is
+> being ported to **Rust microservices (Axum) + PostgreSQL + NATS JetStream +
+> Docker Compose**, with the frontend becoming a **Vite + React + TanStack
+> Router SPA** (`frontend/`). The new backend workspace lives in `backend/`.
+> Live status, run instructions and the decision log: see **MIGRATION.md**.
+> The legacy Next.js app described below remains runnable from `main` (and
+> from this branch until the Phase 7 cutover).
+
 A learning-scale Palantir Foundry: ingest data, build versioned datasets,
 author SQL/Python/JavaScript transforms, orchestrate visual pipelines, model an
 Ontology with actions that write back, and explore lineage, quality, governance,

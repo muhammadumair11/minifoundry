@@ -18,7 +18,11 @@ use std::str::FromStr;
 ///
 /// `database_url` may already carry `options=-csearch_path%3D...`; when it
 /// does not, the schema is applied here. Connection errors fail fast at boot.
-pub async fn connect(database_url: &str, schema: &str, max_connections: u32) -> anyhow::Result<PgPool> {
+pub async fn connect(
+    database_url: &str,
+    schema: &str,
+    max_connections: u32,
+) -> anyhow::Result<PgPool> {
     let mut opts = PgConnectOptions::from_str(database_url)
         .map_err(|e| anyhow::anyhow!("invalid DATABASE_URL: {e}"))?;
     let existing_options = opts.get_options().unwrap_or("").to_string();
@@ -50,8 +54,14 @@ pub async fn connect_from_env(schema: &str) -> anyhow::Result<PgPool> {
 /// Apply a service's embedded migrations (`sqlx::migrate!()` from the service
 /// crate) idempotently. Safe under concurrent replicas: sqlx takes the
 /// advisory migration lock.
-pub async fn run_migrations(pool: &PgPool, migrator: &sqlx::migrate::Migrator) -> anyhow::Result<()> {
-    migrator.run(pool).await.map_err(|e| anyhow::anyhow!("migrations failed: {e}"))?;
+pub async fn run_migrations(
+    pool: &PgPool,
+    migrator: &sqlx::migrate::Migrator,
+) -> anyhow::Result<()> {
+    migrator
+        .run(pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("migrations failed: {e}"))?;
     Ok(())
 }
 

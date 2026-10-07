@@ -7,7 +7,12 @@ pub struct RouteRule {
     pub service: &'static str,
 }
 
-fn rule(prefixes: &[&'static str], env_var: &str, default: &str, service: &'static str) -> RouteRule {
+fn rule(
+    prefixes: &[&'static str],
+    env_var: &str,
+    default: &str,
+    service: &'static str,
+) -> RouteRule {
     RouteRule {
         prefixes: prefixes.to_vec(),
         base_url: std::env::var(env_var).unwrap_or_else(|_| default.to_string()),
@@ -17,27 +22,78 @@ fn rule(prefixes: &[&'static str], env_var: &str, default: &str, service: &'stat
 
 pub fn build_routes() -> Vec<RouteRule> {
     vec![
-        rule(&["/api/foundry/v1"], "PUBLIC_API_INTERNAL_URL", "http://public-api:8087", "public-api"),
-        rule(&["/api/auth", "/api/session", "/api/users", "/api/tokens"], "AUTH_INTERNAL_URL", "http://auth:8081", "auth"),
         rule(
-            &["/api/projects", "/api/datasets", "/api/connectors", "/api/ingest", "/api/ingestions", "/api/lineage", "/api/seed"],
-            "CATALOG_INTERNAL_URL", "http://catalog:8082", "catalog",
+            &["/api/foundry/v1"],
+            "PUBLIC_API_INTERNAL_URL",
+            "http://public-api:8087",
+            "public-api",
         ),
         rule(
-            &["/api/pipelines", "/api/runs", "/api/execution-jobs", "/api/schedules", "/api/health"],
-            "ORCHESTRATION_INTERNAL_URL", "http://orchestration:8083", "orchestration",
-        ),
-        rule(&["/api/transforms"], "COMPUTE_INTERNAL_URL", "http://compute:8084", "compute"),
-        rule(
-            &["/api/ontology", "/api/objects", "/api/actions", "/api/dashboards", "/api/applications"],
-            "ONTOLOGY_INTERNAL_URL", "http://ontology:8085", "ontology",
+            &["/api/auth", "/api/session", "/api/users", "/api/tokens"],
+            "AUTH_INTERNAL_URL",
+            "http://auth:8081",
+            "auth",
         ),
         rule(
             &[
-                "/api/markings", "/api/approvals", "/api/audit", "/api/acl", "/api/notifications",
-                "/api/curriculum", "/api/settings", "/api/governance", "/api/search", "/api/stats",
+                "/api/projects",
+                "/api/datasets",
+                "/api/connectors",
+                "/api/ingest",
+                "/api/ingestions",
+                "/api/lineage",
+                "/api/seed",
             ],
-            "GOVERNANCE_INTERNAL_URL", "http://governance:8086", "governance",
+            "CATALOG_INTERNAL_URL",
+            "http://catalog:8082",
+            "catalog",
+        ),
+        rule(
+            &[
+                "/api/pipelines",
+                "/api/runs",
+                "/api/execution-jobs",
+                "/api/schedules",
+                "/api/health",
+            ],
+            "ORCHESTRATION_INTERNAL_URL",
+            "http://orchestration:8083",
+            "orchestration",
+        ),
+        rule(
+            &["/api/transforms"],
+            "COMPUTE_INTERNAL_URL",
+            "http://compute:8084",
+            "compute",
+        ),
+        rule(
+            &[
+                "/api/ontology",
+                "/api/objects",
+                "/api/actions",
+                "/api/dashboards",
+                "/api/applications",
+            ],
+            "ONTOLOGY_INTERNAL_URL",
+            "http://ontology:8085",
+            "ontology",
+        ),
+        rule(
+            &[
+                "/api/markings",
+                "/api/approvals",
+                "/api/audit",
+                "/api/acl",
+                "/api/notifications",
+                "/api/curriculum",
+                "/api/settings",
+                "/api/governance",
+                "/api/search",
+                "/api/stats",
+            ],
+            "GOVERNANCE_INTERNAL_URL",
+            "http://governance:8086",
+            "governance",
         ),
     ]
 }
@@ -48,8 +104,10 @@ pub fn resolve<'a>(path: &str, routes: &'a [RouteRule]) -> Option<&'a RouteRule>
     for rule in routes {
         for prefix in &rule.prefixes {
             let matched = path == *prefix
-                || path.strip_prefix(prefix).map_or(false, |rest| rest.starts_with('/'));
-            if matched && best.map_or(true, |(_, len)| prefix.len() > len) {
+                || path
+                    .strip_prefix(prefix)
+                    .is_some_and(|rest| rest.starts_with('/'));
+            if matched && best.is_none_or(|(_, len)| prefix.len() > len) {
                 best = Some((rule, prefix.len()));
             }
         }
@@ -61,12 +119,20 @@ pub fn resolve<'a>(path: &str, routes: &'a [RouteRule]) -> Option<&'a RouteRule>
 /// shared mode (auth + session routes must stay open so users can sign in;
 /// /api/health is a liveness probe; /api/foundry/v1 validates its own bearer
 /// tokens).
-const ALLOWED_PREFIXES: [&str; 4] = ["/api/auth", "/api/session", "/api/health", "/api/foundry/v1"];
+const ALLOWED_PREFIXES: [&str; 4] = [
+    "/api/auth",
+    "/api/session",
+    "/api/health",
+    "/api/foundry/v1",
+];
 
 pub fn is_allowlisted(path: &str) -> bool {
-    ALLOWED_PREFIXES
-        .iter()
-        .any(|p| path == *p || path.strip_prefix(p).map_or(false, |rest| rest.starts_with('/')))
+    ALLOWED_PREFIXES.iter().any(|p| {
+        path == *p
+            || path
+                .strip_prefix(p)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
 }
 
 #[cfg(test)]

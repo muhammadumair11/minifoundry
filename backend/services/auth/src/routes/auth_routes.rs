@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::audit::{self, AuditOptions};
 use crate::cookies;
 use crate::routes::{as_object, get_cookie, parse_body, req_str_min1, with_cookies};
-use crate::state::{AppState, UserRow, serialize_auth_user};
+use crate::state::{serialize_auth_user, AppState, UserRow};
 use crate::tokens_common::issue_session_pair;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 
@@ -62,7 +62,10 @@ pub async fn login(
             .actor_email(Some(&updated.email))
             .resource_id(Some(&updated.id))
             .resource_name(Some(&updated.email))
-            .detail(Some(&format!("email={} role={}", updated.email, updated.role))),
+            .detail(Some(&format!(
+                "email={} role={}",
+                updated.email, updated.role
+            ))),
     )
     .await;
 

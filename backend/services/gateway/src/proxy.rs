@@ -30,16 +30,27 @@ const STRIP_RESPONSE_HEADERS: [&str; 4] = [
     "content-length",
 ];
 
-pub async fn forward(
-    state: &GatewayState,
-    base_url: &str,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-    actor_headers: Vec<(HeaderName, HeaderValue)>,
-    extra_set_cookies: Vec<String>,
-) -> Response {
+/// Everything needed to forward one client request to a domain service.
+pub struct ForwardRequest {
+    pub base_url: String,
+    pub method: Method,
+    pub uri: Uri,
+    pub headers: HeaderMap,
+    pub body: Bytes,
+    pub actor_headers: Vec<(HeaderName, HeaderValue)>,
+    pub extra_set_cookies: Vec<String>,
+}
+
+pub async fn forward(state: &GatewayState, req: ForwardRequest) -> Response {
+    let ForwardRequest {
+        base_url,
+        method,
+        uri,
+        headers,
+        body,
+        actor_headers,
+        extra_set_cookies,
+    } = req;
     let path_and_query = uri
         .path_and_query()
         .map(|pq| pq.as_str())
@@ -62,7 +73,6 @@ pub async fn forward(
     for (name, value) in actor_headers {
         fwd.append(name, value);
     }
-
     let result = state
         .http
         .request(method, &url)
@@ -120,7 +130,10 @@ pub async fn forward(
             }
             h.append(name.clone(), value.clone());
         }
-        h.insert(axum::http::header::CONTENT_LENGTH, HeaderValue::from(bytes.len()));
+        h.insert(
+            axum::http::header::CONTENT_LENGTH,
+            HeaderValue::from(bytes.len()),
+        );
         for cookie in &extra_set_cookies {
             if let Ok(v) = HeaderValue::from_str(cookie) {
                 h.append(axum::http::header::SET_COOKIE, v);

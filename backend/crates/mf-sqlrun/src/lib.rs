@@ -54,9 +54,19 @@ pub fn sanitize_table_name(name: &str) -> String {
     let out: String = name
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    if out.is_empty() { "table".into() } else { out }
+    if out.is_empty() {
+        "table".into()
+    } else {
+        out
+    }
 }
 
 /// Quote a SQL identifier (`"` → `""` inside the quotes).
@@ -108,7 +118,8 @@ pub fn execute_sql_isolated(
     let opts = options.unwrap_or_default();
     let statement = validate_statement(sql)?;
 
-    let conn = rusqlite::Connection::open_in_memory().map_err(|e| SqlError::Engine(e.to_string()))?;
+    let conn =
+        rusqlite::Connection::open_in_memory().map_err(|e| SqlError::Engine(e.to_string()))?;
     for input in inputs {
         if input.columns.is_empty() {
             continue;
@@ -118,47 +129,78 @@ pub fn execute_sql_isolated(
             .iter()
             .map(|c| format!("{} TEXT", quote_ident(c)))
             .collect();
-        let create = format!("CREATE TABLE {} ({})", quote_ident(&input.name), col_defs.join(", "));
-        conn.execute_batch(&create).map_err(|e| SqlError::Engine(e.to_string()))?;
+        let create = format!(
+            "CREATE TABLE {} ({})",
+            quote_ident(&input.name),
+            col_defs.join(", ")
+        );
+        conn.execute_batch(&create)
+            .map_err(|e| SqlError::Engine(e.to_string()))?;
         if input.rows.is_empty() {
             continue;
         }
         let placeholders = vec!["?"; input.columns.len()].join(", ");
-        let insert = format!("INSERT INTO {} VALUES ({})", quote_ident(&input.name), placeholders);
-        let mut stmt = conn.prepare(&insert).map_err(|e| SqlError::Engine(e.to_string()))?;
+        let insert = format!(
+            "INSERT INTO {} VALUES ({})",
+            quote_ident(&input.name),
+            placeholders
+        );
+        let mut stmt = conn
+            .prepare(&insert)
+            .map_err(|e| SqlError::Engine(e.to_string()))?;
         for row in &input.rows {
             let values: Vec<Option<String>> = input
                 .columns
                 .iter()
                 .map(|c| row.get(c).map(to_text_param).unwrap_or(None))
                 .collect();
-            let params: Vec<&dyn rusqlite::ToSql> = values
-                .iter()
-                .map(|v| v as &dyn rusqlite::ToSql)
-                .collect();
-            stmt.execute(params.as_slice()).map_err(|e| SqlError::Engine(e.to_string()))?;
+            let params: Vec<&dyn rusqlite::ToSql> =
+                values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+            stmt.execute(params.as_slice())
+                .map_err(|e| SqlError::Engine(e.to_string()))?;
         }
     }
 
-    let mut stmt = conn.prepare(&statement).map_err(|e| SqlError::Engine(e.to_string()))?;
+    let mut stmt = conn
+        .prepare(&statement)
+        .map_err(|e| SqlError::Engine(e.to_string()))?;
     let col_count = stmt.column_count();
-    let col_names: Vec<String> = (0..col_count).map(|i| stmt.column_name(i).unwrap_or("?").to_string()).collect();
+    let col_names: Vec<String> = (0..col_count)
+        .map(|i| stmt.column_name(i).unwrap_or("?").to_string())
+        .collect();
     let raw = stmt
         .query_map([], |r| {
             let mut out = Vec::with_capacity(col_count);
-            for i in 0..col_count {
+            for (i, name) in col_names.iter().enumerate() {
+                // Legacy cell mapping (isolated-runner.ts lines 78-84):
+                //   v == null ? null
+                //     : typeof v === 'number' || typeof v === 'boolean' ? v
+                //     : String(v)
+                // node:sqlite hands back number for INTEGER/REAL, string for
+                // TEXT, Uint8Array for BLOB (String(Uint8Array) = comma-joined
+                // decimal bytes in JS). JS numbers have no int/float split —
+                // whole REALs must serialize as `3`, not `3.0`.
                 let v = match r.get_ref(i)? {
                     rusqlite::types::ValueRef::Null => Value::Null,
                     rusqlite::types::ValueRef::Integer(n) => Value::Number(n.into()),
                     rusqlite::types::ValueRef::Real(f) => {
-                        serde_json::Number::from_f64(f).map(Value::Number).unwrap_or(Value::Null)
+                        if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                            Value::Number((f as i64).into())
+                        } else {
+                            serde_json::Number::from_f64(f)
+                                .map(Value::Number)
+                                .unwrap_or(Value::Null)
+                        }
                     }
                     rusqlite::types::ValueRef::Text(t) => {
                         Value::String(String::from_utf8_lossy(t).into_owned())
                     }
-                    rusqlite::types::ValueRef::Blob(_) => Value::String("(blob)".into()),
+                    rusqlite::types::ValueRef::Blob(b) => {
+                        let joined: Vec<String> = b.iter().map(|byte| byte.to_string()).collect();
+                        Value::String(joined.join(","))
+                    }
                 };
-                out.push((col_names[i].clone(), v));
+                out.push((name.clone(), v));
             }
             Ok(out)
         })
@@ -173,7 +215,10 @@ pub fn execute_sql_isolated(
         }
         rows.push(row);
         if rows.len() > opts.max_rows {
-            return Err(SqlError::RowLimit { rows: rows.len(), limit: opts.max_rows });
+            return Err(SqlError::RowLimit {
+                rows: rows.len(),
+                limit: opts.max_rows,
+            });
         }
     }
     Ok(rows)
@@ -204,10 +249,22 @@ mod tests {
         assert!(validate_statement("SELECT 1").is_ok());
         assert!(validate_statement("  select * from t;  ").is_ok());
         assert!(validate_statement("WITH x AS (SELECT 1) SELECT * FROM x").is_ok());
-        assert!(matches!(validate_statement("UPDATE t SET a=1"), Err(SqlError::NotSelect)));
-        assert!(matches!(validate_statement("DELETE FROM t"), Err(SqlError::NotSelect)));
-        assert!(matches!(validate_statement("SELECT 1; DROP TABLE t"), Err(SqlError::MultipleStatements)));
-        assert!(matches!(validate_statement("selectx 1"), Err(SqlError::NotSelect)));
+        assert!(matches!(
+            validate_statement("UPDATE t SET a=1"),
+            Err(SqlError::NotSelect)
+        ));
+        assert!(matches!(
+            validate_statement("DELETE FROM t"),
+            Err(SqlError::NotSelect)
+        ));
+        assert!(matches!(
+            validate_statement("SELECT 1; DROP TABLE t"),
+            Err(SqlError::MultipleStatements)
+        ));
+        assert!(matches!(
+            validate_statement("selectx 1"),
+            Err(SqlError::NotSelect)
+        ));
     }
 
     #[test]
@@ -221,7 +278,9 @@ mod tests {
     #[test]
     fn executes_select_over_materialized_inputs() {
         let inputs = vec![table(&[("1", "berlin"), ("2", "paris")])];
-        let rows = execute_sql_isolated("SELECT id, city FROM shipments ORDER BY id", &inputs, None).unwrap();
+        let rows =
+            execute_sql_isolated("SELECT id, city FROM shipments ORDER BY id", &inputs, None)
+                .unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].get("city").unwrap(), "berlin");
     }

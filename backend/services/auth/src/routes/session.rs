@@ -18,12 +18,19 @@ const ROLES: &[&str] = &["viewer", "editor", "admin"];
 /// GET /api/session — current governance role + real session identity.
 /// `role` is the EFFECTIVE role (gateway-resolved, simulator-aware);
 /// `session` is null for simulator/anonymous callers.
-pub async fn get_session(State(_state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+pub async fn get_session(
+    State(_state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     let session = match (&actor.uid, &actor.email) {
         (Some(_), Some(email)) => {
-            let real_role = actor.real_role.clone().unwrap_or_else(|| actor.role.clone());
-            let impersonating = actor.real_role.is_some() && actor.real_role.as_deref() != Some(&actor.role);
+            let real_role = actor
+                .real_role
+                .clone()
+                .unwrap_or_else(|| actor.role.clone());
+            let impersonating =
+                actor.real_role.is_some() && actor.real_role.as_deref() != Some(&actor.role);
             serde_json::json!({
                 "email": email,
                 "name": actor.name,
@@ -34,7 +41,9 @@ pub async fn get_session(State(_state): State<AppState>, headers: HeaderMap) -> 
         }
         _ => serde_json::Value::Null,
     };
-    Ok(json_ok(serde_json::json!({ "role": actor.role, "session": session })))
+    Ok(json_ok(
+        serde_json::json!({ "role": actor.role, "session": session }),
+    ))
 }
 
 /// POST /api/session/role — switch the active governance role.
@@ -54,7 +63,10 @@ pub async fn set_role(
 
     if actor.uid.is_some() {
         // Real session: true admins only (an impersonating admin may restore).
-        let real_role = actor.real_role.clone().unwrap_or_else(|| actor.role.clone());
+        let real_role = actor
+            .real_role
+            .clone()
+            .unwrap_or_else(|| actor.role.clone());
         if real_role != "admin" {
             return Err(ApiError::forbidden("only admin users can switch roles"));
         }
@@ -84,20 +96,27 @@ pub async fn set_role(
             if let Some(rt) = crate::routes::get_cookie(&headers, mf_auth::REFRESH_COOKIE) {
                 use sha2::{Digest, Sha256};
                 let hash = hex::encode(Sha256::digest(rt.as_bytes()));
-                let overrideOrNull: Option<&str> =
-                    if target == real_role { None } else { Some(target) };
+                let override_or_null: Option<&str> = if target == real_role {
+                    None
+                } else {
+                    Some(target)
+                };
                 let _ = sqlx::query(
                     "UPDATE refresh_tokens SET impersonated_role = $1 \
                      WHERE token_hash = $2 AND revoked_at IS NULL",
                 )
-                .bind(overrideOrNull)
+                .bind(override_or_null)
                 .bind(&hash)
                 .execute(&state.db)
                 .await;
             }
         }
         // Legacy cookie follows the EFFECTIVE role so JS-readable state agrees.
-        specs.push(cookies::role_cookie(target.to_string(), state.cookie_secure, refresh_ttl()));
+        specs.push(cookies::role_cookie(
+            target.to_string(),
+            state.cookie_secure,
+            refresh_ttl(),
+        ));
 
         let impersonated = if target != real_role { "yes" } else { "no" };
         let detail = format!("role={target} impersonated={impersonated}");

@@ -12,7 +12,7 @@ use sqlx::QueryBuilder;
 
 use crate::audit::{self, AuditOptions};
 use crate::routes::{as_object, opt_int, parse_body, parse_body_or_empty, req_str};
-use crate::state::{AppState, RequestLogRow, TokenRow, serialize_token};
+use crate::state::{serialize_token, AppState, RequestLogRow, TokenRow};
 
 const TOKEN_COLS: &str =
     "id, name, token_hash, prefix, request_count, last_used_at, revoked_at, created_at";
@@ -23,10 +23,11 @@ pub async fn list_tokens(State(state): State<AppState>, headers: HeaderMap) -> A
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let tokens: Vec<TokenRow> =
-        sqlx::query_as(&format!("SELECT {TOKEN_COLS} FROM api_tokens ORDER BY created_at DESC"))
-            .fetch_all(&state.db)
-            .await?;
+    let tokens: Vec<TokenRow> = sqlx::query_as(&format!(
+        "SELECT {TOKEN_COLS} FROM api_tokens ORDER BY created_at DESC"
+    ))
+    .fetch_all(&state.db)
+    .await?;
     let out: Vec<serde_json::Value> = tokens.iter().map(serialize_token).collect();
     Ok(json_ok(serde_json::json!({ "tokens": out })))
 }
@@ -45,10 +46,14 @@ pub async fn create_token(
     let m = as_object(v)?;
     let name = req_str(&m, "name")?;
     if name.is_empty() {
-        return Err(ApiError::bad_request("name: Too small: expected string to have >=1 chars"));
+        return Err(ApiError::bad_request(
+            "name: Too small: expected string to have >=1 chars",
+        ));
     }
     if name.chars().count() > 64 {
-        return Err(ApiError::bad_request("name: Too large: expected string to have <=64 chars"));
+        return Err(ApiError::bad_request(
+            "name: Too large: expected string to have <=64 chars",
+        ));
     }
 
     let secret = mf_auth::generate_api_secret();
@@ -81,7 +86,10 @@ pub async fn create_token(
         AuditOptions::new("apiToken.create", "apiToken")
             .resource_id(Some(&token.id))
             .resource_name(Some(&token.name))
-            .detail(Some(&format!("name={} prefix={}", token.name, token.prefix))),
+            .detail(Some(&format!(
+                "name={} prefix={}",
+                token.name, token.prefix
+            ))),
     )
     .await;
 
@@ -105,11 +113,12 @@ pub async fn revoke_token(
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let token: Option<TokenRow> =
-        sqlx::query_as(&format!("SELECT {TOKEN_COLS} FROM api_tokens WHERE id = $1"))
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await?;
+    let token: Option<TokenRow> = sqlx::query_as(&format!(
+        "SELECT {TOKEN_COLS} FROM api_tokens WHERE id = $1"
+    ))
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(token) = token else {
         return Err(ApiError::not_found(format!("API token '{id}' not found")));
     };
@@ -126,7 +135,10 @@ pub async fn revoke_token(
             AuditOptions::new("apiToken.revoke", "apiToken")
                 .resource_id(Some(&token.id))
                 .resource_name(Some(&token.name))
-                .detail(Some(&format!("name={} prefix={}", token.name, token.prefix))),
+                .detail(Some(&format!(
+                    "name={} prefix={}",
+                    token.name, token.prefix
+                ))),
         )
         .await;
     }
@@ -167,8 +179,8 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     let first_bucket_ms = (now_ms / HOUR_MS) * HOUR_MS - (USAGE_WINDOW_HOURS - 1) * HOUR_MS;
     let mut buckets: Vec<(String, i64, i64)> = (0..USAGE_WINDOW_HOURS)
         .map(|i| {
-            let bucket = DateTime::from_timestamp_millis(first_bucket_ms + i * HOUR_MS)
-                .unwrap_or(now);
+            let bucket =
+                DateTime::from_timestamp_millis(first_bucket_ms + i * HOUR_MS).unwrap_or(now);
             (hour_iso(bucket), 0, 0)
         })
         .collect();
@@ -182,9 +194,15 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
         let status = row.status;
         let is_ok = (200..300).contains(&status);
         let is_error = status >= 400;
-        if is_ok { ok += 1 }
-        if is_error { errors += 1 }
-        if status == 429 { limited += 1 }
+        if is_ok {
+            ok += 1
+        }
+        if is_error {
+            errors += 1
+        }
+        if status == 429 {
+            limited += 1
+        }
         duration_sum += row.duration_ms as i64;
 
         let created_ms = row.created_at.timestamp_millis();
@@ -214,10 +232,12 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     let tokens: Vec<TokenRow> = if token_ids.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as(&format!("SELECT {TOKEN_COLS} FROM api_tokens WHERE id = ANY($1)"))
-            .bind(&token_ids)
-            .fetch_all(&state.db)
-            .await?
+        sqlx::query_as(&format!(
+            "SELECT {TOKEN_COLS} FROM api_tokens WHERE id = ANY($1)"
+        ))
+        .bind(&token_ids)
+        .fetch_all(&state.db)
+        .await?
     };
 
     let mut token_rows: Vec<serde_json::Value> = by_token
@@ -236,8 +256,16 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
         })
         .collect();
     token_rows.sort_by(|a, b| {
-        b["count"].as_i64().unwrap().cmp(&a["count"].as_i64().unwrap())
-            .then_with(|| b["lastSeen"].as_str().unwrap().cmp(a["lastSeen"].as_str().unwrap()))
+        b["count"]
+            .as_i64()
+            .unwrap()
+            .cmp(&a["count"].as_i64().unwrap())
+            .then_with(|| {
+                b["lastSeen"]
+                    .as_str()
+                    .unwrap()
+                    .cmp(a["lastSeen"].as_str().unwrap())
+            })
     });
 
     let mut route_rows: Vec<serde_json::Value> = by_route
@@ -245,13 +273,21 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
         .map(|(route, count)| serde_json::json!({ "route": route, "count": count }))
         .collect();
     route_rows.sort_by(|a, b| {
-        b["count"].as_i64().unwrap().cmp(&a["count"].as_i64().unwrap())
-            .then_with(|| a["route"].as_str().unwrap().cmp(b["route"].as_str().unwrap()))
+        b["count"]
+            .as_i64()
+            .unwrap()
+            .cmp(&a["count"].as_i64().unwrap())
+            .then_with(|| {
+                a["route"]
+                    .as_str()
+                    .unwrap()
+                    .cmp(b["route"].as_str().unwrap())
+            })
     });
     route_rows.truncate(TOP_ROUTES);
 
     let mut error_rows: Vec<&RequestLogRow> = rows.iter().filter(|r| r.status >= 400).collect();
-    error_rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    error_rows.sort_by_key(|r| std::cmp::Reverse(r.created_at));
     let recent_errors: Vec<serde_json::Value> = error_rows
         .iter()
         .take(RECENT_ERRORS)
@@ -291,9 +327,10 @@ pub async fn clear_usage(State(state): State<AppState>, headers: HeaderMap) -> A
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM (DELETE FROM api_request_logs RETURNING id) d")
-        .fetch_one(&state.db)
-        .await?;
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM (DELETE FROM api_request_logs RETURNING id) d")
+            .fetch_one(&state.db)
+            .await?;
     audit::audit(
         &state,
         &actor,
@@ -319,7 +356,15 @@ const ROUTE_MIX: [(&str, f64); 7] = [
 /// ~96% 200, ~2% 404, ~1% 403, ~1% 429 (401 is never logged by the v1 guard).
 fn pick_status(rng: &mut impl Rng) -> i32 {
     let r: f64 = rng.gen();
-    if r < 0.96 { 200 } else if r < 0.98 { 404 } else if r < 0.99 { 403 } else { 429 }
+    if r < 0.96 {
+        200
+    } else if r < 0.98 {
+        404
+    } else if r < 0.99 {
+        403
+    } else {
+        429
+    }
 }
 
 /// 5–120ms, lognormal-ish (median ≈ 25ms).
@@ -369,7 +414,9 @@ pub async fn seed_usage(
             .fetch_one(&state.db)
             .await?;
     if recent > 20 || future > 0 {
-        return Err(ApiError::bad_request("usage data already exists — clear it first"));
+        return Err(ApiError::bad_request(
+            "usage data already exists — clear it first",
+        ));
     }
 
     let token: Option<TokenRow> = sqlx::query_as(&format!(
@@ -378,7 +425,9 @@ pub async fn seed_usage(
     .fetch_optional(&state.db)
     .await?;
     let Some(token) = token else {
-        return Err(ApiError::bad_request("no active API token found — create one first"));
+        return Err(ApiError::bad_request(
+            "no active API token found — create one first",
+        ));
     };
 
     // Exactly `hours` full-hour buckets ending at the current hour boundary;
@@ -402,7 +451,11 @@ pub async fn seed_usage(
         let bucket_dt = DateTime::from_timestamp_millis(bucket_start).unwrap_or(now);
         // Smooth diurnal-ish wave (peak ~14:00 UTC, trough ~02:00) + jitter,
         // clamped to the 3–20 requests/hour band.
-        let hour_of_day = bucket_dt.format("%H").to_string().parse::<f64>().unwrap_or(0.0);
+        let hour_of_day = bucket_dt
+            .format("%H")
+            .to_string()
+            .parse::<f64>()
+            .unwrap_or(0.0);
         let wave = (((hour_of_day - 14.0) / 24.0) * std::f64::consts::TAU).cos();
         let jitter: f64 = rng.gen::<f64>() * 3.0 - 1.5;
         let count = ((11.5 + 8.5 * wave + jitter).round() as i64).clamp(3, 20);
@@ -421,8 +474,9 @@ pub async fn seed_usage(
     }
     let total = rows.len() as i64;
 
-    let mut qb: QueryBuilder<sqlx::Postgres> =
-        QueryBuilder::new("INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, created_at) ");
+    let mut qb: QueryBuilder<sqlx::Postgres> = QueryBuilder::new(
+        "INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, created_at) ",
+    );
     qb.push_values(rows.iter(), |mut b, row| {
         b.push_bind(&row.id)
             .push_bind(&token.id)
@@ -434,7 +488,10 @@ pub async fn seed_usage(
 
     // rows is never empty (hours >= 6, count >= 3), so the VALUES list is valid.
     let query = qb.build();
-    query.execute(&state.db).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    query
+        .execute(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
 
     audit::audit(
         &state,

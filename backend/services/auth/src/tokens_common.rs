@@ -2,14 +2,17 @@
 
 use crate::cookies::{self, CookieSpec};
 use crate::state::{AppState, UserRow};
-use mf_auth::{SessionPayload, build_session, sign_token};
+use mf_auth::{build_session, sign_token, SessionPayload};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 
 /// Access-JWT lifetime (legacy session TTL was 7d; short access + rotating
 /// refresh preserves the UX while bounding stolen-token exposure).
 pub fn access_ttl() -> i64 {
-    std::env::var("MF_ACCESS_TTL_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(15 * 60)
+    std::env::var("MF_ACCESS_TTL_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(15 * 60)
 }
 
 /// Refresh-token lifetime — matches the legacy 7-day session TTL.
@@ -19,10 +22,6 @@ pub fn refresh_ttl() -> i64 {
         .and_then(|v| v.parse().ok())
         .unwrap_or(mf_auth::SESSION_TTL_SECONDS)
 }
-
-// Legacy aliases used by route code.
-pub fn ACCESS_TTL() -> i64 { access_ttl() }
-pub fn REFRESH_TTL() -> i64 { refresh_ttl() }
 
 /// Generate a refresh token: (plaintext 64-hex, sha256 hash).
 pub fn new_refresh_token() -> (String, String) {

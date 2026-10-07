@@ -147,11 +147,17 @@ impl RuntimeMode {
             .ok()
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty());
-        Self { demo, service_token }
+        Self {
+            demo,
+            service_token,
+        }
     }
 
     pub fn from_parts(demo: bool, service_token: Option<String>) -> Self {
-        Self { demo, service_token }
+        Self {
+            demo,
+            service_token,
+        }
     }
 
     /// Constant-time service-token check. False when no token is configured
@@ -160,7 +166,9 @@ impl RuntimeMode {
         let Some(configured) = self.service_token.as_deref() else {
             return false;
         };
-        let Some(provided) = provided else { return false };
+        let Some(provided) = provided else {
+            return false;
+        };
         let provided = provided.trim();
         if provided.len() != configured.len() {
             return false;
@@ -169,7 +177,11 @@ impl RuntimeMode {
     }
 
     pub fn mode_label(&self) -> &'static str {
-        if self.demo { "demo" } else { "shared" }
+        if self.demo {
+            "demo"
+        } else {
+            "shared"
+        }
     }
 }
 
@@ -217,8 +229,12 @@ pub enum TokenError {
 /// Sign an HS256 access token for `payload` (exp honored as given).
 pub fn sign_token(payload: &SessionPayload, secret: &str) -> Result<String, TokenError> {
     let key = jsonwebtoken::EncodingKey::from_secret(secret.as_bytes());
-    jsonwebtoken::encode(&jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256), payload, &key)
-        .map_err(|_| TokenError::Invalid)
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        payload,
+        &key,
+    )
+    .map_err(|_| TokenError::Invalid)
 }
 
 /// Verify signature + expiry and return the payload.
@@ -230,10 +246,12 @@ pub fn verify_token(token: &str, secret: &str) -> Result<SessionPayload, TokenEr
         .into_iter()
         .map(String::from)
         .collect();
-    let data = jsonwebtoken::decode::<SessionPayload>(token, &key, &validation)
-        .map_err(|e| match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => TokenError::Expired,
-            _ => TokenError::Invalid,
+    let data =
+        jsonwebtoken::decode::<SessionPayload>(token, &key, &validation).map_err(|e| {
+            match e.kind() {
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => TokenError::Expired,
+                _ => TokenError::Invalid,
+            }
         })?;
     Ok(data.claims)
 }
@@ -270,7 +288,11 @@ pub fn hash_password(password: &str) -> Result<String, String> {
     let params = scrypt::Params::new(14, 8, 1, 64).map_err(|e| e.to_string())?;
     let mut hash = [0u8; 64];
     scrypt::scrypt(password.as_bytes(), &salt, &params, &mut hash).map_err(|e| e.to_string())?;
-    Ok(format!("scrypt:{}:{}", hex::encode(salt), hex::encode(hash)))
+    Ok(format!(
+        "scrypt:{}:{}",
+        hex::encode(salt),
+        hex::encode(hash)
+    ))
 }
 
 /// Constant-time verify against a stored `scrypt:<saltHex>:<hashHex>` string.
@@ -402,7 +424,10 @@ mod tests {
         // must be tested beyond it.
         let s = build_session("u1", "a@b.c", "A", "viewer", None, -120);
         let token = sign_token(&s, secret).unwrap();
-        assert!(matches!(verify_token(&token, secret), Err(TokenError::Expired)));
+        assert!(matches!(
+            verify_token(&token, secret),
+            Err(TokenError::Expired)
+        ));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Route modules + request helpers shared by the auth service.
 
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::{header, HeaderMap, HeaderValue};
 use axum::response::Response;
 use mf_web::ApiError;
 use serde_json::{Map, Value};
@@ -39,7 +39,8 @@ pub fn with_cookies(mut resp: Response, cookies: Vec<crate::cookies::CookieSpec>
 
 /// Parse a required JSON body. Non-JSON → 400 'Request body must be valid JSON'.
 pub fn parse_body(bytes: &[u8]) -> Result<Value, ApiError> {
-    serde_json::from_slice(bytes).map_err(|_| ApiError::bad_request("Request body must be valid JSON"))
+    serde_json::from_slice(bytes)
+        .map_err(|_| ApiError::bad_request("Request body must be valid JSON"))
 }
 
 /// Parse an OPTIONAL JSON body (empty/absent → `{}`), like the usage-seed and
@@ -56,7 +57,9 @@ pub fn parse_body_or_empty(bytes: &[u8]) -> Result<Value, ApiError> {
 pub fn as_object(v: Value) -> Result<Map<String, Value>, ApiError> {
     match v {
         Value::Object(m) => Ok(m),
-        _ => Err(ApiError::bad_request("body: Invalid input: expected object")),
+        _ => Err(ApiError::bad_request(
+            "body: Invalid input: expected object",
+        )),
     }
 }
 
@@ -87,20 +90,32 @@ pub fn req_str_min1<'a>(m: &'a Map<String, Value>, field: &str) -> Result<&'a st
 }
 
 /// Required enum string (zod `z.enum([...])`).
-pub fn req_enum<'a>(m: &'a Map<String, Value>, field: &str, options: &[&str]) -> Result<&'a str, ApiError> {
+pub fn req_enum<'a>(
+    m: &'a Map<String, Value>,
+    field: &str,
+    options: &[&str],
+) -> Result<&'a str, ApiError> {
     let s = req_str(m, field)?;
     if options.contains(&s) {
         Ok(s)
     } else {
         Err(ApiError::bad_request(format!(
             "{field}: Invalid option: expected one of {}",
-            options.iter().map(|o| format!("\"{o}\"")).collect::<Vec<_>>().join("|")
+            options
+                .iter()
+                .map(|o| format!("\"{o}\""))
+                .collect::<Vec<_>>()
+                .join("|")
         )))
     }
 }
 
 /// Optional enum string.
-pub fn opt_enum<'a>(m: &'a Map<String, Value>, field: &str, options: &[&str]) -> Result<Option<&'a str>, ApiError> {
+pub fn opt_enum<'a>(
+    m: &'a Map<String, Value>,
+    field: &str,
+    options: &[&str],
+) -> Result<Option<&'a str>, ApiError> {
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(_) => req_enum(m, field, options).map(Some),
@@ -123,9 +138,10 @@ pub fn opt_bool(m: &Map<String, Value>, field: &str) -> Result<Option<bool>, Api
 pub fn opt_int(m: &Map<String, Value>, field: &str) -> Result<Option<i64>, ApiError> {
     match m.get(field) {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Number(n)) => n.as_i64().map(Some).ok_or_else(|| {
-            ApiError::bad_request(format!("{field}: Invalid input: expected int"))
-        }),
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| ApiError::bad_request(format!("{field}: Invalid input: expected int"))),
         Some(other) => Err(ApiError::bad_request(format!(
             "{field}: Invalid input: expected number, received {}",
             kind_of(other)

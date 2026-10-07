@@ -38,6 +38,8 @@ pub struct UserRow {
 pub struct TokenRow {
     pub id: String,
     pub name: String,
+    /// Selected for completeness; never exposed by any serializer.
+    #[allow(dead_code)]
     pub token_hash: String,
     pub prefix: String,
     pub request_count: i32,
@@ -60,6 +62,8 @@ pub struct RequestLogRow {
 pub struct RefreshRow {
     pub id: String,
     pub user_id: String,
+    /// Lookup key; kept on the row for auditability, never serialized.
+    #[allow(dead_code)]
     pub token_hash: String,
     pub impersonated_role: Option<String>,
     pub expires_at: DateTime<Utc>,

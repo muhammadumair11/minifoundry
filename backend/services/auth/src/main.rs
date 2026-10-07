@@ -61,7 +61,10 @@ async fn main() -> anyhow::Result<()> {
         // user + token management
         .route("/api/users", get(routes::users::list_users))
         .route("/api/users/{id}", patch(routes::users::update_user))
-        .route("/api/tokens", get(routes::tokens::list_tokens).post(routes::tokens::create_token))
+        .route(
+            "/api/tokens",
+            get(routes::tokens::list_tokens).post(routes::tokens::create_token),
+        )
         .route("/api/tokens/{id}", delete(routes::tokens::revoke_token))
         .route(
             "/api/tokens/usage",
@@ -70,8 +73,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/tokens/usage/seed", post(routes::tokens::seed_usage))
         // internal (service-token guarded; never routed by the gateway)
         .route("/internal/auth/refresh", post(routes::internal::refresh))
-        .route("/internal/tokens/verify", post(routes::internal::verify_token))
-        .route("/internal/tokens/rate-limit", post(routes::internal::rate_limit))
+        .route(
+            "/internal/tokens/verify",
+            post(routes::internal::verify_token),
+        )
+        .route(
+            "/internal/tokens/rate-limit",
+            post(routes::internal::rate_limit),
+        )
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

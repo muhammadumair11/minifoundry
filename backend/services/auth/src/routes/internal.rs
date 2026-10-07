@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::ratelimit::TOKEN_RATE_LIMIT;
 use crate::routes::{as_object, parse_body, req_str};
-use crate::state::{AppState, RefreshRow, TokenRow, UserRow, serialize_auth_user};
+use crate::state::{serialize_auth_user, AppState, RefreshRow, TokenRow, UserRow};
 use crate::tokens_common::{build_access_token, new_refresh_token, refresh_ttl};
 
 /// Internal endpoints require the shared service token (both runtime modes);
@@ -33,7 +33,8 @@ pub fn require_service(state: &AppState, headers: &HeaderMap) -> Result<(), ApiE
 const REFRESH_GRACE_SECONDS: i64 = 30;
 
 const REFRESH_COLS: &str = "id, user_id, token_hash, impersonated_role, expires_at, revoked_at";
-const USER_COLS: &str = "id, email, name, role, password_hash, is_active, last_login_at, created_at";
+const USER_COLS: &str =
+    "id, email, name, role, password_hash, is_active, last_login_at, created_at";
 
 /// POST /internal/auth/refresh — rotate a refresh token, return a new access
 /// JWT (+ new refresh plaintext when rotated). Called by the gateway.
@@ -49,11 +50,12 @@ pub async fn refresh(
     let token = req_str(&m, "refreshToken")?;
     let hash = hex::encode(Sha256::digest(token.as_bytes()));
 
-    let row: Option<RefreshRow> =
-        sqlx::query_as(&format!("SELECT {REFRESH_COLS} FROM refresh_tokens WHERE token_hash = $1"))
-            .bind(&hash)
-            .fetch_optional(&state.db)
-            .await?;
+    let row: Option<RefreshRow> = sqlx::query_as(&format!(
+        "SELECT {REFRESH_COLS} FROM refresh_tokens WHERE token_hash = $1"
+    ))
+    .bind(&hash)
+    .fetch_optional(&state.db)
+    .await?;
     let Some(row) = row else {
         return Err(ApiError::unauthorized("invalid or expired refresh token"));
     };
@@ -71,8 +73,7 @@ pub async fn refresh(
         // Recently rotated (concurrent gateways): issue an access token only,
         // keep the winner's refresh cookie in place.
         if Utc::now() - revoked_at <= chrono::Duration::seconds(REFRESH_GRACE_SECONDS) {
-            let (_p, access) =
-                build_access_token(&state, &user, row.impersonated_role.as_deref())?;
+            let (_p, access) = build_access_token(&state, &user, row.impersonated_role.as_deref())?;
             return Ok(json_ok(serde_json::json!({
                 "accessToken": access,
                 "user": serialize_auth_user(&user),

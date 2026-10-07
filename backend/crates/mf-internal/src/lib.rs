@@ -34,8 +34,8 @@ impl ServiceClient {
     /// Build from an env var holding the service base URL
     /// (e.g. `CATALOG_INTERNAL_URL`, default `http://catalog:8082`).
     pub fn from_env(service: &'static str, env_var: &str, default_port: u16) -> Self {
-        let base_url = std::env::var(env_var)
-            .unwrap_or_else(|_| format!("http://{service}:{default_port}"));
+        let base_url =
+            std::env::var(env_var).unwrap_or_else(|_| format!("http://{service}:{default_port}"));
         let service_token = std::env::var("MF_SERVICE_TOKEN")
             .ok()
             .map(|t| t.trim().to_string())
@@ -49,11 +49,24 @@ impl ServiceClient {
             .connect_timeout(Duration::from_secs(5))
             .build()
             .expect("reqwest client");
-        Self { http, base_url: base_url.trim_end_matches('/').to_string(), service_token, service }
+        Self {
+            http,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            service_token,
+            service,
+        }
     }
 
     fn url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url, if path.starts_with('/') { path.to_string() } else { format!("/{path}") })
+        format!(
+            "{}{}",
+            self.base_url,
+            if path.starts_with('/') {
+                path.to_string()
+            } else {
+                format!("/{path}")
+            }
+        )
     }
 
     fn authed(&self, rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -115,10 +128,16 @@ impl ServiceClient {
             if status == 204 {
                 // No body — deserialize from "null" only for Option-ish T.
                 return serde_json::from_value(serde_json::Value::Null).map_err(|e| {
-                    InternalError::Api { status, message: format!("empty response decode: {e}") }
+                    InternalError::Api {
+                        status,
+                        message: format!("empty response decode: {e}"),
+                    }
                 });
             }
-            return resp.json::<T>().await.map_err(|e| InternalError::Transport(e.to_string()));
+            return resp
+                .json::<T>()
+                .await
+                .map_err(|e| InternalError::Transport(e.to_string()));
         }
         let message = Self::error_message(resp).await;
         Err(InternalError::Api { status, message })
@@ -129,7 +148,13 @@ impl ServiceClient {
         serde_json::from_str::<serde_json::Value>(&text)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
-            .unwrap_or_else(|| if text.is_empty() { "internal call failed".into() } else { text })
+            .unwrap_or_else(|| {
+                if text.is_empty() {
+                    "internal call failed".into()
+                } else {
+                    text
+                }
+            })
     }
 }
 
@@ -153,7 +178,10 @@ pub mod mf_web_types {
     impl From<InternalError> for ApiErrorLike {
         fn from(e: InternalError) -> Self {
             match e {
-                InternalError::Transport(m) => ApiErrorLike { status: 502, message: m },
+                InternalError::Transport(m) => ApiErrorLike {
+                    status: 502,
+                    message: m,
+                },
                 InternalError::Api { status, message } => ApiErrorLike { status, message },
             }
         }
@@ -173,8 +201,11 @@ mod tests {
 
     #[test]
     fn error_mapping() {
-        let e: mf_web_types::ApiErrorLike =
-            InternalError::Api { status: 404, message: "nope".into() }.into();
+        let e: mf_web_types::ApiErrorLike = InternalError::Api {
+            status: 404,
+            message: "nope".into(),
+        }
+        .into();
         assert_eq!(e.status, 404);
         let e: mf_web_types::ApiErrorLike = InternalError::Transport("down".into()).into();
         assert_eq!(e.status, 502);
