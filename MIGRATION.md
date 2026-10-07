@@ -10,7 +10,7 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Branch, Cargo workspace + shared crates, compose infra (pg/nats), CI skeleton, golden-contract capture (~80 fixtures), internal-API contract | ✅ done |
-| 1 | auth-service (users/JWT/refresh/tokens/usage), gateway (routing/actor/demo-mode/auth wall/transparent refresh), SPA conversion (Vite + TanStack Router; vite build + tsc green; proxy chain verified) — E2E 27/27 | ✅ done |
+| 1 | auth-service (users/JWT/refresh/tokens/usage), gateway (routing/actor/demo-mode/auth wall/transparent refresh), SPA conversion (Vite + TanStack Router; vite build + tsc green; proxy chain verified) — E2E 27/27; frontend Docker image verified (SPA + nginx /api proxy + deep-link fallback) | ✅ done |
 | 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | 🔨 in progress (agent) |
 | 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | 🔨 in progress (agent) |
 | 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ⏳ queued (wave B) |
