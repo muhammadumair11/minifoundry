@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/curriculum",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:54:29.982Z",
+  "source": "http://localhost:3000"
+}

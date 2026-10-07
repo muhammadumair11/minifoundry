@@ -1,0 +1,10 @@
+{
+  "authenticated": true,
+  "user": {
+    "id": "cmuu2710e0001fiy8ee36gqw7",
+    "email": "demo-admin@example.invalid",
+    "name": "Ada Admin",
+    "role": "admin",
+    "lastLoginAt": "2026-10-07T17:41:18.906Z"
+  }
+}

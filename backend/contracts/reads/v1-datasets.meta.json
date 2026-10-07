@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/foundry/v1/datasets",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:54:46.664Z",
+  "source": "http://localhost:3000"
+}

@@ -1,0 +1,242 @@
+# MiniFoundry — full-stack Docker Compose (prod-like).
+#
+#   docker compose up -d --build        # boot everything
+#   docker compose --profile tools run --rm seed all   # seed demo workspace
+#   docker compose logs -f gateway      # follow a service
+#
+# Published ports: frontend :3000 (the app), gateway :8080 (direct API/debug).
+# Postgres and NATS stay on the internal network. Dev overrides (exposed
+# infra ports, no restart policy) live in docker-compose.dev.yml.
+
+name: minifoundry
+
+x-backend-env: &backend-env
+  MF_DEMO_MODE: ${MF_DEMO_MODE:-true}
+  MF_SERVICE_TOKEN: ${MF_SERVICE_TOKEN:-<redacted>}
+  AUTH_SECRET: ${AUTH_SECRET:-<redacted>}
+  NATS_URL: nats://nats:4222
+  AUTH_INTERNAL_URL: http://auth:8081
+  CATALOG_INTERNAL_URL: http://catalog:8082
+  ORCHESTRATION_INTERNAL_URL: http://orchestration:8083
+  COMPUTE_INTERNAL_URL: http://compute:8084
+  ONTOLOGY_INTERNAL_URL: http://ontology:8085
+  GOVERNANCE_INTERNAL_URL: http://governance:8086
+  PUBLIC_API_INTERNAL_URL: http://public-api:8087
+  RUST_LOG: ${RUST_LOG:-info,sqlx=warn}
+
+x-backend-common: &backend-common
+  init: true
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$$PORT/healthz || exit 1"]
+    interval: 10s
+    timeout: 3s
+    retries: 12
+    start_period: 15s
+  networks:
+    - internal
+
+services:
+  # ─── infrastructure ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: minifoundry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure a private password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d minifoundry"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - internal
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data"]
+    restart: unless-stopped
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - internal
+
+  # ─── edge ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - edge
+
+  gateway:
+    build:
+      context: ./backend
+      target: gateway
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - edge
+      - internal
+    depends_on:
+      auth:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+      orchestration:
+        condition: service_healthy
+      compute:
+        condition: service_healthy
+      ontology:
+        condition: service_healthy
+      governance:
+        condition: service_healthy
+      public-api:
+        condition: service_healthy
+
+  # ─── domain services ───────────────────────────────────────────────────
+  auth:
+    build:
+      context: ./backend
+      target: auth
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8081"
+      DATABASE_URL: postgres://mf_auth:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  catalog:
+    build:
+      context: ./backend
+      target: catalog
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8082"
+      DATABASE_URL: postgres://mf_catalog:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  orchestration:
+    build:
+      context: ./backend
+      target: orchestration
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8083"
+      DATABASE_URL: postgres://mf_orchestration:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  compute:
+    build:
+      context: ./backend
+      target: compute
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8084"
+      DATABASE_URL: postgres://mf_compute:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  ontology:
+    build:
+      context: ./backend
+      target: ontology
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8085"
+      DATABASE_URL: postgres://mf_ontology:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  governance:
+    build:
+      context: ./backend
+      target: governance
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8086"
+      DATABASE_URL: postgres://mf_governance:<redacted>@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  public-api:
+    build:
+      context: ./backend
+      target: public-api
+    <<: *backend-common
+    environment:
+      <<: *backend-env
+      PORT: "8087"
+    depends_on:
+      nats:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+
+  # ─── tools (one-shot) ──────────────────────────────────────────────────
+  seed:
+    build:
+      context: ./backend
+      target: seed
+    profiles: ["tools"]
+    init: true
+    environment:
+      <<: *backend-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?Configure a private password}@postgres:5432/minifoundry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  edge:
+  internal:
+
+volumes:
+  pgdata:
+  natsdata:

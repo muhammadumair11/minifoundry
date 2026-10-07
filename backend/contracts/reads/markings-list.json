@@ -1,0 +1,13 @@
+{
+  "markings": [
+    {
+      "id": "cmuyeep1s0095fibkrblqr25u",
+      "name": "PII",
+      "description": "Personally identifiable information — visible to editors and above.",
+      "color": "rose",
+      "minRole": "editor",
+      "createdAt": "2026-10-07T17:45:30.448Z",
+      "columns": []
+    }
+  ]
+}

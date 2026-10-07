@@ -1,0 +1,887 @@
+{
+  "pipeline": {
+    "id": "cmuvdhdzc002tfij0hj1nha3j",
+    "name": "p_orders_enriched",
+    "description": null,
+    "graph": {
+      "nodes": [
+        {
+          "id": "source-1791212319514",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd25ra000gfij0xcf8udvm"
+          },
+          "position": {
+            "x": -91.81818181818181,
+            "y": -285.1207386363636
+          }
+        },
+        {
+          "id": "source-1791212320514",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd20vw0003fij0njxv1koz"
+          },
+          "position": {
+            "x": -92.18710749984089,
+            "y": -210.96087127434595
+          }
+        },
+        {
+          "id": "join-1791212343908",
+          "type": "join",
+          "data": {
+            "how": "left",
+            "leftKey": "product_id",
+            "rightKey": "product_id"
+          },
+          "position": {
+            "x": 227.51261996831903,
+            "y": -240.78826911714435
+          }
+        },
+        {
+          "id": "source-1791212456758",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd28yl0013fij0g3nknzbu"
+          },
+          "position": {
+            "x": -42.31874499972637,
+            "y": -71.28591614123678
+          }
+        },
+        {
+          "id": "join-1791212473933",
+          "type": "join",
+          "data": {
+            "how": "left",
+            "leftKey": "customer_id",
+            "rightKey": "customer_id"
+          },
+          "position": {
+            "x": 511.2063821142376,
+            "y": -130.76505303321582
+          }
+        },
+        {
+          "id": "derive-1791214212826",
+          "type": "derive",
+          "data": {
+            "newColumn": "revenue",
+            "expression": "row.quantity*row.unit_price_at_sale"
+          },
+          "position": {
+            "x": 883.7459589427218,
+            "y": -90.91839346749464
+          }
+        },
+        {
+          "id": "select-1791214311549",
+          "type": "select",
+          "data": {
+            "columns": [
+              "order_id",
+              "customer_id",
+              "product_id",
+              "quantity",
+              "order_date",
+              "status",
+              "customer_name",
+              "city",
+              "unit_price_at_sale",
+              "revenue"
+            ]
+          },
+          "position": {
+            "x": 1191.9811595157203,
+            "y": -89.56648469305166
+          }
+        },
+        {
+          "id": "output-1791214339055",
+          "type": "output",
+          "data": {
+            "name": "curated_orders"
+          },
+          "position": {
+            "x": 1544.441152365694,
+            "y": -105.01536909960389
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-source-1791212319514-join-1791212343908-1791212349416",
+          "source": "source-1791212319514",
+          "target": "join-1791212343908"
+        },
+        {
+          "id": "e-source-1791212320514-join-1791212343908-1791212351467",
+          "source": "source-1791212320514",
+          "target": "join-1791212343908"
+        },
+        {
+          "id": "e-join-1791212343908-join-1791212473933-1791212507947",
+          "source": "join-1791212343908",
+          "target": "join-1791212473933"
+        },
+        {
+          "id": "e-source-1791212456758-join-1791212473933-1791212518838",
+          "source": "source-1791212456758",
+          "target": "join-1791212473933"
+        },
+        {
+          "id": "e-join-1791212473933-derive-1791214212826-1791214231792",
+          "source": "join-1791212473933",
+          "target": "derive-1791214212826"
+        },
+        {
+          "id": "e-derive-1791214212826-select-1791214311549-1791214336274",
+          "source": "derive-1791214212826",
+          "target": "select-1791214311549"
+        },
+        {
+          "id": "e-select-1791214311549-output-1791214339055-1791214350734",
+          "source": "select-1791214311549",
+          "target": "output-1791214339055"
+        }
+      ]
+    },
+    "createdAt": "2026-10-05T14:56:17.928Z",
+    "updatedAt": "2026-10-05T17:11:22.343Z",
+    "latestVersionNumber": 11,
+    "versionCount": 11,
+    "triggerMode": "manual",
+    "upstreamDatasetIds": [],
+    "maxRetries": 0
+  },
+  "runs": [
+    {
+      "id": "cmuviicjb000rfi6opnu0787u",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 11,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 70,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 7,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T17:17:00.798Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 8 nodes, 7 edges)"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.802Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v4 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.802Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.805Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'products' v1 (6 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.805Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 6 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.807Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.807Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.809Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 22 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.810Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.810Z",
+          "level": "info",
+          "msg": "node derive (derive-1791214212826): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.810Z",
+          "level": "info",
+          "msg": "node select (select-1791214311549): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.846Z",
+          "level": "info",
+          "msg": "lineage: captured 3 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.855Z",
+          "level": "info",
+          "msg": "lineage: recorded 3 version-level edge(s) feeding 'curated_orders' v7"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.855Z",
+          "level": "info",
+          "msg": "output (output-1791214339055): wrote 16 rows to dataset 'curated_orders' v7"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.868Z",
+          "level": "info",
+          "msg": "node output (output-1791214339055): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:17:00.868Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 70ms — output dataset 'curated_orders' (v7, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T17:17:00.791Z",
+      "finishedAt": "2026-10-05T17:17:00.868Z"
+    },
+    {
+      "id": "cmuvib3jv0001fi6ox6lhx390",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 11,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 119,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 6,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T17:11:22.568Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 8 nodes, 7 edges)"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.585Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v4 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.585Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.590Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'products' v1 (6 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.590Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 6 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.597Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.597Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.598Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 22 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.598Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.600Z",
+          "level": "info",
+          "msg": "node derive (derive-1791214212826): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.600Z",
+          "level": "info",
+          "msg": "node select (select-1791214311549): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.660Z",
+          "level": "info",
+          "msg": "lineage: captured 3 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.668Z",
+          "level": "info",
+          "msg": "lineage: recorded 3 version-level edge(s) feeding 'curated_orders' v6"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.668Z",
+          "level": "info",
+          "msg": "output (output-1791214339055): wrote 16 rows to dataset 'curated_orders' v6"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.686Z",
+          "level": "info",
+          "msg": "node output (output-1791214339055): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T17:11:22.686Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 119ms — output dataset 'curated_orders' (v6, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T17:11:22.555Z",
+      "finishedAt": "2026-10-05T17:11:22.686Z"
+    },
+    {
+      "id": "cmuves44d003hfii4iavuhqa9",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 10,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 81,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 5,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:32:37.990Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 8 nodes, 7 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.000Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v3 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.000Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.005Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.005Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.009Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.009Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.009Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.009Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.016Z",
+          "level": "info",
+          "msg": "node derive (derive-1791214212826): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.016Z",
+          "level": "info",
+          "msg": "node select (select-1791214311549): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.050Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.059Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'curated_orders' v5"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.059Z",
+          "level": "info",
+          "msg": "output (output-1791214339055): wrote 16 rows to dataset 'curated_orders' v5"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.071Z",
+          "level": "info",
+          "msg": "node output (output-1791214339055): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:32:38.071Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 81ms — output dataset 'curated_orders' (v5, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:32:37.981Z",
+      "finishedAt": "2026-10-05T15:32:38.071Z"
+    },
+    {
+      "id": "cmuveoafa002tfii443hmcv1o",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 9,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 102,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 4,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:29:39.533Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 7 nodes, 6 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.542Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v3 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.542Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.548Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.548Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.551Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.551Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.554Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.555Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.555Z",
+          "level": "info",
+          "msg": "node select (select-1791212674281): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.605Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.615Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'curated_orders' v4"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.615Z",
+          "level": "info",
+          "msg": "output (output-1791212802071): wrote 16 rows to dataset 'curated_orders' v4"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.635Z",
+          "level": "info",
+          "msg": "node output (output-1791212802071): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:29:39.635Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 102ms — output dataset 'curated_orders' (v4, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:29:39.526Z",
+      "finishedAt": "2026-10-05T15:29:39.635Z"
+    },
+    {
+      "id": "cmuvdv7c70025fii419ky0hy9",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 8,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 72,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 3,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:07:02.510Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 7 nodes, 6 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.517Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v2 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.517Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.522Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.522Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.525Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.525Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.525Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.525Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.525Z",
+          "level": "info",
+          "msg": "node select (select-1791212674281): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.561Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.568Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'curated_orders' v3"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.568Z",
+          "level": "info",
+          "msg": "output (output-1791212802071): wrote 16 rows to dataset 'curated_orders' v3"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.582Z",
+          "level": "info",
+          "msg": "node output (output-1791212802071): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:07:02.582Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 72ms — output dataset 'curated_orders' (v3, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:07:02.503Z",
+      "finishedAt": "2026-10-05T15:07:02.582Z"
+    },
+    {
+      "id": "cmuvdv0wt001ffii49xqmajcu",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 7,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 96,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdv0xr001hfii4k5jrn5m1",
+      "outputVersionNumber": 1,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:06:54.182Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 7 nodes, 6 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.187Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v2 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.187Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.191Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.191Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.194Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.194Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.194Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.195Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.195Z",
+          "level": "info",
+          "msg": "node select (select-1791212674281): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.257Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'Output dataset'"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.265Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'Output dataset' v1"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.265Z",
+          "level": "info",
+          "msg": "output (output-1791212802071): wrote 16 rows to dataset 'Output dataset' v1"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.278Z",
+          "level": "info",
+          "msg": "node output (output-1791212802071): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:06:54.278Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 96ms — output dataset 'Output dataset' (v1, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:06:54.173Z",
+      "finishedAt": "2026-10-05T15:06:54.278Z"
+    },
+    {
+      "id": "cmuvdpynm000rfii4zzt8ui0f",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 5,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 79,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 2,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:02:57.978Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 6 nodes, 5 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.985Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v2 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.985Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.988Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.988Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.992Z",
+          "level": "info",
+          "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.992Z",
+          "level": "info",
+          "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.993Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:57.993Z",
+          "level": "info",
+          "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:58.033Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T15:02:58.040Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'curated_orders' v2"
+        },
+        {
+          "ts": "2026-10-05T15:02:58.040Z",
+          "level": "info",
+          "msg": "output (output-1791212554304): wrote 16 rows to dataset 'curated_orders' v2"
+        },
+        {
+          "ts": "2026-10-05T15:02:58.056Z",
+          "level": "info",
+          "msg": "node output (output-1791212554304): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:02:58.056Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 79ms — output dataset 'curated_orders' (v2, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:02:57.970Z",
+      "finishedAt": "2026-10-05T15:02:58.056Z"
+    },
+    {
+      "id": "cmuvdmbf20001fii4r5pi0vfd",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+      "status": "success",
+      "versionNumber": 3,
+      "trigger": "manual",
+      "attempt": 1,
+      "durationMs": 92,
+      "failureCause": null,
+      "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "outputVersionNumber": 1,
+      "replayedFromRunId": null,
+      "logs": [
+        {
+          "ts": "2026-10-05T15:00:07.894Z",
+          "level": "info",
+          "msg": "Pipeline 'p_orders_enriched' run started (graph: 4 nodes, 3 edges)"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.900Z",
+          "level": "info",
+          "msg": "source (source-1791212319514): loaded dataset 'orders' v2 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.900Z",
+          "level": "info",
+          "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.905Z",
+          "level": "info",
+          "msg": "source (source-1791212320514): loaded dataset 'customers' v1 (8 rows)"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.906Z",
+          "level": "info",
+          "msg": "node source (source-1791212320514): 0 rows in -> 8 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.906Z",
+          "level": "info",
+          "msg": "node join (join-1791212343908): 24 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.960Z",
+          "level": "info",
+          "msg": "lineage: captured 2 edge(s) into dataset 'curated_orders'"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.968Z",
+          "level": "info",
+          "msg": "lineage: recorded 2 version-level edge(s) feeding 'curated_orders' v1"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.968Z",
+          "level": "info",
+          "msg": "output (output-1791212367190): wrote 16 rows to dataset 'curated_orders' v1"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.986Z",
+          "level": "info",
+          "msg": "node output (output-1791212367190): 16 rows in -> 16 rows out"
+        },
+        {
+          "ts": "2026-10-05T15:00:07.986Z",
+          "level": "success",
+          "msg": "Pipeline 'p_orders_enriched' completed in 92ms — output dataset 'curated_orders' (v1, 16 rows)"
+        }
+      ],
+      "startedAt": "2026-10-05T15:00:07.886Z",
+      "finishedAt": "2026-10-05T15:00:07.986Z"
+    }
+  ]
+}

@@ -1,0 +1,290 @@
+{
+  "pipeline": {
+    "id": "cmuvdhdzc002tfij0hj1nha3j",
+    "name": "p_orders_enriched",
+    "description": null,
+    "nodes": [
+      {
+        "id": "source-1791212319514",
+        "type": "source",
+        "data": {
+          "datasetId": "cmuvd25ra000gfij0xcf8udvm"
+        },
+        "position": {
+          "x": -91.81818181818181,
+          "y": -285.1207386363636
+        }
+      },
+      {
+        "id": "source-1791212320514",
+        "type": "source",
+        "data": {
+          "datasetId": "cmuvd20vw0003fij0njxv1koz"
+        },
+        "position": {
+          "x": -92.18710749984089,
+          "y": -210.96087127434595
+        }
+      },
+      {
+        "id": "join-1791212343908",
+        "type": "join",
+        "data": {
+          "how": "left",
+          "leftKey": "product_id",
+          "rightKey": "product_id"
+        },
+        "position": {
+          "x": 227.51261996831903,
+          "y": -240.78826911714435
+        }
+      },
+      {
+        "id": "source-1791212456758",
+        "type": "source",
+        "data": {
+          "datasetId": "cmuvd28yl0013fij0g3nknzbu"
+        },
+        "position": {
+          "x": -42.31874499972637,
+          "y": -71.28591614123678
+        }
+      },
+      {
+        "id": "join-1791212473933",
+        "type": "join",
+        "data": {
+          "how": "left",
+          "leftKey": "customer_id",
+          "rightKey": "customer_id"
+        },
+        "position": {
+          "x": 511.2063821142376,
+          "y": -130.76505303321582
+        }
+      },
+      {
+        "id": "derive-1791214212826",
+        "type": "derive",
+        "data": {
+          "newColumn": "revenue",
+          "expression": "row.quantity*row.unit_price_at_sale"
+        },
+        "position": {
+          "x": 883.7459589427218,
+          "y": -90.91839346749464
+        }
+      },
+      {
+        "id": "select-1791214311549",
+        "type": "select",
+        "data": {
+          "columns": [
+            "order_id",
+            "customer_id",
+            "product_id",
+            "quantity",
+            "order_date",
+            "status",
+            "customer_name",
+            "city",
+            "unit_price_at_sale",
+            "revenue"
+          ]
+        },
+        "position": {
+          "x": 1191.9811595157203,
+          "y": -89.56648469305166
+        }
+      },
+      {
+        "id": "output-1791214339055",
+        "type": "output",
+        "data": {
+          "name": "curated_orders"
+        },
+        "position": {
+          "x": 1544.441152365694,
+          "y": -105.01536909960389
+        }
+      }
+    ],
+    "graph": {
+      "nodes": [
+        {
+          "id": "source-1791212319514",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd25ra000gfij0xcf8udvm"
+          },
+          "position": {
+            "x": -91.81818181818181,
+            "y": -285.1207386363636
+          }
+        },
+        {
+          "id": "source-1791212320514",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd20vw0003fij0njxv1koz"
+          },
+          "position": {
+            "x": -92.18710749984089,
+            "y": -210.96087127434595
+          }
+        },
+        {
+          "id": "join-1791212343908",
+          "type": "join",
+          "data": {
+            "how": "left",
+            "leftKey": "product_id",
+            "rightKey": "product_id"
+          },
+          "position": {
+            "x": 227.51261996831903,
+            "y": -240.78826911714435
+          }
+        },
+        {
+          "id": "source-1791212456758",
+          "type": "source",
+          "data": {
+            "datasetId": "cmuvd28yl0013fij0g3nknzbu"
+          },
+          "position": {
+            "x": -42.31874499972637,
+            "y": -71.28591614123678
+          }
+        },
+        {
+          "id": "join-1791212473933",
+          "type": "join",
+          "data": {
+            "how": "left",
+            "leftKey": "customer_id",
+            "rightKey": "customer_id"
+          },
+          "position": {
+            "x": 511.2063821142376,
+            "y": -130.76505303321582
+          }
+        },
+        {
+          "id": "derive-1791214212826",
+          "type": "derive",
+          "data": {
+            "newColumn": "revenue",
+            "expression": "row.quantity*row.unit_price_at_sale"
+          },
+          "position": {
+            "x": 883.7459589427218,
+            "y": -90.91839346749464
+          }
+        },
+        {
+          "id": "select-1791214311549",
+          "type": "select",
+          "data": {
+            "columns": [
+              "order_id",
+              "customer_id",
+              "product_id",
+              "quantity",
+              "order_date",
+              "status",
+              "customer_name",
+              "city",
+              "unit_price_at_sale",
+              "revenue"
+            ]
+          },
+          "position": {
+            "x": 1191.9811595157203,
+            "y": -89.56648469305166
+          }
+        },
+        {
+          "id": "output-1791214339055",
+          "type": "output",
+          "data": {
+            "name": "curated_orders"
+          },
+          "position": {
+            "x": 1544.441152365694,
+            "y": -105.01536909960389
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e-source-1791212319514-join-1791212343908-1791212349416",
+          "source": "source-1791212319514",
+          "target": "join-1791212343908"
+        },
+        {
+          "id": "e-source-1791212320514-join-1791212343908-1791212351467",
+          "source": "source-1791212320514",
+          "target": "join-1791212343908"
+        },
+        {
+          "id": "e-join-1791212343908-join-1791212473933-1791212507947",
+          "source": "join-1791212343908",
+          "target": "join-1791212473933"
+        },
+        {
+          "id": "e-source-1791212456758-join-1791212473933-1791212518838",
+          "source": "source-1791212456758",
+          "target": "join-1791212473933"
+        },
+        {
+          "id": "e-join-1791212473933-derive-1791214212826-1791214231792",
+          "source": "join-1791212473933",
+          "target": "derive-1791214212826"
+        },
+        {
+          "id": "e-derive-1791214212826-select-1791214311549-1791214336274",
+          "source": "derive-1791214212826",
+          "target": "select-1791214311549"
+        },
+        {
+          "id": "e-select-1791214311549-output-1791214339055-1791214350734",
+          "source": "select-1791214311549",
+          "target": "output-1791214339055"
+        }
+      ]
+    },
+    "lastRuns": [
+      {
+        "id": "cmuviicjb000rfi6opnu0787u",
+        "status": "success",
+        "startedAt": "2026-10-05T17:17:00.791Z",
+        "finishedAt": "2026-10-05T17:17:00.868Z"
+      },
+      {
+        "id": "cmuvib3jv0001fi6ox6lhx390",
+        "status": "success",
+        "startedAt": "2026-10-05T17:11:22.555Z",
+        "finishedAt": "2026-10-05T17:11:22.686Z"
+      },
+      {
+        "id": "cmuves44d003hfii4iavuhqa9",
+        "status": "success",
+        "startedAt": "2026-10-05T15:32:37.981Z",
+        "finishedAt": "2026-10-05T15:32:38.071Z"
+      },
+      {
+        "id": "cmuveoafa002tfii443hmcv1o",
+        "status": "success",
+        "startedAt": "2026-10-05T15:29:39.526Z",
+        "finishedAt": "2026-10-05T15:29:39.635Z"
+      },
+      {
+        "id": "cmuvdv7c70025fii419ky0hy9",
+        "status": "success",
+        "startedAt": "2026-10-05T15:07:02.503Z",
+        "finishedAt": "2026-10-05T15:07:02.582Z"
+      }
+    ]
+  }
+}

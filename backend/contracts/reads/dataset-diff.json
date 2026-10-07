@@ -1,0 +1,18 @@
+{
+  "datasetId": "cmuyeejj1008jfibkrh1gazob",
+  "fromVersion": 1,
+  "toVersion": 1,
+  "schema": {
+    "added": [],
+    "removed": [],
+    "changed": []
+  },
+  "rowCount": {
+    "from": 5,
+    "to": 5
+  },
+  "addedRows": [],
+  "removedRows": [],
+  "changedRows": [],
+  "truncated": false
+}

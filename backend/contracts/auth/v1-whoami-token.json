@@ -1,0 +1,13 @@
+{
+  "token": {
+    "name": "contract-v1-1791394879927",
+    "prefix": "mf_live_7933",
+    "createdAt": "2026-10-07T17:41:20.000Z",
+    "lastUsedAt": null,
+    "requestCount": 0
+  },
+  "api": {
+    "version": "v1",
+    "rateLimitPerMinute": 60
+  }
+}

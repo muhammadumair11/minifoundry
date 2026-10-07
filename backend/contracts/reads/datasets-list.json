@@ -1,0 +1,111 @@
+{
+  "datasets": [
+    {
+      "id": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Supplier Risk Scores",
+      "description": "Vendor risk scores with the publication gate ON — v2 is a failing draft, so publishing it is blocked until quality passes.",
+      "projectId": null,
+      "sourceConnectorId": "cmuyeejhv008ffibkbhct9cur",
+      "tags": [
+        "sample",
+        "supply-chain",
+        "governed"
+      ],
+      "createdAt": "2026-10-07T17:45:23.293Z",
+      "updatedAt": "2026-10-07T17:45:23.943Z",
+      "currentVersion": {
+        "versionNumber": 2,
+        "rowCount": 5,
+        "columnCount": 4
+      },
+      "versionsCount": 2
+    },
+    {
+      "id": "cmuvdmbfw0003fii42hlv7gfv",
+      "name": "curated_orders",
+      "description": null,
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "sourceConnectorId": null,
+      "tags": [
+        "derived"
+      ],
+      "createdAt": "2026-10-05T15:00:07.917Z",
+      "updatedAt": "2026-10-05T19:01:59.864Z",
+      "currentVersion": {
+        "versionNumber": 9,
+        "rowCount": 16,
+        "columnCount": 10
+      },
+      "versionsCount": 9
+    },
+    {
+      "id": "cmuvgni0f000afivsfmn8atge",
+      "name": "sales_by_city_transform",
+      "description": null,
+      "projectId": null,
+      "sourceConnectorId": null,
+      "tags": [],
+      "createdAt": "2026-10-05T16:25:01.936Z",
+      "updatedAt": "2026-10-05T17:16:02.756Z",
+      "currentVersion": {
+        "versionNumber": 6,
+        "rowCount": 4,
+        "columnCount": 4
+      },
+      "versionsCount": 6
+    },
+    {
+      "id": "cmuvd25ra000gfij0xcf8udvm",
+      "name": "orders",
+      "description": null,
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "sourceConnectorId": null,
+      "tags": [],
+      "createdAt": "2026-10-05T14:44:27.430Z",
+      "updatedAt": "2026-10-05T16:52:44.079Z",
+      "currentVersion": {
+        "versionNumber": 4,
+        "rowCount": 16,
+        "columnCount": 7
+      },
+      "versionsCount": 4
+    },
+    {
+      "id": "cmuvd20vw0003fij0njxv1koz",
+      "name": "products",
+      "description": null,
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "sourceConnectorId": null,
+      "tags": [],
+      "createdAt": "2026-10-05T14:44:21.116Z",
+      "updatedAt": "2026-10-05T14:44:54.639Z",
+      "currentVersion": {
+        "versionNumber": 1,
+        "rowCount": 6,
+        "columnCount": 4
+      },
+      "versionsCount": 1
+    },
+    {
+      "id": "cmuvd28yl0013fij0g3nknzbu",
+      "name": "customers",
+      "description": null,
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "sourceConnectorId": null,
+      "tags": [],
+      "createdAt": "2026-10-05T14:44:31.582Z",
+      "updatedAt": "2026-10-05T14:44:41.762Z",
+      "currentVersion": {
+        "versionNumber": 1,
+        "rowCount": 8,
+        "columnCount": 3
+      },
+      "versionsCount": 1
+    }
+  ],
+  "meta": {
+    "total": 6,
+    "limit": 100,
+    "offset": 0
+  }
+}

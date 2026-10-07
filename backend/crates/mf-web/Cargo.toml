@@ -1,0 +1,20 @@
+[package]
+name = "mf-web"
+description = "MiniFoundry axum glue: error envelope, actor extractors, role guards, tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+mf-auth.workspace = true
+mf-types.workspace = true

@@ -1,0 +1,15 @@
+{
+  "applications": [
+    {
+      "id": "cmuvl7x5w000afim4cop3mb0j",
+      "name": "Order App",
+      "description": null,
+      "widgetCount": 1,
+      "objectTypeApiNames": [
+        "order"
+      ],
+      "createdAt": "2026-10-05T18:32:53.156Z",
+      "updatedAt": "2026-10-05T19:02:38.774Z"
+    }
+  ]
+}

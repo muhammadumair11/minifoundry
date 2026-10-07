@@ -1,0 +1,37 @@
+{
+  "application": {
+    "id": "cmuvl7x5w000afim4cop3mb0j",
+    "name": "Order App",
+    "description": null,
+    "config": {
+      "pages": [
+        {
+          "id": "overview",
+          "title": "Overview",
+          "sections": [
+            {
+              "id": "main",
+              "title": "Main"
+            }
+          ]
+        }
+      ],
+      "widgets": [
+        {
+          "pageId": "overview",
+          "sectionId": "main",
+          "id": "ff0d2b69-be47-4da6-b969-4a8edac25eb9",
+          "type": "objectTable",
+          "title": "Orders",
+          "objectTypeApiName": "order",
+          "columns": null,
+          "span": 3
+        }
+      ],
+      "filters": []
+    },
+    "createdBy": "demo-admin@example.invalid",
+    "createdAt": "2026-10-05T18:32:53.156Z",
+    "updatedAt": "2026-10-05T19:02:38.774Z"
+  }
+}

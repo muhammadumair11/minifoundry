@@ -1,0 +1,52 @@
+{
+  "rules": [
+    {
+      "id": "cmuyeejtj008rfibk3u4kfew5",
+      "datasetId": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Supplier name present",
+      "kind": "not_null",
+      "column": "supplier",
+      "config": {},
+      "severity": "error",
+      "enabled": true,
+      "createdAt": "2026-10-07T17:45:23.672Z",
+      "lastResult": {
+        "id": "cmuyeekp40092fibk2j7lm2g2",
+        "ruleId": "cmuyeejtj008rfibk3u4kfew5",
+        "datasetId": "cmuyeejj1008jfibkrh1gazob",
+        "versionNumber": 2,
+        "passed": true,
+        "actual": "0 violating rows",
+        "message": "not_null ok on 'supplier' across 5 rows",
+        "trigger": "auto",
+        "createdAt": "2026-10-07T17:45:24.806Z"
+      }
+    },
+    {
+      "id": "cmuyeejtk008sfibkjfjzdht5",
+      "datasetId": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Risk score within 0–100",
+      "kind": "range",
+      "column": "risk_score",
+      "config": {
+        "min": 0,
+        "max": 100
+      },
+      "severity": "error",
+      "enabled": true,
+      "createdAt": "2026-10-07T17:45:23.672Z",
+      "lastResult": {
+        "id": "cmuyeekp40093fibkoxhu2n2g",
+        "ruleId": "cmuyeejtk008sfibkjfjzdht5",
+        "datasetId": "cmuyeejj1008jfibkrh1gazob",
+        "versionNumber": 2,
+        "passed": false,
+        "actual": "1 violating row",
+        "message": "1 of 5 rows outside range [0, 100] for 'risk_score'",
+        "trigger": "auto",
+        "createdAt": "2026-10-07T17:45:24.806Z"
+      }
+    }
+  ],
+  "lastEvaluatedAt": "2026-10-07T17:45:24.806Z"
+}

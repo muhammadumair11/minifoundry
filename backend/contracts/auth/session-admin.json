@@ -1,0 +1,10 @@
+{
+  "role": "admin",
+  "session": {
+    "email": "demo-admin@example.invalid",
+    "name": "Ada Admin",
+    "role": "admin",
+    "effectiveRole": "admin",
+    "impersonating": false
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "id": "cmuvdhdzc002tfij0hj1nha3j",
+      "name": "p_orders_enriched",
+      "description": null,
+      "nodeCount": 8,
+      "lastRun": {
+        "status": "success",
+        "startedAt": "2026-10-05T17:17:00.791Z"
+      },
+      "updatedAt": "2026-10-05T17:11:22.343Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 50,
+    "total": 1,
+    "totalPages": 1
+  }
+}

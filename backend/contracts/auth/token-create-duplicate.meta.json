@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/tokens",
+  "status": 400,
+  "requestBody": {
+    "name": "contract-capture-1791394879659"
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.733Z",
+  "source": "http://localhost:3000"
+}

@@ -1,0 +1,11 @@
+{
+  "user": {
+    "id": "cmuu271180003fiy8ufm7w06q",
+    "email": "demo-viewer@example.invalid",
+    "name": "Vera Viewer",
+    "role": "viewer",
+    "lastLoginAt": "2026-10-07T17:41:19.430Z",
+    "isActive": true,
+    "createdAt": "2026-10-04T16:52:32.637Z"
+  }
+}

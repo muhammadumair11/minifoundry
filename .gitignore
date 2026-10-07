@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# rust backend
+/backend/target/
+**/*.rs.bk
+
+# react frontend
+/frontend/dist/
+/frontend/node_modules/
 
 # vercel
 .vercel

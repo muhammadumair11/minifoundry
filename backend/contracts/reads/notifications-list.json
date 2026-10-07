@@ -1,0 +1,17 @@
+{
+  "notifications": [
+    {
+      "id": "cmuyeekpp0094fibk990cujin",
+      "userEmail": null,
+      "type": "quality_failed",
+      "title": "Quality failed: Supplier Risk Scores · Risk score within 0–100",
+      "body": "1 of 5 rows outside range [0, 100] for 'risk_score'",
+      "resourceType": "dataset",
+      "resourceId": "cmuyeejj1008jfibkrh1gazob",
+      "href": "/datasets/cmuyeejj1008jfibkrh1gazob",
+      "readAt": null,
+      "createdAt": "2026-10-07T17:45:24.829Z"
+    }
+  ],
+  "unreadCount": 1
+}

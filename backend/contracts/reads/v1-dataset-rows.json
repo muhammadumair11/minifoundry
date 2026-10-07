@@ -1,0 +1,45 @@
+{
+  "data": [
+    {
+      "supplier": "Northline Foods",
+      "region": "EMEA",
+      "risk_score": 22,
+      "tier": "A"
+    },
+    {
+      "supplier": "Pacific Metals",
+      "region": "APAC",
+      "risk_score": 58,
+      "tier": "B"
+    },
+    {
+      "supplier": "Andes Textiles",
+      "region": "LATAM",
+      "risk_score": 41,
+      "tier": "B"
+    },
+    {
+      "supplier": "Gulf Plastics",
+      "region": "EMEA",
+      "risk_score": 77,
+      "tier": "C"
+    },
+    {
+      "supplier": "Baltic Grain Co",
+      "region": "EMEA",
+      "risk_score": 15,
+      "tier": "A"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 50,
+    "total": 5,
+    "totalPages": 1
+  },
+  "version": {
+    "versionNumber": 1,
+    "rowCount": 5
+  },
+  "maskedColumns": []
+}

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/foundry/v1/whoami",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:20.335Z",
+  "source": "http://localhost:3000"
+}

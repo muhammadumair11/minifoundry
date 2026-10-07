@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/acl/check?resourceType=dataset&resourceId=cmuyeejj1008jfibkrh1gazob&email=admin%40minifoundry.dev",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:54:24.401Z",
+  "source": "http://localhost:3000"
+}

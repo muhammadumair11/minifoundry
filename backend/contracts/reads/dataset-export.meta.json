@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/datasets/cmuyeejj1008jfibkrh1gazob/export?format=csv",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:22.646Z",
+  "source": "http://localhost:3000"
+}

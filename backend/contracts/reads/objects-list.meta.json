@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/objects?type=customer&limit=5",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:58.462Z",
+  "source": "http://localhost:3000"
+}

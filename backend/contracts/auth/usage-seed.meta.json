@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/tokens/usage/seed",
+  "status": 201,
+  "requestBody": {
+    "hours": 24
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:20.157Z",
+  "source": "http://localhost:3000"
+}

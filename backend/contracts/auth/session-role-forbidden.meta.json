@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/session/role",
+  "status": 403,
+  "requestBody": {
+    "role": "admin"
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.470Z",
+  "source": "http://localhost:3000"
+}

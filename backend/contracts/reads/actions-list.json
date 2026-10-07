@@ -1,0 +1,16 @@
+{
+  "actions": [
+    {
+      "id": "cmuvmd3m8000gfit4mxoeq02w",
+      "apiName": "update-order-status",
+      "displayName": "Update Order Status",
+      "description": null,
+      "operation": "update",
+      "enabled": true,
+      "objectTypeId": "cmuviwz1c001vfiz8gvsedlf1",
+      "objectTypeApiName": "order",
+      "objectTypeDisplayName": "Order",
+      "paramCount": 2
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "objectType": {
+    "id": "cmuvivekl001gfiz8phs3azca",
+    "apiName": "customer",
+    "displayName": "Customer",
+    "primaryKey": "customer_id",
+    "icon": "globe",
+    "color": "emerald",
+    "titleProperty": "customer_id"
+  },
+  "columns": [
+    {
+      "apiName": "customer_id",
+      "displayName": "Customer Id",
+      "dataType": "string",
+      "isTitle": true,
+      "hideInTable": false
+    },
+    {
+      "apiName": "customer_name",
+      "displayName": "Customer Name",
+      "dataType": "string",
+      "isTitle": false,
+      "hideInTable": false
+    },
+    {
+      "apiName": "city",
+      "displayName": "City",
+      "dataType": "string",
+      "isTitle": false,
+      "hideInTable": false
+    }
+  ],
+  "rows": [
+    {
+      "pk": "C001",
+      "values": {
+        "customer_id": "C001",
+        "customer_name": "Amina Khan",
+        "city": "Islamabad"
+      },
+      "_title": "C001",
+      "_masked": []
+    },
+    {
+      "pk": "C002",
+      "values": {
+        "customer_id": "C002",
+        "customer_name": "Hassan Ali",
+        "city": "Lahore"
+      },
+      "_title": "C002",
+      "_masked": []
+    },
+    {
+      "pk": "C003",
+      "values": {
+        "customer_id": "C003",
+        "customer_name": "Sara Ahmed",
+        "city": "Karachi"
+      },
+      "_title": "C003",
+      "_masked": []
+    },
+    {
+      "pk": "C004",
+      "values": {
+        "customer_id": "C004",
+        "customer_name": "Usman Raza",
+        "city": "Islamabad"
+      },
+      "_title": "C004",
+      "_masked": []
+    },
+    {
+      "pk": "C005",
+      "values": {
+        "customer_id": "C005",
+        "customer_name": "Maryam Noor",
+        "city": "Peshawar"
+      },
+      "_title": "C005",
+      "_masked": []
+    },
+    {
+      "pk": "C006",
+      "values": {
+        "customer_id": "C006",
+        "customer_name": "Bilal Shah",
+        "city": "Lahore"
+      },
+      "_title": "C006",
+      "_masked": []
+    },
+    {
+      "pk": "C007",
+      "values": {
+        "customer_id": "C007",
+        "customer_name": "Zainab Malik",
+        "city": "Karachi"
+      },
+      "_title": "C007",
+      "_masked": []
+    },
+    {
+      "pk": "C008",
+      "values": {
+        "customer_id": "C008",
+        "customer_name": "Farhan Iqbal",
+        "city": "Peshawar"
+      },
+      "_title": "C008",
+      "_masked": []
+    }
+  ],
+  "total": 8,
+  "page": 1,
+  "pageSize": 50
+}

@@ -1,0 +1,384 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ── LIGHT (default) — minimal Palantir-Foundry-like palette ──────────
+   White surfaces, hairline zinc borders, near-black primary buttons,
+   tiny gray metadata. NO blues/indigos. Emerald survives only as a
+   semantic success/chart color (light-legible emerald-600 scale). */
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.985 0 0); /* zinc-50 */
+  --foreground: oklch(0.205 0 0); /* zinc-900 */
+  --card: oklch(1 0 0); /* white */
+  --card-foreground: oklch(0.205 0 0);
+  --popover: oklch(1 0 0); /* white */
+  --popover-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.205 0 0); /* near-black buttons (Foundry/Vercel) */
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0 0); /* zinc-100 */
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.967 0 0);
+  --muted-foreground: oklch(0.556 0 0); /* zinc-500 */
+  --accent: oklch(0.967 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325); /* red-500 */
+  --border: oklch(0.922 0 0); /* zinc-200 hairline */
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0); /* zinc-400 */
+  --chart-1: oklch(0.596 0.145 163.225); /* emerald-600 */
+  --chart-2: oklch(0.769 0.188 70.08); /* amber-500 */
+  --chart-3: oklch(0.645 0.246 16.439); /* rose-500 */
+  --chart-4: oklch(0.6 0.104 180.187); /* teal-600 */
+  --chart-5: oklch(0.705 0.213 47.604); /* orange-500 */
+  --sidebar: oklch(1 0 0); /* white */
+  --sidebar-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.205 0 0); /* zinc-900 */
+  --sidebar-primary-foreground: oklch(0.985 0 0); /* white */
+  --sidebar-accent: oklch(0.967 0 0); /* zinc-100 */
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0); /* zinc-200 */
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* ── DARK (optional) — the previous MiniFoundry look, byte-for-byte ── */
+.dark {
+  /* MiniFoundry fixed dark theme — zinc scale + emerald accent */
+  --radius: 0.5rem;
+  --background: oklch(0.141 0.005 285.823); /* zinc-950 */
+  --foreground: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --card: oklch(0.21 0.006 285.885); /* zinc-900 */
+  --card-foreground: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --popover: oklch(0.21 0.006 285.885); /* zinc-900 */
+  --popover-foreground: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --primary: oklch(0.696 0.17 162.48); /* emerald-500 */
+  --primary-foreground: oklch(0.141 0.005 285.823); /* zinc-950 */
+  --secondary: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --secondary-foreground: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --muted: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --muted-foreground: oklch(0.705 0.015 286.067); /* zinc-400 */
+  --accent: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --accent-foreground: oklch(0.967 0.001 286.375); /* zinc-100 */
+  --destructive: oklch(0.645 0.246 16.439); /* rose-500 */
+  --border: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --input: oklch(0.274 0.006 286.033); /* zinc-800 */
+  --ring: oklch(0.696 0.17 162.48); /* emerald-500 */
+  --chart-1: oklch(0.696 0.17 162.48); /* emerald-500 */
+  --chart-2: oklch(0.795 0.184 86.047); /* amber-400 */
+  --chart-3: oklch(0.704 0.191 22.216); /* rose-500 */
+  --chart-4: oklch(0.786 0.142 220); /* teal-ish */
+  --chart-5: oklch(0.705 0.213 47.604); /* orange-400 */
+  --sidebar: oklch(0.21 0.006 285.885); /* zinc-900 */
+  --sidebar-foreground: oklch(0.967 0.001 286.375);
+  --sidebar-primary: oklch(0.696 0.17 162.48);
+  --sidebar-primary-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground: oklch(0.967 0.001 286.375);
+  --sidebar-border: oklch(0.274 0.006 286.033);
+  --sidebar-ring: oklch(0.696 0.17 162.48);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Keyboard-focus help for native buttons and links styled as buttons. The
+   hint appears only when navigating by keyboard, so dense toolbars stay calm. */
+@layer components {
+  /* Dialog actions that accept Enter from a single-line field show a keycap
+     even before focus reaches the button. */
+  button[data-dialog-submit]::before {
+    content: "↵";
+    order: 10;
+    flex: none;
+    border: 1px solid currentColor;
+    border-radius: 0.2rem;
+    padding: 0.08rem 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    line-height: 1;
+    opacity: 0.65;
+  }
+
+  button:focus-visible:not(:disabled, [data-key-hint="none"]),
+  a[data-slot="button"]:focus-visible:not([data-key-hint="none"]) {
+    position: relative;
+  }
+
+  button:focus-visible:not(:disabled, [data-key-hint="none"])::after,
+  a[data-slot="button"]:focus-visible:not([data-key-hint="none"])::after {
+    content: attr(data-key-hint);
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 0.375rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 14rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 2px 8px oklch(0 0 0 / 12%);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    line-height: 1.25;
+    pointer-events: none;
+  }
+
+  button:focus-visible:not(:disabled, [data-key-hint])::after {
+    content: "Enter / Space";
+  }
+
+  a[data-slot="button"]:focus-visible:not([data-key-hint])::after {
+    content: "Enter";
+  }
+}
+
+/* ── MiniFoundry custom bits (dual-theme) ─────────────────────────── */
+
+/* Thin scrollbars for dense data panes — light default, dark restore. */
+.foundry-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.871 0.006 286.286) transparent; /* zinc-300 */
+}
+.foundry-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.foundry-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.foundry-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.871 0.006 286.286); /* zinc-300 */
+  border-radius: 9999px;
+}
+.foundry-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.705 0.015 286.067); /* zinc-400 */
+}
+.dark .foundry-scroll {
+  scrollbar-color: oklch(0.37 0.013 285.805) transparent; /* zinc-700 */
+}
+.dark .foundry-scroll::-webkit-scrollbar-thumb {
+  background: oklch(0.37 0.013 285.805); /* zinc-700 */
+}
+.dark .foundry-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.442 0.017 285.786); /* zinc-600 */
+}
+
+/* Subtle blueprint grid texture — light default, dark restore. */
+.foundry-grid-bg {
+  background-image:
+    linear-gradient(to right, oklch(0.92 0.004 286.32 / 55%) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.92 0.004 286.32 / 55%) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.dark .foundry-grid-bg {
+  background-image:
+    linear-gradient(to right, oklch(0.274 0.006 286.033 / 35%) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.274 0.006 286.033 / 35%) 1px, transparent 1px);
+}
+
+/* Terminal cursor for the API Explorer prompt line (Task 6-c) —
+   emerald works on both themes. */
+.foundry-cursor {
+  background-color: oklch(0.696 0.17 162.48 / 70%); /* emerald-500/70 */
+  animation: foundry-blink 1.1s steps(2, start) infinite;
+}
+@keyframes foundry-blink {
+  to {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .foundry-cursor {
+    animation: none;
+  }
+}
+
+/* ── React Flow — LIGHT defaults ──────────────────────────────────── */
+.react-flow__attribution {
+  background: transparent !important;
+  color: oklch(0.705 0.015 286.067) !important; /* zinc-400 */
+}
+.react-flow__attribution a {
+  color: oklch(0.705 0.015 286.067) !important;
+}
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: oklch(0.871 0.006 286.286); /* zinc-300 */
+  border: 2px solid oklch(0.556 0 0); /* zinc-500 */
+}
+.react-flow__handle:hover {
+  background: oklch(0.205 0 0); /* zinc-900 */
+  border-color: oklch(0.205 0 0);
+}
+.react-flow__edge-path {
+  stroke-width: 1.6;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: oklch(0.205 0 0) !important; /* zinc-900 */
+}
+.react-flow__controls {
+  box-shadow: none !important;
+}
+.react-flow__controls-button {
+  background: oklch(1 0 0) !important; /* white */
+  border-bottom: 1px solid oklch(0.922 0 0) !important; /* zinc-200 */
+  color: oklch(0.372 0.013 285.805); /* zinc-700 */
+  fill: oklch(0.372 0.013 285.805);
+}
+.react-flow__controls-button:hover {
+  background: oklch(0.967 0.001 286.375) !important; /* zinc-100 */
+}
+.react-flow__minimap {
+  background: oklch(1 0 0 / 90%) !important; /* white/90 */
+  border: 1px solid oklch(0.922 0 0); /* zinc-200 */
+  border-radius: 8px;
+}
+.react-flow__node.selected .react-flow__handle {
+  border-color: oklch(0.205 0 0); /* zinc-900 */
+}
+
+/* ── React Flow — DARK overrides (previous look restored) ─────────── */
+.dark .react-flow__attribution,
+.dark .react-flow__attribution a {
+  color: oklch(0.552 0.016 285.938) !important; /* zinc-500 */
+}
+.dark .react-flow__handle {
+  background: oklch(0.37 0.013 285.805); /* zinc-700 */
+  border: 2px solid oklch(0.552 0.016 285.938); /* zinc-500 */
+}
+.dark .react-flow__handle:hover {
+  background: oklch(0.696 0.17 162.48); /* emerald-500 */
+  border-color: oklch(0.696 0.17 162.48);
+}
+.dark .react-flow__edge.selected .react-flow__edge-path {
+  stroke: oklch(0.696 0.17 162.48) !important; /* emerald-500 */
+}
+.dark .react-flow__controls-button {
+  background: oklch(0.21 0.006 285.885) !important; /* zinc-900 */
+  border-bottom: 1px solid oklch(0.274 0.006 286.033) !important; /* zinc-800 */
+  color: oklch(0.967 0.001 286.375); /* zinc-100 */
+  fill: oklch(0.967 0.001 286.375);
+}
+.dark .react-flow__controls-button:hover {
+  background: oklch(0.274 0.006 286.033) !important; /* zinc-800 */
+}
+.dark .react-flow__minimap {
+  background: oklch(0.21 0.006 285.885 / 80%) !important; /* zinc-900/80 */
+  border: 1px solid oklch(0.274 0.006 286.033); /* zinc-800 */
+}
+.dark .react-flow__node.selected .react-flow__handle {
+  border-color: oklch(0.696 0.17 162.48); /* emerald-500 */
+}
+
+/* ── Application maps (MapLibre GL over OSM raster) ──────────────────
+   Dark theme = inverted canvas filter (single style serves both themes);
+   controls/attribution sit outside the canvas element so they stay crisp. */
+.mf-map-shell .maplibregl-canvas {
+  outline: none;
+}
+.dark .mf-map-shell .maplibregl-canvas {
+  filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.88) saturate(0.8);
+}
+.mf-map-shell .maplibregl-ctrl-attrib {
+  background: oklch(1 0 0 / 75%) !important; /* white/75 */
+  color: oklch(0.552 0.016 285.938); /* zinc-500 */
+  font-size: 9px;
+}
+.mf-map-shell .maplibregl-ctrl-attrib a {
+  color: oklch(0.552 0.016 285.938);
+}
+.dark .mf-map-shell .maplibregl-ctrl-attrib {
+  background: oklch(0.21 0.006 285.885 / 80%) !important; /* zinc-900/80 */
+  color: oklch(0.713 0.019 286.067); /* zinc-400-ish */
+}
+.dark .mf-map-shell .maplibregl-ctrl-attrib a {
+  color: oklch(0.713 0.019 286.067);
+}
+.mf-map-shell .maplibregl-ctrl-group {
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dark .mf-map-shell .maplibregl-ctrl-group {
+  background: oklch(0.21 0.006 285.885); /* zinc-900 */
+}
+.dark .mf-map-shell .maplibregl-ctrl-group button + button {
+  border-top: 1px solid oklch(0.274 0.006 286.033); /* zinc-800 */
+}
+.dark .mf-map-shell .maplibregl-ctrl-group button {
+  filter: invert(1);
+}
+
+/* Hover popup themed to the card surface. */
+.mf-map-popup .maplibregl-popup-content {
+  background: oklch(1 0 0); /* white */
+  border: 1px solid oklch(0.922 0.004 286.32); /* zinc-200 */
+  border-radius: 6px;
+  box-shadow: 0 4px 14px oklch(0.2 0 0 / 14%);
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: oklch(0.274 0.006 286.033); /* zinc-800 */
+}
+.mf-map-popup .maplibregl-popup-tip {
+  border-top-color: oklch(1 0 0) !important;
+}
+.dark .mf-map-popup .maplibregl-popup-content {
+  background: oklch(0.21 0.006 285.885); /* zinc-900 */
+  border-color: oklch(0.274 0.006 286.033); /* zinc-800 */
+  color: oklch(0.92 0.004 286.32); /* zinc-100 */
+}
+.dark .mf-map-popup .maplibregl-popup-tip {
+  border-top-color: oklch(0.21 0.006 285.885) !important;
+}

@@ -1,0 +1,220 @@
+{
+  "runs": [
+    {
+      "id": "cmuvih3ot000tfiz836vjn6ix",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T17:16:02.683Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T17:16:02.688Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v6 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:16:02.688Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T17:16:02.780Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v6 (4 rows)"
+        }
+      ],
+      "durationMs": 109,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 6,
+      "error": null,
+      "startedAt": "2026-10-05T17:16:02.670Z",
+      "finishedAt": "2026-10-05T17:16:02.792Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    },
+    {
+      "id": "cmuvibska000efiz85ro2uhvp",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T17:11:54.979Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T17:11:54.983Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v6 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T17:11:54.984Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T17:11:55.109Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v5 (4 rows)"
+        }
+      ],
+      "durationMs": 142,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 5,
+      "error": null,
+      "startedAt": "2026-10-05T17:11:54.971Z",
+      "finishedAt": "2026-10-05T17:11:55.121Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    },
+    {
+      "id": "cmuvhng6z000yfi5k1dl64j6x",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T16:52:59.204Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T16:52:59.209Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v5 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T16:52:59.209Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T16:52:59.325Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v4 (4 rows)"
+        }
+      ],
+      "durationMs": 131,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 4,
+      "error": null,
+      "startedAt": "2026-10-05T16:52:59.196Z",
+      "finishedAt": "2026-10-05T16:52:59.335Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    },
+    {
+      "id": "cmuvgvmnv000zfivslt7anpv9",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T16:31:21.216Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T16:31:21.223Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v5 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T16:31:21.223Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T16:31:21.339Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v3 (4 rows)"
+        }
+      ],
+      "durationMs": 138,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 3,
+      "error": null,
+      "startedAt": "2026-10-05T16:31:21.211Z",
+      "finishedAt": "2026-10-05T16:31:21.355Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    },
+    {
+      "id": "cmuvgslzw000ofivsyggl1jta",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T16:29:00.381Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T16:29:00.385Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v5 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T16:29:00.385Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T16:29:00.491Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v2 (4 rows)"
+        }
+      ],
+      "durationMs": 136,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 2,
+      "error": null,
+      "startedAt": "2026-10-05T16:29:00.381Z",
+      "finishedAt": "2026-10-05T16:29:00.517Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    },
+    {
+      "id": "cmuvgnhwn0008fivsbc17hfaz",
+      "transformId": "cmuvev6fo004ufij0g3r7sdza",
+      "status": "success",
+      "logs": [
+        {
+          "ts": "2026-10-05T16:25:01.804Z",
+          "level": "info",
+          "msg": "run started (language=python)"
+        },
+        {
+          "ts": "2026-10-05T16:25:01.809Z",
+          "level": "info",
+          "msg": "loaded input \"curated_orders\" v5 (16 rows)"
+        },
+        {
+          "ts": "2026-10-05T16:25:01.809Z",
+          "level": "info",
+          "msg": "executing python via isolated subprocess"
+        },
+        {
+          "ts": "2026-10-05T16:25:01.972Z",
+          "level": "success",
+          "msg": "published output \"sales_by_city_transform\" v1 (4 rows)"
+        }
+      ],
+      "durationMs": 181,
+      "rowCount": 4,
+      "outputDatasetId": "cmuvgni0f000afivsfmn8atge",
+      "outputVersionNumber": 1,
+      "error": null,
+      "startedAt": "2026-10-05T16:25:01.799Z",
+      "finishedAt": "2026-10-05T16:25:01.985Z",
+      "hasManifest": true,
+      "replayOfRunId": null
+    }
+  ]
+}

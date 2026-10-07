@@ -1,0 +1,3 @@
+{
+  "error": "email: Too small: expected string to have >=1 characters; password: Invalid input: expected string, received undefined"
+}

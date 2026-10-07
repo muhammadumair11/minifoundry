@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/api/auth/logout",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [
+    "foundry-session",
+    "foundry-role"
+  ],
+  "capturedAt": "2026-10-07T17:41:20.280Z",
+  "source": "http://localhost:3000"
+}

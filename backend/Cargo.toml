@@ -1,0 +1,113 @@
+# MiniFoundry backend — Cargo workspace.
+# 8 Axum microservices + shared crates + seed CLI.
+# See ../docker-compose.yml for the runtime topology.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/mf-types",
+    "crates/mf-db",
+    "crates/mf-auth",
+    "crates/mf-web",
+    "crates/mf-events",
+    "crates/mf-js",
+    "crates/mf-sqlrun",
+    "crates/mf-internal",
+    "services/gateway",
+    "services/auth",
+    "services/catalog",
+    "services/orchestration",
+    "services/compute",
+    "services/ontology",
+    "services/governance",
+    "services/public-api",
+    "seed",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/local/minifoundry"
+
+[workspace.dependencies]
+# ── async runtime / web ─────────────────────────────────────────────
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["macros", "multipart"] }
+tower = { version = "0.5", features = ["util", "timeout"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "timeout", "limit"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http = "1"
+http-body-util = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart", "stream"] }
+
+# ── data ────────────────────────────────────────────────────────────
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "chrono",
+    "uuid",
+    "json",
+    "migrate",
+] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# ── messaging ───────────────────────────────────────────────────────
+async-nats = "0.35"
+futures = "0.3"
+
+# ── serde / json ────────────────────────────────────────────────────
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# ── auth / crypto ───────────────────────────────────────────────────
+jsonwebtoken = "9"
+scrypt = "0.11"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+rand = "0.8"
+subtle = "2.6"
+
+# ── ids / time ──────────────────────────────────────────────────────
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# ── observability / errors ──────────────────────────────────────────
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "1"
+anyhow = "1"
+
+# ── misc ────────────────────────────────────────────────────────────
+regex = "1"
+base64 = "0.22"
+url = { version = "2", features = ["serde"] }
+csv = "1"
+async-trait = "0.1"
+once_cell = "1"
+dotenvy = "0.15"
+clap = { version = "4", features = ["derive"] }
+ipnet = "2"
+dns-lookup = "2"
+
+# ── workspace crates ────────────────────────────────────────────────
+mf-types = { path = "crates/mf-types" }
+mf-db = { path = "crates/mf-db" }
+mf-auth = { path = "crates/mf-auth" }
+mf-web = { path = "crates/mf-web" }
+mf-events = { path = "crates/mf-events" }
+mf-js = { path = "crates/mf-js" }
+mf-sqlrun = { path = "crates/mf-sqlrun" }
+mf-internal = { path = "crates/mf-internal" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+debug = 1

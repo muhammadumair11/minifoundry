@@ -1,0 +1,11 @@
+{
+  "method": "PATCH",
+  "path": "/api/users/cmuu2710e0001fiy8ee36gqw7",
+  "status": 400,
+  "requestBody": {
+    "role": "viewer"
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.657Z",
+  "source": "http://localhost:3000"
+}

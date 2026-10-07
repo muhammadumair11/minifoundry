@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/schedules",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:45.571Z",
+  "source": "http://localhost:3000"
+}
