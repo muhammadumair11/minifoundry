@@ -212,7 +212,7 @@ pub fn items_array(v: &Value, key: &str) -> Vec<Value> {
     if let Some(arr) = v.get(key).and_then(|x| x.as_array()) {
         return arr.clone();
     }
-    for k in ["results", "data", "items"] {
+    for k in ["results", "data", "items", "rows", "objects"] {
         if let Some(arr) = v.get(k).and_then(|x| x.as_array()) {
             return arr.clone();
         }

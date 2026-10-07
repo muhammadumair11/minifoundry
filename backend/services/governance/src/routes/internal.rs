@@ -229,8 +229,9 @@ pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
     ];
     let mut counts = serde_json::Map::new();
     for (table, key) in tables {
+        // Data-modifying CTE (Postgres forbids DELETE in a FROM subquery).
         let n: i64 = sqlx::query_scalar(&format!(
-            "SELECT count(*) FROM (DELETE FROM {table} RETURNING id) d"
+            "WITH deleted AS (DELETE FROM {table} RETURNING id) SELECT count(*) FROM deleted"
         ))
         .fetch_one(&mut *tx)
         .await?;

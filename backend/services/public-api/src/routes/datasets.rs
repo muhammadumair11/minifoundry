@@ -25,6 +25,13 @@ use crate::routes::{paginate, parse_tags, sort_by_ts_desc, version_param};
 use crate::state::AppState;
 
 /// GET /api/foundry/v1/datasets?page=&pageSize=
+///
+/// latestVersion is the newest main-branch PUBLISHED version (legacy query:
+/// `versions where branch=main AND lifecycle=published, desc, take 1`) —
+/// NOT the draft head, so gated datasets show their consumer pointer. The
+/// catalog list summary carries only `currentVersion` (any lifecycle), so
+/// each dataset's detail is fetched in parallel (learning-scale N, bounded
+/// fan-out); per-item failures degrade to the summary's currentVersion.
 pub async fn list_datasets(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -36,9 +43,24 @@ pub async fn list_datasets(
     guard::with_api_token(&state, &headers, &path, move |_ctx| async move {
         let (page, page_size) = v1_page_from(&params);
         let resp = st.catalog.get("/internal/datasets").await.map_err(fanout_err)?;
-        let mut items: Vec<Value> = items_array(&resp, "datasets")
+        let summaries = items_array(&resp, "datasets");
+
+        let details: Vec<Option<Value>> = futures::future::join_all(summaries.iter().map(|d| {
+            let st = st.clone();
+            async move {
+                let id = d.get("id").and_then(|v| v.as_str())?;
+                st.catalog
+                    .get(&format!("/internal/datasets/{id}"))
+                    .await
+                    .ok()
+            }
+        }))
+        .await;
+
+        let mut items: Vec<Value> = summaries
             .iter()
-            .map(dataset_v1_item)
+            .zip(details)
+            .map(|(d, detail)| dataset_v1_item(d, detail.as_ref()))
             .collect();
         let total = items.len() as i64;
         sort_by_ts_desc(&mut items, "updatedAt");
@@ -64,32 +86,6 @@ pub async fn dataset_detail(
     guard::with_api_token(&state, &headers, &path, move |_ctx| async move {
         let version_number = version_param(&params)?;
         let resolved = resolve_version(&st, &id, version_number).await?;
-
-        // Published-versions list for the detail envelope (legacy: lifecycle
-        // 'published', versionNumber desc).
-        let mut versions: Vec<Value> = items_array(&resolved.detail_root, "versions")
-            .into_iter()
-            .filter(|v| {
-                v.get("lifecycle")
-                    .and_then(|x| x.as_str())
-                    .map(|l| l == "published")
-                    .unwrap_or(true)
-            })
-            .map(|v| {
-                serde_json::json!({
-                    "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
-                    "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
-                    "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
-                })
-            })
-            .collect();
-        versions.sort_by(|a, b| {
-            b["versionNumber"]
-                .as_i64()
-                .unwrap_or(0)
-                .cmp(&a["versionNumber"].as_i64().unwrap_or(0))
-        });
-
         let schema = mark_schema(&st, &id, &resolved.schema).await;
 
         Ok(json_ok(serde_json::json!({
@@ -107,7 +103,7 @@ pub async fn dataset_detail(
                     "createdAt": resolved.created_at,
                 },
             },
-            "versions": versions,
+            "versions": resolved.versions,
         })))
     })
     .await
@@ -190,8 +186,9 @@ pub struct ResolvedVersion {
     pub row_count: i64,
     pub schema: Vec<Value>,
     pub created_at: Value,
-    /// Raw version-meta root (for rows path resolution).
-    pub detail_root: Value,
+    /// Published main-branch versions (versionNumber desc) for the detail
+    /// envelope — legacy `{versionNumber, rowCount, createdAt}` projection.
+    pub versions: Vec<Value>,
 }
 
 /// Ports the legacy consumer-version resolution chain:
@@ -261,8 +258,51 @@ async fn resolve_version(
         row_count,
         schema,
         created_at,
-        detail_root: meta,
+        versions: published_versions(&detail),
     })
+}
+
+/// Published main-branch versions from a catalog detail envelope
+/// (`{dataset, versions:[…]}`), projected + sorted versionNumber desc —
+/// exactly the legacy detail-route query.
+pub fn published_versions(envelope: &Value) -> Vec<Value> {
+    let mut versions: Vec<Value> = envelope
+        .get("versions")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|v| {
+                    v.get("lifecycle")
+                        .and_then(|x| x.as_str())
+                        .map(|l| l == "published")
+                        .unwrap_or(true)
+                        && v.get("branch")
+                            .and_then(|x| x.as_str())
+                            .map(|b| b == "main")
+                            .unwrap_or(true)
+                })
+                .map(|v| {
+                    serde_json::json!({
+                        "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
+                        "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
+                        "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    versions.sort_by(|a, b| {
+        b["versionNumber"]
+            .as_i64()
+            .unwrap_or(0)
+            .cmp(&a["versionNumber"].as_i64().unwrap_or(0))
+    });
+    versions
+}
+
+/// Newest published main-branch version as the v1 `latestVersion` block.
+fn latest_published_version(envelope: &Value) -> Option<Value> {
+    published_versions(envelope).into_iter().next()
 }
 
 /// Full masked rows for one resolved version (catalog applies viewer
@@ -339,19 +379,32 @@ async fn mark_schema(state: &AppState, dataset_id: &str, schema: &[Value]) -> Ve
         .collect()
 }
 
-/// v1 dataset-list item (fixture reads/v1-datasets.json).
-pub fn dataset_v1_item(d: &Value) -> Value {
+/// v1 dataset-list item (fixture reads/v1-datasets.json). `detail` (the
+/// catalog detail envelope, when the parallel fetch succeeded) provides the
+/// published-latest version; otherwise the summary's own version-ish keys
+/// are the best-effort fallback.
+pub fn dataset_v1_item(d: &Value, detail: Option<&Value>) -> Value {
     let root = payload_root(d, &["dataset"]);
-    let latest = ["latestPublishedVersion", "latestPublished", "latestVersion", "consumerVersion", "currentVersion"]
-        .iter()
-        .find_map(|k| root.get(*k).filter(|v| v.is_object()))
-        .map(|v| {
-            serde_json::json!({
-                "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
-                "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
-                "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
-            })
+    let latest = detail
+        .and_then(latest_published_version)
+        .or_else(|| {
+            ["latestPublishedVersion", "latestVersion", "consumerVersion", "currentVersion"]
+                .iter()
+                .find_map(|k| root.get(*k).filter(|v| v.is_object()))
+                .map(|v| {
+                    serde_json::json!({
+                        "versionNumber": v.get("versionNumber").cloned().unwrap_or(Value::Null),
+                        "rowCount": v.get("rowCount").cloned().unwrap_or(Value::Null),
+                        "createdAt": v.get("createdAt").cloned().unwrap_or(Value::Null),
+                    })
+                })
         })
+        .unwrap_or(Value::Null);
+    // The detail envelope is fresher for updatedAt when present.
+    let detail_root = detail.map(|dv| payload_root(dv, &["dataset"]));
+    let updated_at = detail_root
+        .and_then(|r| r.get("updatedAt").cloned())
+        .or_else(|| root.get("updatedAt").cloned())
         .unwrap_or(Value::Null);
     serde_json::json!({
         "id": root.get("id").cloned().unwrap_or(Value::Null),
@@ -360,6 +413,6 @@ pub fn dataset_v1_item(d: &Value) -> Value {
         "tags": parse_tags(root.get("tags").unwrap_or(&Value::Null)),
         "projectId": root.get("projectId").cloned().unwrap_or(Value::Null),
         "latestVersion": latest,
-        "updatedAt": root.get("updatedAt").cloned().unwrap_or(Value::Null),
+        "updatedAt": updated_at,
     })
 }

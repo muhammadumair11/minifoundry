@@ -215,10 +215,13 @@ pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
         ("audit_entries", "auditEntries"),
     ];
     for (table, key) in local_tables {
-        let n: i64 =
-            sqlx::query_scalar(&format!("SELECT count(*) FROM (DELETE FROM {table} RETURNING id) d"))
-                .fetch_one(&mut *tx)
-                .await?;
+        // Data-modifying CTE — Postgres forbids DELETE inside a FROM
+        // subquery; the CTE form counts and deletes in one statement.
+        let n: i64 = sqlx::query_scalar(&format!(
+            "WITH deleted AS (DELETE FROM {table} RETURNING id) SELECT count(*) FROM deleted"
+        ))
+        .fetch_one(&mut *tx)
+        .await?;
         counts.insert(key.to_string(), Value::Number(n.into()));
     }
 

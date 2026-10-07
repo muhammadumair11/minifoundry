@@ -173,7 +173,7 @@ pub async fn create_approval(
             .get(&format!("/internal/pipelines/{target_id}"))
             .await,
     };
-    let detail = match detail {
+    let envelope = match detail {
         Ok(v) => v,
         Err(FanOutError::Api { status: 404, .. }) => {
             return Err(ApiError::not_found(format!(
@@ -186,7 +186,7 @@ pub async fn create_approval(
         }
         Err(e) => return Err(pass_through(e)),
     };
-    let detail = payload_root(&detail, &["dataset", "pipeline"]);
+    let detail = payload_root(&envelope, &["dataset", "pipeline"]);
     let target_name = detail.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
     let Some(target_name) = target_name else {
         return Err(ApiError::not_found(format!(
@@ -195,9 +195,10 @@ pub async fn create_approval(
     };
 
     // publish_dataset pins the latest main-branch draft (legacy
-    // latestDraftVersion); publish_pipeline carries no version.
+    // latestDraftVersion); the versions list lives on the catalog ENVELOPE
+    // (sibling of the dataset object), so scan before rooting.
     let version_number = if kind == "publish_dataset" {
-        let draft = latest_draft_version(detail);
+        let draft = latest_draft_version(&envelope).or_else(|| latest_draft_version(detail));
         if draft.is_none() {
             return Err(ApiError::bad_request(
                 "No draft version exists to request publication",
