@@ -293,7 +293,7 @@ pub fn verify_password(password: &str, stored: &str) -> bool {
     if scrypt::scrypt(password.as_bytes(), &salt, &params, &mut actual).is_err() {
         return false;
     }
-    subtle::ConstantTimeEq::ct_eq(&actual, &expected).into()
+    subtle::ConstantTimeEq::ct_eq(actual.as_slice(), expected.as_slice()).into()
 }
 
 // ─── API token secrets (public foundry/v1 API) ──────────────────────────
@@ -398,7 +398,9 @@ mod tests {
     #[test]
     fn jwt_expiry_is_detected() {
         let secret = "test-secret-value-that-is-long-enough";
-        let s = build_session("u1", "a@b.c", "A", "viewer", None, -10);
+        // NOTE: jsonwebtoken applies a 60s verification leeway, so expiry
+        // must be tested beyond it.
+        let s = build_session("u1", "a@b.c", "A", "viewer", None, -120);
         let token = sign_token(&s, secret).unwrap();
         assert!(matches!(verify_token(&token, secret), Err(TokenError::Expired)));
     }

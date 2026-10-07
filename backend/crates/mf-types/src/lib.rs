@@ -155,22 +155,19 @@ pub fn parse_json_safe<T: serde::de::DeserializeOwned>(raw: Option<&str>, fallba
 }
 
 /// Cell sanitization shared by every row-producing path (SQL results,
-/// ingestion parsers, engine outputs). Mirrors the old `sanitizeCell`:
-/// values must end up as `string | number | boolean | null` in JSON.
+/// ingestion parsers, engine outputs). The legacy `sanitizeCell` normalized
+/// driver-specific types (bigint→number, Date→ISO string, blob→"(blob)",
+/// object→JSON string); with serde_json values those cases are already
+/// normalized at the conversion sites (see mf-sqlrun), so this is the
+/// identity pass kept as the single seam where future quirks land.
 pub fn sanitize_cell(v: Value) -> Value {
-    match v {
-        Value::Number(n) => {
-            // f64 integers print without trailing `.0` in serde_json already.
-            Value::Number(n)
-        }
-        other => other,
-    }
+    v
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn ts_format_matches_js_date_to_json() {

@@ -21,8 +21,9 @@ use std::str::FromStr;
 pub async fn connect(database_url: &str, schema: &str, max_connections: u32) -> anyhow::Result<PgPool> {
     let mut opts = PgConnectOptions::from_str(database_url)
         .map_err(|e| anyhow::anyhow!("invalid DATABASE_URL: {e}"))?;
-    if opts.get_options().get("search_path").is_none() {
-        opts = opts.search_path(schema);
+    let existing_options = opts.get_options().unwrap_or("").to_string();
+    if !existing_options.contains("search_path") {
+        opts = opts.options([("search_path", schema)]);
     }
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
@@ -90,7 +91,8 @@ mod tests {
     fn search_path_is_applied() {
         let opts = PgConnectOptions::from_str("postgres://u:p@localhost/db")
             .unwrap()
-            .search_path("catalog");
-        assert_eq!(opts.get_options().get("search_path").map(|s| s.as_str()), Some("catalog"));
+            .options([("search_path", "catalog")]);
+        assert!(opts.get_options().unwrap_or("").contains("search_path"));
+        assert!(opts.get_options().unwrap_or("").contains("catalog"));
     }
 }

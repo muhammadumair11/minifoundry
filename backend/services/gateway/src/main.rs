@@ -151,31 +151,31 @@ async fn gateway_handler(
 /// were stripped in proxy::forward before these are appended).
 fn build_actor_headers(actor: &mf_auth::Actor, demo: bool) -> Vec<(HeaderName, HeaderValue)> {
     let mut out: Vec<(HeaderName, HeaderValue)> = Vec::with_capacity(7);
-    let push = |out: &mut Vec<_>, name: &'static str, value: &str| {
-        if let (Ok(n), Ok(v)) = (HeaderName::from_static(name), HeaderValue::from_str(value)) {
-            out.push((n, v));
+    let mut push = |out: &mut Vec<_>, name: &'static str, value: String| {
+        if let Ok(v) = HeaderValue::from_str(&value) {
+            out.push((HeaderName::from_static(name), v));
         }
     };
-    push(&mut out, mf_auth::HEADER_ACTOR_ROLE, &actor.role);
+    push(&mut out, mf_auth::HEADER_ACTOR_ROLE, actor.role.clone());
     push(
         &mut out,
         mf_auth::HEADER_DEMO_MODE,
-        if demo { "1" } else { "0" },
+        (if demo { "1" } else { "0" }).to_string(),
     );
     if let Some(email) = &actor.email {
-        push(&mut out, mf_auth::HEADER_ACTOR_EMAIL, &mf_auth::hdr_encode(email));
+        push(&mut out, mf_auth::HEADER_ACTOR_EMAIL, mf_auth::hdr_encode(email));
     }
     if let Some(uid) = &actor.uid {
-        push(&mut out, mf_auth::HEADER_ACTOR_UID, uid);
+        push(&mut out, mf_auth::HEADER_ACTOR_UID, uid.clone());
     }
     if let Some(name) = &actor.name {
-        push(&mut out, mf_auth::HEADER_ACTOR_NAME, &mf_auth::hdr_encode(name));
+        push(&mut out, mf_auth::HEADER_ACTOR_NAME, mf_auth::hdr_encode(name));
     }
     if let Some(real_role) = &actor.real_role {
-        push(&mut out, mf_auth::HEADER_ACTOR_REAL_ROLE, real_role);
+        push(&mut out, mf_auth::HEADER_ACTOR_REAL_ROLE, real_role.clone());
     }
     if actor.is_service {
-        push(&mut out, mf_auth::HEADER_IS_SERVICE, "1");
+        push(&mut out, mf_auth::HEADER_IS_SERVICE, "1".to_string());
     }
     out
 }

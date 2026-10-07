@@ -62,7 +62,7 @@ pub async fn login(
             .actor_email(Some(&updated.email))
             .resource_id(Some(&updated.id))
             .resource_name(Some(&updated.email))
-            .detail(&format!("email={} role={}", updated.email, updated.role)),
+            .detail(Some(&format!("email={} role={}", updated.email, updated.role))),
     )
     .await;
 
@@ -92,7 +92,7 @@ pub async fn logout(
             AuditOptions::new("auth.logout", "user")
                 .resource_id(Some(uid))
                 .resource_name(actor.email.as_deref())
-                .detail(&detail),
+                .detail(Some(&detail)),
         )
         .await;
     }

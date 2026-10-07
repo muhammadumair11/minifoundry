@@ -107,7 +107,7 @@ pub async fn set_role(
             AuditOptions::new("session.role_switch", "user")
                 .actor_role(target)
                 .resource_id(actor.uid.as_deref())
-                .detail(&detail),
+                .detail(Some(&detail)),
         )
         .await;
 
@@ -122,7 +122,7 @@ pub async fn set_role(
         &state,
         &actor,
         AuditOptions::new("session.role_switch", "user")
-            .detail(&format!("role={target} simulator=yes")),
+            .detail(Some(&format!("role={target} simulator=yes"))),
     )
     .await;
 

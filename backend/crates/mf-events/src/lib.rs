@@ -169,10 +169,10 @@ pub async fn ensure_streams(js: &jetstream::Context) -> anyhow::Result<()> {
             subject::APPROVAL_DECIDED.into(),
             subject::MARKINGS_CHANGED.into(),
             subject::API_USAGE.into(),
-            format!("{}.*", subject::DLQ_PREFIX),
+            format!("{}.>", subject::DLQ_PREFIX),
         ],
-        storage_type: stream::StorageType::File,
-        max_age: (chrono::Duration::days(7).num_seconds()) as u64 * 1_000_000_000,
+        storage: stream::StorageType::File,
+        max_age: std::time::Duration::from_secs(7 * 24 * 3600),
         ..Default::default()
     })
     .await
@@ -181,7 +181,7 @@ pub async fn ensure_streams(js: &jetstream::Context) -> anyhow::Result<()> {
     js.create_stream(stream::Config {
         name: STREAM_JOBS.into(),
         subjects: vec![subject::JOB_PIPELINE_RUN.into()],
-        storage_type: stream::StorageType::File,
+        storage: stream::StorageType::File,
         ..Default::default()
     })
     .await
@@ -198,7 +198,7 @@ pub async fn ensure_consumer(
     stream_name: &str,
     durable: &str,
     filter_subject: &str,
-    max_deliver: u64,
+    max_deliver: i64,
 ) -> anyhow::Result<consumer::Consumer<consumer::pull::Config>> {
     let stream = js
         .get_stream(stream_name)
@@ -208,7 +208,7 @@ pub async fn ensure_consumer(
         .create_consumer(consumer::pull::Config {
             durable_name: Some(durable.into()),
             filter_subject: filter_subject.into(),
-            acknowledge_policy: consumer::AcknowledgePolicy::Explicit,
+            ack_policy: consumer::AckPolicy::Explicit,
             max_deliver,
             deliver_policy: consumer::DeliverPolicy::All,
             replay_policy: consumer::ReplayPolicy::Instant,
@@ -250,8 +250,10 @@ pub async fn publish_json_quiet<T: Serialize>(
 
 /// Parse an incoming message payload; on failure nak without retry storm
 /// (redeliver after a delay so poison messages eventually hit max_deliver).
+/// Takes the raw `async_nats::Message` (the `.message` field of a JetStream
+/// message) since that is where the payload lives.
 pub fn parse_message<T: serde::de::DeserializeOwned>(
-    msg: &async_nats::jetstream::Message,
+    msg: &async_nats::Message,
 ) -> Result<T, serde_json::Error> {
     serde_json::from_slice::<T>(&msg.payload)
 }

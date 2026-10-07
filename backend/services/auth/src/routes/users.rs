@@ -82,7 +82,7 @@ pub async fn update_user(
         AuditOptions::new("user.update", "user")
             .resource_id(Some(&updated.id))
             .resource_name(Some(&updated.email))
-            .detail(&format!("role={} isActive={}", updated.role, updated.is_active)),
+            .detail(Some(&format!("role={} isActive={}", updated.role, updated.is_active))),
     )
     .await;
 

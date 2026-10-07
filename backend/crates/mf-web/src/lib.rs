@@ -7,8 +7,7 @@
 //! - Actors come from gateway-injected `X-Mf-Actor-*` headers; services trust
 //!   these on the internal network (the gateway strips client-supplied copies).
 
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
+use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -27,7 +26,7 @@ pub fn init_tracing(service: &str) {
     if std::env::var("MF_LOG_FORMAT").map(|v| v == "json").unwrap_or(false) {
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().json().with_target(true).with_current_thread(true))
+            .with(fmt::layer().json().with_target(true))
             .init();
     } else {
         tracing_subscriber::registry()
@@ -99,33 +98,13 @@ impl From<sqlx::Error> for ApiError {
 }
 
 // ─── Actor extraction ───────────────────────────────────────────────────
+//
+// NOTE: no `impl FromRequestParts<S> for Actor` — the orphan rules forbid a
+// blanket generic-state impl for a local type against a foreign trait.
+// Handlers take `headers: HeaderMap` and call [`actor_from_headers`].
 
-/// Extracts the gateway-resolved [`Actor`] from `X-Mf-Actor-*` headers.
-/// When the gateway did not run (direct internal hit) the actor is
-/// `anonymous` — role guards then deny, which is the safe default.
-impl<S: Send + Sync> FromRequestParts<S> for Actor {
-    type Rejection = ApiError;
-
-    fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
-        let role = header_str(parts, mf_auth::HEADER_ACTOR_ROLE)
-            .unwrap_or_else(|| mf_auth::ROLE_ANONYMOUS.to_string());
-        let email = header_str(parts, mf_auth::HEADER_ACTOR_EMAIL).map(|e| mf_auth::hdr_decode(&e));
-        let uid = header_str(parts, mf_auth::HEADER_ACTOR_UID);
-        let name = header_str(parts, mf_auth::HEADER_ACTOR_NAME).map(|n| mf_auth::hdr_decode(&n));
-        let real_role = header_str(parts, mf_auth::HEADER_ACTOR_REAL_ROLE);
-        let is_service = header_str(parts, mf_auth::HEADER_IS_SERVICE).as_deref() == Some("1");
-        async move {
-            Ok(Actor { role, email, uid, name, real_role, is_service })
-        }
-    }
-}
-
-fn header_str(parts: &Parts, name: &str) -> Option<String> {
-    parts
-        .headers
+fn header_str(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    headers
         .get(name)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -154,8 +133,8 @@ pub fn actor_from_headers(headers: &axum::http::HeaderMap) -> mf_auth::Actor {
 }
 
 /// Demo-mode flag as forwarded by the gateway.
-pub fn demo_mode(parts: &Parts) -> bool {
-    header_str(parts, mf_auth::HEADER_DEMO_MODE).as_deref() == Some("1")
+pub fn demo_mode(headers: &HeaderMap) -> bool {
+    header_str(headers, mf_auth::HEADER_DEMO_MODE).as_deref() == Some("1")
 }
 
 // ─── Role guard ─────────────────────────────────────────────────────────
@@ -211,15 +190,16 @@ pub async fn healthz() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::Request;
 
-    fn parts_with(headers: Vec<(&str, &str)>) -> Parts {
-        let mut req = Request::builder().uri("/");
-        for (k, v) in headers {
-            req = req.header(k, v);
+    fn headers_with(entries: Vec<(&str, &str)>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for (k, v) in entries {
+            h.insert(
+                axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                axum::http::HeaderValue::from_str(v).unwrap(),
+            );
         }
-        req.body(Body::empty()).unwrap().into_parts().0
+        h
     }
 
     #[test]
@@ -245,17 +225,22 @@ mod tests {
     }
 
     #[test]
-    fn actor_from_headers() {
-        let mut parts = parts_with(vec![
+    fn actor_from_headers_decodes() {
+        let headers = headers_with(vec![
             (mf_auth::HEADER_ACTOR_ROLE, "editor"),
-            (mf_auth::HEADER_ACTOR_EMAIL, "a@b.c"),
+            (mf_auth::HEADER_ACTOR_EMAIL, &mf_auth::hdr_encode("a@b.c")),
+            (mf_auth::HEADER_ACTOR_NAME, &mf_auth::hdr_encode("José")),
             (mf_auth::HEADER_IS_SERVICE, "1"),
         ]);
-        let role = header_str(&mut parts, mf_auth::HEADER_ACTOR_ROLE);
-        assert_eq!(role.as_deref(), Some("editor"));
-        let email = header_str(&mut parts, mf_auth::HEADER_ACTOR_EMAIL);
-        assert_eq!(email.as_deref(), Some("a@b.c"));
-        assert!(demo_mode(&parts_with(vec![(mf_auth::HEADER_DEMO_MODE, "1")])));
-        assert!(!demo_mode(&parts_with(vec![])));
+        let actor = actor_from_headers(&headers);
+        assert_eq!(actor.role, "editor");
+        assert_eq!(actor.email.as_deref(), Some("a@b.c"));
+        assert_eq!(actor.name.as_deref(), Some("José"));
+        assert!(actor.is_service);
+        // raw (non-encoded) values fall back gracefully
+        let plain = headers_with(vec![(mf_auth::HEADER_ACTOR_EMAIL, "raw@b.c")]);
+        assert_eq!(actor_from_headers(&plain).email.as_deref(), Some("raw@b.c"));
+        assert!(demo_mode(&headers_with(vec![(mf_auth::HEADER_DEMO_MODE, "1")])));
+        assert!(!demo_mode(&headers_with(vec![])));
     }
 }

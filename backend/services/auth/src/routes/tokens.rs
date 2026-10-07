@@ -7,11 +7,10 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use mf_web::{actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use sqlx::QueryBuilder;
 
 use crate::audit::{self, AuditOptions};
-use crate::ratelimit::TOKEN_RATE_LIMIT;
 use crate::routes::{as_object, opt_int, parse_body, parse_body_or_empty, req_str};
 use crate::state::{AppState, RequestLogRow, TokenRow, serialize_token};
 
@@ -82,7 +81,7 @@ pub async fn create_token(
         AuditOptions::new("apiToken.create", "apiToken")
             .resource_id(Some(&token.id))
             .resource_name(Some(&token.name))
-            .detail(&format!("name={} prefix={}", token.name, token.prefix)),
+            .detail(Some(&format!("name={} prefix={}", token.name, token.prefix))),
     )
     .await;
 
@@ -127,7 +126,7 @@ pub async fn revoke_token(
             AuditOptions::new("apiToken.revoke", "apiToken")
                 .resource_id(Some(&token.id))
                 .resource_name(Some(&token.name))
-                .detail(&format!("name={} prefix={}", token.name, token.prefix)),
+                .detail(Some(&format!("name={} prefix={}", token.name, token.prefix))),
         )
         .await;
     }
@@ -298,7 +297,7 @@ pub async fn clear_usage(State(state): State<AppState>, headers: HeaderMap) -> A
     audit::audit(
         &state,
         &actor,
-        AuditOptions::new("apiUsage.clear", "apiToken").detail(&format!("rows={count}")),
+        AuditOptions::new("apiUsage.clear", "apiToken").detail(Some(&format!("rows={count}"))),
     )
     .await;
     Ok(json_ok(serde_json::json!({ "pruned": count })))
@@ -384,8 +383,9 @@ pub async fn seed_usage(
 
     // Exactly `hours` full-hour buckets ending at the current hour boundary;
     // rows spread evenly within each bucket (midpoint spacing).
+    // StdRng (not thread_rng): must be Send — it lives across the execute await.
     let first_bucket_ms = (now_ms / HOUR_MS) * HOUR_MS - (hours - 1) * HOUR_MS;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rngs::StdRng::from_entropy();
     let mut qb: QueryBuilder<sqlx::Postgres> =
         QueryBuilder::new("INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, created_at) ");
     let mut total: i64 = 0;
@@ -423,7 +423,7 @@ pub async fn seed_usage(
         AuditOptions::new("apiUsage.seed", "apiToken")
             .resource_id(Some(&token.id))
             .resource_name(Some(&token.name))
-            .detail(&format!("rows={total}")),
+            .detail(Some(&format!("rows={total}"))),
     )
     .await;
 
