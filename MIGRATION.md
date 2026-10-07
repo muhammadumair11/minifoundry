@@ -14,9 +14,10 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 | 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | ✅ COMPLETE (6be59de + 4a9e46e; 76 tests; fixtures byte-matched on seeded entries; masking matrix 9/9 live; publish→approval→decide→publish-approved E2E with NATS ack evidence; SSRF guards live-tested; container left up for peers) |
 | 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | ✅ COMPLETE (2b802c1; 68 tests; live E2E vs catalog: pipeline run/replay/retry/cascade/upstream/scheduler/output all verified) |
 | 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ✅ COMPLETE (ed6eb0a; clippy clean, 23/23 tests, all 3 languages live-verified on :8084; catalog-dependent E2E flows deferred to integration) |
-| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | ✅ committed (c09ef0f, 82 tests); amending action-apply path to RAW rows (legacy-verified masking map) |
+| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | ✅ COMPLETE (c09ef0f → 151fceb apply-path RAW amendment → 5d3b057 maskedColumns-from-catalog; 82 tests; 184-check live QA; RAW write-back proven zero-'------') |
 | 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | ✅ COMPLETE (05df02d + ba87b32; 53 tests; masking E2E + 429 burst + curriculum-via-audit + tolerant phase all live-verified) |
-| 7 | full smoke (`scripts/integrate.ps1` gate), compose hardening, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | ⏳ pending agent completions |
+| 6b | **INTEGRATION GATE (dev-stack, clean reset + reseed)** | ✅ **GREEN: e2e-phase1 27/27 · verify-contracts 70/70 · smoke.sh 91/0** (all 8 services + gateway + SPA; pipeline run, 3-language transforms, v1 rate-limit, cross-service masking all live) |
+| 7 | docker compose full-stack pass, browser UI check, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | 🔨 next |
 
 ## Resume point (if continuing in a later session)
 

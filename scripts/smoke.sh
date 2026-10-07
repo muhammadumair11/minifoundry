@@ -37,7 +37,7 @@ assert() {
   BODY="${out%$'\n'*}"; local code="${out##*$'\n'}"
   if [[ "$code" == "$want" ]]; then ok "$name"; else bad "$name" "want $want got $code: ${BODY:0:160}"; fi
 }
-jqp() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const v=JSON.parse(d);const r=eval("v."+process.argv[1]);console.log(typeof r==="object"?JSON.stringify(r):r)}catch{console.log("")}})' "$1" <<<"$BODY"; }
+jqp() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const v=JSON.parse(d);const r=eval("v."+process.argv[1]);console.log(typeof r==="object"?JSON.stringify(r):r)}catch{console.log("")}})' "$1" <<<"$BODY" | tr -d '\r'; }
 
 echo "== MiniFoundry smoke against $BASE =="
 
@@ -75,7 +75,7 @@ assert "dataset diff v1..v1" 200 -b "$JAR_ADMIN" "$BASE/api/datasets/$DS_ID/diff
 assert "branches list" 200 -b "$JAR_ADMIN" "$BASE/api/datasets/$DS_ID/branches"
 assert "create branch" 201 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
   -d '{"name":"smoke-branch","baseVersion":1}' "$BASE/api/datasets/$DS_ID/branches"
-BR_ID="$(jqp 'branch.id')"
+BR_ID="$(jqp 'id')"
 assert "delete branch" 200 -b "$JAR_ADMIN" -X DELETE "$BASE/api/datasets/$DS_ID/branches/$BR_ID"
 assert "quality rules list" 200 -b "$JAR_ADMIN" "$BASE/api/datasets/$DS_ID/quality"
 assert "quality evaluate" 200 -b "$JAR_ADMIN" -X POST "$BASE/api/datasets/$DS_ID/quality/evaluate"
@@ -85,9 +85,9 @@ assert "lineage graph" 200 -b "$JAR_ADMIN" "$BASE/api/lineage"
 assert "projects list" 200 -b "$JAR_ADMIN" "$BASE/api/projects"
 assert "connectors list" 200 -b "$JAR_ADMIN" "$BASE/api/connectors"
 assert "ingestions list" 200 -b "$JAR_ADMIN" "$BASE/api/ingestions"
-# CSV upload → new dataset version (ingest contract per legacy route)
-assert "ingest csv dataset" 201 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
-  -d '{"name":"smoke-uploads","format":"csv","content":"id,name\n1,alpha\n2,beta"}' "$BASE/api/ingest"
+# CSV upload → new dataset (legacy ingest contract: type raw|sample|url)
+assert "ingest raw csv dataset" 200 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
+  -d "{\"type\":\"raw\",\"datasetName\":\"smoke-uploads-$(date +%s)\",\"raw\":\"id,name\n1,alpha\n2,beta\"}" "$BASE/api/ingest"
 
 echo "-- orchestration --"
 assert "pipelines list" 200 -b "$JAR_ADMIN" "$BASE/api/pipelines"
@@ -98,20 +98,22 @@ if [[ -n "$PL_ID" && "$PL_ID" != "undefined" ]]; then
   assert "run pipeline (queued 202)" 202 -b "$JAR_ADMIN" -X POST "$BASE/api/pipelines/$PL_ID/run"
   JOB_ID="$(jqp 'job.id')"
   [[ -n "$JOB_ID" ]] && ok "job enqueued ($JOB_ID)" || bad "job id" "$BODY"
-  # wait for the job to settle (worker lease + engine)
+  # wait for the job to settle (worker lease + engine; legacy vocabulary:
+  # execution_jobs use 'succeeded'/'failed', pipeline_runs use 'success')
+  st=""
   for i in $(seq 1 30); do
     sleep 2
     assert "job status poll" 200 -b "$JAR_ADMIN" "$BASE/api/execution-jobs/$JOB_ID"
     st="$(jqp 'job.status')"
-    [[ "$st" == "success" || "$st" == "failed" ]] && break
+    [[ "$st" == "succeeded" || "$st" == "failed" ]] && break
   done
-  [[ "$st" == "success" ]] && ok "pipeline job succeeded" || bad "pipeline job status" "$st"
+  [[ "$st" == "succeeded" ]] && ok "pipeline job succeeded" || bad "pipeline job status" "$st"
   assert "runs list" 200 -b "$JAR_ADMIN" "$BASE/api/runs?pipelineId=$PL_ID"
   RUN_ID="$(jqp 'runs[0].id')"
   if [[ -n "$RUN_ID" && "$RUN_ID" != "undefined" ]]; then
     assert "run detail (manifest)" 200 -b "$JAR_ADMIN" "$BASE/api/runs/$RUN_ID"
     assert "run output rows" 200 -b "$JAR_ADMIN" "$BASE/api/pipelines/$PL_ID/runs/$RUN_ID/output"
-    assert "replay run" 202 -b "$JAR_ADMIN" -X POST "$BASE/api/runs/$RUN_ID/replay"
+    assert "replay run" 200 -b "$JAR_ADMIN" -X POST "$BASE/api/runs/$RUN_ID/replay"
   fi
 else
   bad "no seeded pipeline to exercise"
@@ -122,19 +124,23 @@ assert "execution-jobs list" 200 -b "$JAR_ADMIN" "$BASE/api/execution-jobs"
 
 echo "-- compute (transforms: SQL / JS / Python) --"
 assert "transforms list" 200 -b "$JAR_ADMIN" "$BASE/api/transforms"
-mk_transform() { # <name> <language> <code-json-escaped> <inputs-json>
+# SQL workbooks materialize inputs as tables named after the SANITIZED dataset
+# name — use the seeded Shipments dataset and table 'shipments'.
+assert "datasets for transforms" 200 -b "$JAR_ADMIN" "$BASE/api/datasets"
+SHP_ID="$(node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const v=JSON.parse(d);const s=(v.datasets??[]).find(x=>x.name==="Shipments");console.log(s?s.id:"")})' <<<"$BODY" | tr -d '\r')"
+[[ -n "$SHP_ID" ]] && ok "Shipments dataset resolved" || bad "Shipments dataset missing (seed?)"
+mk_transform() { # <name> <language> <code-json-escaped>
   assert "create transform $1 ($2)" 201 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
-    -d "{\"name\":\"$1\",\"language\":\"$2\",\"sourceCode\":$3,\"inputsJson\":$4,\"outputDatasetName\":\"$1-out\"}" \
+    -d "{\"name\":\"$1\",\"language\":\"$2\",\"sourceCode\":$3,\"inputs\":[\"$SHP_ID\"],\"outputDatasetName\":\"$1-out\"}" \
     "$BASE/api/transforms"
   TR_ID="$(jqp 'transform.id')"
   assert "run transform $1" 200 -b "$JAR_ADMIN" -X POST "$BASE/api/transforms/$TR_ID/run"
   [[ "$(jqp 'run.status')" == "success" ]] && ok "transform $1 run success" || bad "transform $1 run" "$BODY"
   assert "transform $1 runs history" 200 -b "$JAR_ADMIN" "$BASE/api/transforms/$TR_ID/runs"
 }
-SRC_DS="\"[\\\"$DS_ID\\\"]\""
-mk_transform "smoke-sql"  "sql"        '"SELECT * FROM input1 LIMIT 10"' "$SRC_DS"
-mk_transform "smoke-js"   "javascript" '"return input.rows.slice(0, 5);"' "$SRC_DS"
-mk_transform "smoke-py"   "python"     '"def transform(input):\n    return input[\"rows\"][:5]\n"' "$SRC_DS"
+mk_transform "smoke-sql-$(date +%s)"  "sql"        '"SELECT * FROM shipments LIMIT 10"'
+mk_transform "smoke-js-$(date +%s)"   "javascript" '"return input.rows.slice(0, 5);"'
+mk_transform "smoke-py-$(date +%s)"   "python"     '"def transform(input):\n    return input[\"rows\"][:5]\n"'
 
 echo "-- ontology --"
 assert "ontology list" 200 -b "$JAR_ADMIN" "$BASE/api/ontology"
@@ -197,7 +203,7 @@ MK_ID="$(jqp 'markings[0].id')"
 COL="$(curl -sS -b "$JAR_ADMIN" "$BASE/api/datasets/$DS_ID/rows?limit=1" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const v=JSON.parse(d);console.log(Object.keys(v.rows[0]??{})[0]??"")}catch{console.log("")}})')"
 if [[ -n "$MK_ID" && "$MK_ID" != "undefined" && -n "$COL" ]]; then
   assert "attach marking to column" 200 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
-    -d "{\"datasetId\":\"$DS_ID\",\"columnName\":\"$COL\"}" "$BASE/api/markings/$MK_ID/attach"
+    -d "{\"datasetId\":\"$DS_ID\",\"columns\":[\"$COL\"]}" "$BASE/api/markings/$MK_ID/attach"
   admin_val="$(curl -sS -b "$JAR_ADMIN" "$BASE/api/datasets/$DS_ID/rows?limit=1" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const v=JSON.parse(d);console.log(v.rows[0][process.argv[1]]??"")})' "$COL")"
   viewer_val="$(curl -sS -b "$JAR_VIEWER" "$BASE/api/datasets/$DS_ID/rows?limit=1" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const v=JSON.parse(d);console.log(v.rows[0][process.argv[1]]??"")})' "$COL")"
   if [[ "$viewer_val" == "------" && "$admin_val" != "------" ]]; then
@@ -206,7 +212,7 @@ if [[ -n "$MK_ID" && "$MK_ID" != "undefined" && -n "$COL" ]]; then
     bad "column masking" "admin='$admin_val' viewer='$viewer_val' (marking minRole may allow viewer)"
   fi
   assert "detach marking" 200 -b "$JAR_ADMIN" -X POST -H 'content-type: application/json' \
-    -d "{\"datasetId\":\"$DS_ID\",\"columnName\":\"$COL\"}" "$BASE/api/markings/$MK_ID/detach"
+    -d "{\"datasetId\":\"$DS_ID\",\"columns\":[\"$COL\"]}" "$BASE/api/markings/$MK_ID/detach"
 fi
 
 echo "-- SPA --"
