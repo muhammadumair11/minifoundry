@@ -1143,3 +1143,21 @@ Stage Summary:
 - The dashboard resume banner no longer tells a 78%-complete user to "take the platform tour"; it now points at the next actionable drill (Schedule a pipeline) and deep-links there. Fresh-user path (0% → Orient tour) preserved. All count labels on the home screen are now grammatically correct.
 - No data mutations (only browsed + clicked Resume link); resting state: light theme, demo admin.
 - Note: user screenshot's "1 Issue" dev-overlay badge could not be reproduced (console clean on reload); will keep watching in the 15-min review rounds.
+
+---
+Task ID: 24-RUST-MIGRATION (branch feat/rust-microservices)
+Agent: DeepSeek Harness (orchestrator + subagents)
+Task: USER directive — port the whole backend to Rust microservices (Axum) + PostgreSQL (schema-per-service, sqlx) + NATS JetStream + custom Axum gateway, convert the frontend to a Vite + React + TanStack Router SPA, run everything in Docker Compose, repo split into frontend/ + backend/. Full 113-route parity. All work on a new branch (user requirement).
+
+Work Log (condensed — live status in MIGRATION.md):
+- Architecture approved via 10 multiple-choice decisions (balanced 8-service split, Axum+sqlx, NATS JetStream, custom gateway, JWT access+refresh w/ gateway transparent single-flight refresh, one PG instance schema-per-service, embedded runtimes for code execution, Compose, fresh seed instead of SQLite migration).
+- Phase 0: workspace + 8 shared crates (mf-types/db/auth/web/events/js/sqlrun/internal), compose infra (pg17+nats, per-service PG roles), golden contracts captured from the legacy app (~80 fixtures: auth/platform/reads domains, scripts/capture-contracts.mjs), ROUTE_INVENTORY (113 routes + methods), INTERNAL_API.md contract, CI backend+frontend jobs.
+- Environment notes: host has no MSVC linker → ALL cargo builds run in Docker (backend/cargo.ps1 wrapper, mf-rust-dev image with clippy); crates.io + rustup routed via rsproxy.cn mirror (poor direct CDN throughput); host rustc updated 1.81→1.99.
+- Phase 1 GREEN: auth-service (users/JWT/refresh/impersonation/API tokens/usage dashboard+seeder, apiusage NATS consumer) + gateway (routing table, actor headers w/ base64url email+name, demo/shared modes, legacy middleware 401 wall, transparent refresh) — E2E 27/27 (scripts/e2e-phase1.mjs). Frontend SPA converted (24 routes, next/link+next/navigation shims, React.lazy monaco/maplibre, fontsource Geist): vite build + tsc green; browser-equivalent login through :3000→gateway→auth verified with cookie jar.
+- Fixes along the way: CORS credentials+wildcard illegality, ThreadRng !Send across await, sqlx push_values tuple semantics, async-nats 0.35 API (storage/ack_policy/i64), JWT 60s leeway in expiry test, nats healthcheck needs -m 8222.
+- Phase 2+3 IN FLIGHT: catalog + orchestration (incl. mf-js/rquickjs engine) delegated to parallel subagents against INTERNAL_API.md + fixtures; waves B (compute, ontology) and C (governance, public-api) queued behind them. scripts/smoke.sh drafted as the Phase 7 full-stack gate.
+
+Stage Summary:
+- New stack layout: backend/ (Cargo workspace, 8 services + seed CLI + contracts) and frontend/ (Vite SPA). Legacy Next.js app untouched at repo root until Phase 7 cutover (still runnable; its API was the contract-capture source).
+- Commits: bbcadb9 scaffold → afbeabf compile fixes → 20251af Phase-1 green → 799ac23 infra/clippy cleanup (+ agent commits to follow).
+- Remaining: catalog/orchestration review+integrate, compute/ontology/governance/public-api waves, full compose bring-up, smoke.sh green, cutover (delete legacy app), final CI + README rewrite.
