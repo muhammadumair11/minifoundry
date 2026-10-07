@@ -39,8 +39,8 @@ Service discovery env vars (compose DNS defaults):
 | `GET /internal/datasets/by-name/{name}` | Lookup for compute output datasets (`ensureDatasetByName`). |
 | `POST /internal/datasets` `{name, description?, tags?, projectId?}` | Create dataset → summary. |
 | `GET /internal/datasets/{id}/versions/{n}` | Version meta `{schema, rowCount, ...}`; `n=head` resolves the consumer version (gate-aware). |
-| `GET /internal/datasets/{id}/versions/{n}/rows?offset=&limit=` | Paged rows. **Masking applied here** using the forwarded `X-Mf-Actor-Role` + governance markings (single implementation; consumers get governed rows). `n=head` allowed. |
-| `GET /internal/datasets/{id}/versions/{n}/rows/all` | Full rows (engine/compute use; masking applied as above). |
+| `GET /internal/datasets/{id}/versions/{n}/rows?offset=&limit=&role=<r>` | Paged rows. `n=head` resolves the consumer version (gate-aware). **Masking is opt-in via the `role` query param**: absent → RAW rows; `role=viewer\|editor\|admin` → markings fetched from governance and applied at that role level (values below a marking's minRole become `"------"`). Parity map: orchestration engine passes `role=viewer` in SHARED mode and nothing in demo mode (legacy `engine.ts`: `isDemoMode() ? rawRows : applyMasking(..., 'viewer')`); compute passes nothing (legacy transform-engine never masked); ontology/public-api pass the caller's effective role / `viewer`. |
+| `GET /internal/datasets/{id}/versions/{n}/rows/all?role=<r>` | Full rows, same `role` masking semantics as above. |
 | `POST /internal/datasets/{id}/versions` | Append a new version: `{rows?, schema?, createdBy, branch?, lifecycle?, outputJobId?, inputs?: [{datasetId, versionNumber}], runId?, pipelineId?, transformRunId?, transformId?}` → `{datasetId, versionNumber, rowCount}`. Catalog centrally: infers schema when absent, enforces `outputJobId` uniqueness, writes row storage + version lineage edges, runs quality auto-evaluation, and emits `mf.dataset.version.created` (only when consumable). THIS is the single write path for engine output, transform output, and ontology write-back. |
 | `POST /internal/datasets/{id}/publish-approved` `{versionNumber}` | Governance→catalog after an approval decision: flip lifecycle draft→published + emit the version event. Idempotent. |
 | `GET /internal/lineage/dataset/{id}` | `{edges:[{fromDatasetId,toDatasetId,pipelineId?}]}` for impact analysis fan-out. |
@@ -110,9 +110,11 @@ Consumers are durable with explicit acks, `max_deliver=5`, DLQ `mf.dlq.>`.
 
 ## Cross-cutting rules
 
-1. **Masking lives where rows egress to clients** — but is *computed once* in
-   catalog's internal rows endpoints (governance markings + forwarded actor
-   role). Ontology/public-api never see unmasked rows.
+1. **Masking lives in catalog's internal rows endpoints, opt-in via `role`
+   query param** (see above for the per-consumer parity map). Public row
+   egress (catalog `/api/datasets/{id}/rows|diff|export`) always masks at the
+   CALLER's role. Ontology object/dashboard/application data masks at the
+   caller's role via the `role` param. Public-api always uses `role=viewer`.
 2. **Version writes go through exactly one door**: catalog's
    `POST /internal/datasets/{id}/versions` (idempotent via `outputJobId`).
 3. **Audit/notify are fire-and-forget events** — a broken consumer can never
