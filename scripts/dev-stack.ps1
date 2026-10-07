@@ -19,8 +19,14 @@ param(
     [switch]$SkipBuild
 )
 
-$ErrorActionPreference = 'Stop'
+# Continue, not Stop: docker/cargo write progress to stderr, which Stop would
+# convert into terminating errors. Failures are handled via explicit exit codes.
+$ErrorActionPreference = 'Continue'
 $root = Split-Path $PSScriptRoot -Parent
+
+# Robust to being invoked via `powershell -File` (which passes "a,b,c" as a
+# single string instead of an array).
+$Services = @($Services | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
 if ($Services -contains 'all') {
     $Services = @('auth', 'catalog', 'orchestration', 'compute', 'ontology', 'governance', 'public-api', 'gateway')

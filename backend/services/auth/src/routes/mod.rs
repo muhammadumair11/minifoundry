@@ -78,15 +78,31 @@ pub fn req_str<'a>(m: &'a Map<String, Value>, field: &str) -> Result<&'a str, Ap
     }
 }
 
-/// Required non-empty string (zod `z.string().min(1)`).
+/// Required non-empty string (zod `z.string().min(1)` — exact v4 wording).
 pub fn req_str_min1<'a>(m: &'a Map<String, Value>, field: &str) -> Result<&'a str, ApiError> {
     let s = req_str(m, field)?;
     if s.is_empty() {
         return Err(ApiError::bad_request(format!(
-            "{field}: Too small: expected string to have >=1 chars"
+            "{field}: Too small: expected string to have >=1 characters"
         )));
     }
     Ok(s)
+}
+
+/// Single-field issue text for multi-issue collection (zod joins ALL issues
+/// with '; ' in schema field order — the legacy zodErrorMessage behavior).
+pub fn str_min1_issue(m: &Map<String, Value>, field: &str) -> Result<(), String> {
+    match m.get(field) {
+        Some(Value::String(s)) if !s.is_empty() => Ok(()),
+        Some(Value::String(_)) => Err(format!(
+            "{field}: Too small: expected string to have >=1 characters"
+        )),
+        Some(other) => Err(format!(
+            "{field}: Invalid input: expected string, received {}",
+            kind_of(other)
+        )),
+        None => Err(format!("{field}: Invalid input: expected string, received undefined")),
+    }
 }
 
 /// Required enum string (zod `z.enum([...])`).
@@ -149,7 +165,7 @@ pub fn opt_int(m: &Map<String, Value>, field: &str) -> Result<Option<i64>, ApiEr
     }
 }
 
-fn kind_of(v: &Value) -> &'static str {
+pub(crate) fn kind_of(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
         Value::Bool(_) => "boolean",

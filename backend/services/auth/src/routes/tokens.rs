@@ -47,12 +47,12 @@ pub async fn create_token(
     let name = req_str(&m, "name")?;
     if name.is_empty() {
         return Err(ApiError::bad_request(
-            "name: Too small: expected string to have >=1 chars",
+            "name: Too small: expected string to have >=1 characters",
         ));
     }
     if name.chars().count() > 64 {
         return Err(ApiError::bad_request(
-            "name: Too large: expected string to have <=64 chars",
+            "name: Too large: expected string to have <=64 characters",
         ));
     }
 

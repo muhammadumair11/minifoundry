@@ -23,6 +23,18 @@ pub async fn login(
 ) -> ApiResult<Response> {
     let v = parse_body(&body)?;
     let m = as_object(v)?;
+    // zod collects ALL issues (schema field order, '; '-joined) — the legacy
+    // zodErrorMessage behavior pinned by the login-invalid-body fixture.
+    let mut issues: Vec<String> = Vec::new();
+    if let Err(e) = crate::routes::str_min1_issue(&m, "email") {
+        issues.push(e);
+    }
+    if let Err(e) = crate::routes::str_min1_issue(&m, "password") {
+        issues.push(e);
+    }
+    if !issues.is_empty() {
+        return Err(ApiError::bad_request(issues.join("; ")));
+    }
     let email_in = req_str_min1(&m, "email")?;
     let password = req_str_min1(&m, "password")?;
 
