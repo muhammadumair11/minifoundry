@@ -11,23 +11,44 @@
 //!    and returning an array of plain objects; no require/process/console;
 //!    hard timeout.
 //!
-//! Phase 0 defines the engine contract; the concrete V8 (deno_core) engine is
-//! wired in Phase 3/4. If deno_core's build weight proves excessive the
-//! `rquickjs` engine slots in behind the same trait with no contract change.
+//! The concrete engine is [`QuickJsEngine`] (rquickjs — QuickJS compiled from
+//! its own C sources, no system deps). Every evaluation builds a FRESH
+//! `Runtime` + `Context` inside the call: no globals beyond the QuickJS
+//! standard intrinsics (no fetch/require/console/process — QuickJS ships none
+//! and we register none), a wall-clock interrupt handler, and a memory limit.
+//!
+//! Error-message contract (exact legacy strings — callers persist `e.to_string()`):
+//! - [`JsError::Compile`] carries the raw engine syntax-error message; derive
+//!   callers wrap it as `derive node '<id>': invalid expression — <msg>`.
+//! - [`JsError::Runtime`] Display is the legacy workbook surface
+//!   `script error: <msg>` (isolated-runner.ts rejects with exactly that).
+//! - [`JsError::Timeout`] Display is `JavaScript execution timed out after <ms>ms`.
+//! - [`JsError::InvalidResult`] Display is the exact validateRunnerRows message.
 
 use serde_json::Value;
 use std::time::Duration;
 
+pub mod quickjs;
+
+pub use quickjs::QuickJsEngine;
+
 #[derive(Debug, thiserror::Error)]
 pub enum JsError {
-    #[error("compilation failed: {0}")]
+    /// Compilation failed; `{0}` is the raw engine syntax-error message.
+    #[error("{0}")]
     Compile(String),
-    #[error("execution timed out")]
-    Timeout,
-    #[error("runtime error: {0}")]
+    /// Wall-clock timeout; `{0}` is the exact legacy message
+    /// `JavaScript execution timed out after <ms>ms`.
+    #[error("{0}")]
+    Timeout(String),
+    /// A JS exception (runtime throw OR workbook compile failure — legacy
+    /// surfaces both identically); `{0}` is `script error: <msg>`.
+    #[error("{0}")]
     Runtime(String),
-    #[error("result must be an array of plain objects with string|number|boolean|null values")]
-    InvalidResult,
+    /// Workbook result shape/value validation; `{0}` is the exact legacy
+    /// validateRunnerRows message.
+    #[error("{0}")]
+    InvalidResult(String),
     #[error("engine unavailable: {0}")]
     Unavailable(String),
 }
@@ -43,7 +64,10 @@ pub struct JsLimits {
 
 impl Default for JsLimits {
     fn default() -> Self {
-        Self { timeout: Duration::from_secs(2), max_rows: 50_000 }
+        // isolated-runner.ts: DEFAULT_TIMEOUT_MS = 10_000, DEFAULT_MAX_ROWS = 50_000.
+        // (Callers may pass tighter limits — check the legacy call sites in
+        // transform-engine.ts when porting.)
+        Self { timeout: Duration::from_secs(10), max_rows: 50_000 }
     }
 }
 
@@ -58,7 +82,12 @@ pub trait JsEngine: Send + Sync {
     ///
     /// Returns `(values, failed_count)`; per-row failures yield
     /// `Value::Null` in the output vec (the caller adds the warn log entry,
-    /// matching execDerive).
+    /// matching execDerive). Legacy derive evaluation had NO timeout (plain
+    /// `new Function`); implementations SHOULD still enforce a generous
+    /// wall-clock interrupt (JsLimits::default().timeout over the whole batch)
+    /// and treat a timeout as a PER-ROW failure (null + failed count), never a
+    /// whole-batch error — closest to legacy behavior while bounding runaway
+    /// expressions.
     fn eval_derive(
         &self,
         expression: &str,
@@ -67,7 +96,10 @@ pub trait JsEngine: Send + Sync {
     ) -> Result<(Vec<Value>, usize), JsError>;
 
     /// Execute a workbook function body with `input` bound; returns the
-    /// JSON-serialized result array (already row-shape validated).
+    /// JSON-serialized result array (already row-shape validated with the
+    /// exact validateRunnerRows messages). Error Displays are the exact legacy
+    /// strings (`script error: ...`, `JavaScript execution timed out after
+    /// <ms>ms`, validation messages) so callers can persist `e.to_string()`.
     fn eval_workbook(&self, source: &str, input: &Value, limits: &JsLimits) -> Result<Vec<Value>, JsError>;
 }
 
@@ -83,11 +115,10 @@ pub fn derive_expression_is_dangerous(expression: &str) -> bool {
     re.is_match(expression)
 }
 
-/// Engine factory. Returns None until the concrete engine is wired (Phase 3);
-/// callers surface the same "isolated runner not configured" behavior the old
-/// shared mode had for code execution.
+/// Engine factory. The rquickjs engine is cheap to construct (it holds only
+/// limit knobs); every evaluation call creates its own Runtime + Context.
 pub fn default_engine() -> Option<Box<dyn JsEngine>> {
-    None
+    Some(Box::new(QuickJsEngine::new()))
 }
 
 #[cfg(test)]
@@ -108,7 +139,13 @@ mod tests {
     }
 
     #[test]
-    fn engine_not_yet_configured() {
-        assert!(default_engine().is_none());
+    fn default_engine_is_available() {
+        let engine = default_engine().expect("rquickjs engine must be available");
+        // smoke: 1 + 1 through the boxed trait object
+        let (values, failed) = engine
+            .eval_derive("a + 1", &["a".to_string()], &[serde_json::json!({"a": 1})])
+            .expect("eval ok");
+        assert_eq!(failed, 0);
+        assert_eq!(values, vec![serde_json::json!(2)]);
     }
 }
