@@ -11,12 +11,28 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 |---|---|---|
 | 0 | Branch, Cargo workspace + shared crates, compose infra (pg/nats), CI skeleton, golden-contract capture (~80 fixtures), internal-API contract | ✅ done |
 | 1 | auth-service (users/JWT/refresh/tokens/usage), gateway (routing/actor/demo-mode/auth wall/transparent refresh), SPA conversion (Vite + TanStack Router; vite build + tsc green; proxy chain verified) — E2E 27/27; frontend Docker image verified (SPA + nginx /api proxy + deep-link fallback) | ✅ done |
-| 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | 🔨 in progress (agent) |
-| 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | 🔨 in progress (agent) |
-| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | 🔨 in progress (agent) |
-| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | 🔨 in progress (agent) |
-| 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | 🔨 in progress (agent) |
-| 7 | full smoke (`scripts/integrate.ps1` gate), compose hardening, README rewrite, DELETE legacy Next.js app, final CI | ⏳ pending |
+| 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | 🔨 agent finishing (~7.8K lines drafted, in compile/verify cycles) |
+| 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | 🔨 agent finishing (~4.6K lines + mf-js engine, compile/verify) |
+| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ✅ committed (ed6eb0a); agent running live container verification |
+| 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | 🔨 agent finishing (~5.5K lines, compile/verify) |
+| 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | 🔨 agent finishing (governance ~3.9K lines; public-api next) |
+| 7 | full smoke (`scripts/integrate.ps1` gate), compose hardening, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | ⏳ pending agent completions |
+
+## Resume point (if continuing in a later session)
+
+Five durable subagent workers ported the services (compute committed; others
+finishing compile/verify cycles — check `git log` and their reports first).
+Integration sequence once services are committed:
+
+1. `cd backend; .\cargo.ps1 build --workspace` (fix any cross-service breakage)
+2. `.\scripts\dev-stack.ps1 -Services all` (builds + boots every service
+   container against docker-compose.dev.yml infra with host-reachable URLs)
+3. `docker run --rm -v mf-cargo-target:/t:ro -e DATABASE_URL=postgres://postgres:<redacted>@host.docker.internal:5432/minifoundry -e GATEWAY_URL=http://host.docker.internal:8080 -e MF_SERVICE_TOKEN=<redacted> debian:bookworm-slim /t/debug/mf-seed all`
+4. `node scripts/e2e-phase1.mjs --base http://localhost:8080`
+   `node scripts/verify-contracts.mjs --base http://localhost:8080`
+   `bash scripts/smoke.sh http://localhost:8080`
+5. Fix seams → commit → `docker compose up -d --build` full-stack pass →
+   CUTOVER.md checklist → final CI + README.
 
 ## How to run (current partial stack)
 
