@@ -22,7 +22,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use std::sync::Arc;
-use tower_http::cors::{Any, AllowOrigin, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use state::GatewayState;
 
@@ -36,11 +36,27 @@ async fn main() -> anyhow::Result<()> {
 
     let state = GatewayState::new(secret, mode);
 
+    // CORS for direct (non-nginx) API access. Credentials + wildcards are
+    // illegal per spec — enumerate methods and the headers clients send.
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::mirror_request())
         .allow_credentials(true)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::PATCH,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+            axum::http::Method::HEAD,
+        ])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::ACCEPT,
+            HeaderName::from_static("x-service-token"),
+            HeaderName::from_static("idempotency-key"),
+        ])
         .expose_headers([
             HeaderName::from_static("x-ratelimit-limit"),
             HeaderName::from_static("x-ratelimit-remaining"),

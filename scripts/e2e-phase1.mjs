@@ -39,6 +39,16 @@ function jar(setCookie) {
   return setCookie.map((c) => c.split(';')[0]).join('; ')
 }
 
+/** Merge cookie jars with browser semantics: later same-name cookies replace. */
+function mergeJar(base, overlay) {
+  const map = new Map()
+  for (const part of `${base}; ${overlay}`.split(';').map((s) => s.trim()).filter(Boolean)) {
+    const idx = part.indexOf('=')
+    if (idx > 0) map.set(part.slice(0, idx), part)
+  }
+  return [...map.values()].join('; ')
+}
+
 function check(name, cond, detail = '') {
   if (cond) {
     passed++
@@ -129,9 +139,9 @@ async function main() {
 
   // ── impersonation ──
   const imp = await req('POST', '/api/session/role', { body: { role: 'viewer' }, cookie: adminJar })
-  const impJar = imp.setCookie.length ? jar(imp.setCookie) : adminJar
+  const impJar = mergeJar(adminJar, jar(imp.setCookie))
   check('admin impersonates viewer → 200', imp.status === 200 && imp.json?.role === 'viewer', JSON.stringify(imp.json))
-  const impSession = await req('GET', '/api/session', { cookie: `${adminJar}; ${impJar}` })
+  const impSession = await req('GET', '/api/session', { cookie: impJar })
   check('impersonated session: effective viewer, real admin, impersonating true',
     impSession.status === 200 &&
     impSession.json?.role === 'viewer' &&
@@ -153,7 +163,7 @@ async function main() {
     JSON.stringify(usersViewer.json))
 
   // impersonated admin (effective viewer) must also be denied
-  const usersImp = await req('GET', '/api/users', { cookie: `${adminJar}; ${impJar}` })
+  const usersImp = await req('GET', '/api/users', { cookie: impJar })
   check('users list while impersonating viewer → 403', usersImp.status === 403, `status=${usersImp.status}`)
 
   // ── tokens lifecycle ──

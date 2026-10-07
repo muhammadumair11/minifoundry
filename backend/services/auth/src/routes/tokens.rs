@@ -386,11 +386,18 @@ pub async fn seed_usage(
     // StdRng (not thread_rng): must be Send — it lives across the execute await.
     let first_bucket_ms = (now_ms / HOUR_MS) * HOUR_MS - (hours - 1) * HOUR_MS;
     let mut rng = rand::rngs::StdRng::from_entropy();
-    let mut qb: QueryBuilder<sqlx::Postgres> =
-        QueryBuilder::new("INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, created_at) ");
-    let mut total: i64 = 0;
 
-    qb.push_values(0..hours, |mut b, h| {
+    // Precompute every row (id, route, status, duration, created) flat, then
+    // hand ONE tuple per row to push_values (it wraps each element in `(...)`).
+    struct SeedRow {
+        id: String,
+        route: &'static str,
+        status: i32,
+        duration_ms: i32,
+        created: DateTime<Utc>,
+    }
+    let mut rows: Vec<SeedRow> = Vec::new();
+    for h in 0..hours {
         let bucket_start = first_bucket_ms + h * HOUR_MS;
         let bucket_dt = DateTime::from_timestamp_millis(bucket_start).unwrap_or(now);
         // Smooth diurnal-ish wave (peak ~14:00 UTC, trough ~02:00) + jitter,
@@ -403,17 +410,29 @@ pub async fn seed_usage(
         for i in 0..count {
             let created_ms = bucket_start as f64 + (i as f64 + 0.5) * step;
             let created = DateTime::from_timestamp_millis(created_ms.round() as i64).unwrap_or(now);
-            b.push_bind(mf_db::new_id())
-                .push_bind(&token.id)
-                .push_bind(pick_route(&mut rng))
-                .push_bind(pick_status(&mut rng))
-                .push_bind(pick_duration_ms(&mut rng))
-                .push_bind(created);
-            total += 1;
+            rows.push(SeedRow {
+                id: mf_db::new_id(),
+                route: pick_route(&mut rng),
+                status: pick_status(&mut rng),
+                duration_ms: pick_duration_ms(&mut rng),
+                created,
+            });
         }
+    }
+    let total = rows.len() as i64;
+
+    let mut qb: QueryBuilder<sqlx::Postgres> =
+        QueryBuilder::new("INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, created_at) ");
+    qb.push_values(rows.iter(), |mut b, row| {
+        b.push_bind(&row.id)
+            .push_bind(&token.id)
+            .push_bind(row.route)
+            .push_bind(row.status)
+            .push_bind(row.duration_ms)
+            .push_bind(row.created);
     });
 
-    // push_values with zero groups produces invalid SQL — hours >= 6 always.
+    // rows is never empty (hours >= 6, count >= 3), so the VALUES list is valid.
     let query = qb.build();
     query.execute(&state.db).await.map_err(|e| ApiError::internal(e.to_string()))?;
 

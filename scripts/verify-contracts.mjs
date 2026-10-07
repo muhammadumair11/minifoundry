@@ -217,6 +217,16 @@ function jar(setCookie) {
   return setCookie.map((c) => c.split(';')[0]).join('; ')
 }
 
+/** Merge cookie jars with browser semantics: later same-name cookies replace. */
+function mergeJar(base, overlay) {
+  const map = new Map()
+  for (const part of `${base}; ${overlay}`.split(';').map((s) => s.trim()).filter(Boolean)) {
+    const idx = part.indexOf('=')
+    if (idx > 0) map.set(part.slice(0, idx), part)
+  }
+  return [...map.values()].join('; ')
+}
+
 async function loginAs(creds) {
   const res = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
@@ -262,8 +272,8 @@ async function verifyAuth() {
     headers: { 'content-type': 'application/json', cookie },
     body: JSON.stringify({ role: 'viewer' }),
   })
-  const impCookie = jar(imp.headers.getSetCookie?.() ?? []) || cookie
-  await replay('auth', 'session-impersonated', { cookie: `${cookie}; ${impCookie}` })
+  const impCookie = mergeJar(cookie, jar(imp.headers.getSetCookie?.() ?? []))
+  await replay('auth', 'session-impersonated', { cookie: impCookie })
 
   const viewer = await loginAs({ email: 'demo-viewer@example.invalid', password: '<redacted>' })
   await replay('auth', 'session-role-forbidden', { cookie: viewer.cookie, body: { role: 'admin' } })
