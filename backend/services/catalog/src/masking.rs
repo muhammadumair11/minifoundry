@@ -131,14 +131,16 @@ pub async fn mask_rows_public(
 
 /// INTERNAL-route masking (opt-in `role` query param): None → raw rows with
 /// no governance call. Some(role) → mask; governance outage → warn + raw
-/// (tolerant degradation per INTERNAL_API.md).
+/// (tolerant degradation per INTERNAL_API.md). Returns the rows plus the
+/// masked column names (internal rows responses carry `maskedColumns` so
+/// public-api can pass them through to the v1 contract).
 pub async fn mask_rows_internal(
     state: &AppState,
     dataset_id: &str,
     rows: Vec<Row>,
     role: Option<&str>,
-) -> Vec<Row> {
-    let Some(role) = role else { return rows };
+) -> (Vec<Row>, Vec<String>) {
+    let Some(role) = role else { return (rows, Vec::new()) };
     let path = format!("/internal/markings/dataset/{dataset_id}");
     let markings = match state.governance.get_json::<Vec<ColumnMarkingInfo>>(&path).await {
         Ok(mut m) => {
@@ -151,11 +153,11 @@ pub async fn mask_rows_internal(
                 error = %e,
                 "governance markings unreachable while role masking requested; returning raw rows"
             );
-            return rows;
+            return (rows, Vec::new());
         }
     };
     let masked_columns = masked_columns_for(&markings, role);
-    apply_masking(rows, &masked_columns).0
+    apply_masking(rows, &masked_columns)
 }
 
 #[cfg(test)]

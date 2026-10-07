@@ -56,9 +56,9 @@ pub async fn failing_error_rules(
     dataset_id: &str,
     version_number: i32,
 ) -> Vec<(String, Option<String>)> {
-    // Legacy: results ordered createdAt desc, first-seen per rule wins.
+    // Legacy: results ordered createdAt desc, first-seen per RULE wins.
     let rows: Vec<(String, bool, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT r.id, r.passed, r.message, q.name, q.severity \
+        "SELECT r.rule_id, r.passed, r.message, q.name, q.severity \
          FROM quality_results r JOIN quality_rules q ON q.id = r.rule_id \
          WHERE r.dataset_id = $1 AND r.version_number = $2 \
          ORDER BY r.created_at DESC, r.id DESC",

@@ -181,7 +181,8 @@ pub struct RuleRow {
     pub name: String,
     pub kind: String,
     pub column_name: Option<String>,
-    pub config_json: Json<Value>,
+    /// JSON text (insertion-ordered round-trip; see migration notes).
+    pub config_json: String,
     pub severity: String,
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
@@ -314,7 +315,7 @@ pub fn serialize_rule(r: &RuleRow) -> Value {
         "name": r.name,
         "kind": r.kind,
         "column": r.column_name,
-        "config": r.config_json.0,
+        "config": crate::rows::parse_json_text::<Value>(&r.config_json, json!({})),
         "severity": r.severity,
         "enabled": r.enabled,
         "createdAt": ts(&r.created_at),

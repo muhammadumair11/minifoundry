@@ -345,10 +345,12 @@ pub async fn evaluate_rules(
     let outcomes: Vec<(crate::state::RuleRow, RuleOutcome)> = rules
         .into_iter()
         .map(|rule| {
+            let config =
+                crate::rows::parse_json_text::<Value>(&rule.config_json, Value::Object(Default::default()));
             let outcome = evaluate_one(
                 &rule.kind,
                 rule.column_name.as_deref(),
-                &rule.config_json.0,
+                &config,
                 &rows,
                 dataset_updated_at,
             );

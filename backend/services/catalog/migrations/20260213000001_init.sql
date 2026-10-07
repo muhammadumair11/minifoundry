@@ -121,7 +121,9 @@ CREATE TABLE quality_rules (
     -- not_null | unique | range | allowed_values | regex | freshness | row_count_min
     kind        TEXT NOT NULL,
     column_name TEXT,
-    config_json JSONB NOT NULL DEFAULT '{}',
+    -- JSON text (key order is contract-visible: the quality fixture pins
+    -- {"min":0,"max":100} — JSONB would reorder to max,min)
+    config_json TEXT NOT NULL DEFAULT '{}',
     -- warn | error
     severity    TEXT NOT NULL DEFAULT 'warn',
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,

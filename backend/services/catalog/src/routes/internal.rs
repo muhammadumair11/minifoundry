@@ -295,7 +295,7 @@ pub async fn internal_version_rows(
         read_rows_offset_limit(&state, &id, &version, offset, limit).await?;
     let resolved = version.version_number;
     let schema = version.schema_json.0.clone();
-    let rows = mask_rows_internal(&state, &id, rows, role.as_deref()).await;
+    let (rows, masked_columns) = mask_rows_internal(&state, &id, rows, role.as_deref()).await;
     Ok(json_ok(json!({
         "rows": rows,
         "total": total,
@@ -304,6 +304,7 @@ pub async fn internal_version_rows(
         // RESOLVED version (n=head awareness) + schema for run-manifest capture
         "versionNumber": resolved,
         "schema": schema,
+        "maskedColumns": masked_columns,
     })))
 }
 
@@ -320,12 +321,13 @@ pub async fn internal_version_rows_all(
     let (rows, total) = read_rows_offset_limit(&state, &id, &version, 0, None).await?;
     let resolved = version.version_number;
     let schema = version.schema_json.0.clone();
-    let rows = mask_rows_internal(&state, &id, rows, role.as_deref()).await;
+    let (rows, masked_columns) = mask_rows_internal(&state, &id, rows, role.as_deref()).await;
     Ok(json_ok(json!({
         "rows": rows,
         "total": total,
         "versionNumber": resolved,
         "schema": schema,
+        "maskedColumns": masked_columns,
     })))
 }
 
