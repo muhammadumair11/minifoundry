@@ -778,7 +778,6 @@ pub async fn apply(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "editor")?;
-    let role = crate::routes::effective_role(&actor);
 
     let Some(action) = dbx::find_action_type(&state.db, &api_name).await? else {
         return Err(ApiError::not_found(format!("Action '{api_name}' not found")));
@@ -798,7 +797,7 @@ pub async fn apply(
     };
 
     let object_type = object_type_for(&state.db, &action).await?;
-    match apply_action(&state, &role, &action, &object_type, &params).await {
+    match apply_action(&state, &action, &object_type, &params).await {
         Ok(mut result) => {
             let version_number = result.get("versionNumber").and_then(|v| v.as_i64()).unwrap_or(0);
             let row_count = result.get("rowCount").and_then(|v| v.as_i64()).unwrap_or(0);

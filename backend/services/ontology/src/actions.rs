@@ -157,7 +157,7 @@ async fn log_failure(state: &AppState, action_id: &str, params: &Map<String, Val
     }
 }
 
-/// Validation failure ? write the FAILED ActionLog, then the 400 ApiError
+/// Validation failure → write the FAILED ActionLog, then the 400 ApiError
 /// (legacy logFailure semantics: logging must never mask the original error).
 async fn fail(
     state: &AppState,
@@ -179,12 +179,14 @@ fn is_empty_cell(v: Option<&Value>) -> bool {
 
 /// Apply an action: full legacy pipeline (disabled check → param validation →
 /// write-back branch OR object operation → new dataset version → success log).
+/// ROW READS ON THIS PATH ARE RAW (no `role` param): legacy applyAction
+/// mutated unmasked dataJson rows — masking exists only on display surfaces,
+/// and a masked read here would round-trip "------" into the new version.
 /// Ok carries the response fields { versionNumber, rowCount, objectPk,
 /// writeback? }; Err is the 400 `{ error }` (failed log already written for
 /// validation failures, matching legacy logFailure semantics).
 pub async fn apply_action(
     state: &AppState,
-    role: &str,
     action: &ActionTypeRow,
     object_type: &ObjectTypeRow,
     params: &Map<String, Value>,
@@ -206,7 +208,7 @@ pub async fn apply_action(
 
     // R14.6: target-dataset write-back replaces the object operation.
     if action.target_dataset_id.is_some() && action.write_mode.is_some() {
-        return apply_target_writeback(state, role, action, &provided, params).await;
+        return apply_target_writeback(state, action, &provided, params).await;
     }
 
     // ── object operation on the backing dataset ────────────────────────
@@ -221,7 +223,7 @@ pub async fn apply_action(
         )
         .await);
     };
-    let Some(mut rows) = state.catalog.head_rows(dataset_id, Some(role)).await? else {
+    let Some(mut rows) = state.catalog.head_rows(dataset_id, None).await? else {
         return Err(fail(state, &action.id, params, format!("Dataset '{}' has no versions to write back onto", dataset.name),
         )
         .await);
@@ -363,10 +365,9 @@ pub async fn apply_action(
 }
 
 /// R14.6 — target-dataset write-back (append or upsert into the TARGET
-/// dataset as a new version).
+/// dataset as a new version). Reads RAW rows (see apply_action docs).
 async fn apply_target_writeback(
     state: &AppState,
-    role: &str,
     action: &ActionTypeRow,
     provided: &[Provided],
     raw_params: &Map<String, Value>,
@@ -383,7 +384,7 @@ async fn apply_target_writeback(
         )
         .await);
     };
-    let Some(mut rows) = state.catalog.head_rows(&target_id, Some(role)).await? else {
+    let Some(mut rows) = state.catalog.head_rows(&target_id, None).await? else {
         return Err(fail(state, &action.id, raw_params, format!("Target dataset '{}' has no versions to write back onto", target.name),
         )
         .await);
