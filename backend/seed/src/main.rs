@@ -3,11 +3,16 @@
 //! Ports the legacy seed scripts:
 //! - `scripts/seed-users-cli.ts` + `ensureSeedUsers()` (src/lib/seed.ts) —
 //!   direct DB writes into auth.users.
+//! - The legacy `/api/seed` demo-pipeline creation (seed.ts lines 236-256 +
+//!   sample-data.ts DEMO_PIPELINE) — direct DB write into
+//!   orchestration.pipelines (the pipeline domain has no HTTP seed valve).
 //! - The UI seed valves (POST /api/seed, /api/ontology/seed-demo,
 //!   /api/transforms/seed-demo, /api/governance/seed-demo) — replayed as
 //!   HTTP calls THROUGH THE GATEWAY with the service token, so seeding uses
-//!   each service's own implementation (single source of truth) instead of
-//!   duplicating domain writes here.
+//!   each service's own implementation (single source of truth).
+//! - A demo-pipeline RUN between the workspace and transforms stages: the
+//!   legacy demo workspace has the pipeline's output dataset ("Active
+//!   Shipments") present, and transforms seed-demo requires it.
 //!
 //! Runs as a one-shot container (`docker compose --profile tools run --rm seed all`)
 //! or natively. Env: DATABASE_URL (postgres superuser or mf_seed role),
@@ -27,9 +32,10 @@ struct Cli {
 enum Commands {
     /// Seed the three demo users (admin/editor/viewer, password '<redacted>').
     Users,
-    /// Users + full demo workspace via the services' seed endpoints
-    /// (datasets/pipelines, ontology, transforms, governance). Idempotent:
-    /// "already seeded" responses are treated as success.
+    /// Seed the full demo workspace in dependency order:
+    /// users → datasets/connectors (/api/seed) → demo pipeline (DB) →
+    /// run it (creates "Active Shipments") → ontology → transforms →
+    /// governance. Idempotent: "already seeded" responses count as success.
     All,
 }
 
@@ -43,14 +49,53 @@ const SEED_USERS: [(&str, &str, &str); 3] = [
     ("demo-viewer@example.invalid", "Vera Viewer", "viewer"),
 ];
 
-/// Seed valves in dependency order (datasets first — later domains reference
-/// them). Each is a POST with an empty JSON body through the gateway.
-const SEED_STAGES: [(&str, &str); 4] = [
-    ("workspace", "/api/seed"),
-    ("ontology", "/api/ontology/seed-demo"),
-    ("transforms", "/api/transforms/seed-demo"),
-    ("governance", "/api/governance/seed-demo"),
-];
+/// Legacy DEMO_PIPELINE (sample-data.ts) — graph with the __SHIPMENTS__
+/// placeholder resolved at seed time.
+const DEMO_PIPELINE_NAME: &str = "Shipment Overview";
+const DEMO_PIPELINE_DESCRIPTION: &str =
+    "Derive total value per shipment line, then filter out delivered shipments.";
+
+fn demo_pipeline_graph(shipments_dataset_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "nodes": [
+            {
+                "id": "src-shipments",
+                "type": "source",
+                "data": { "datasetId": shipments_dataset_id },
+                "position": { "x": 80, "y": 200 }
+            },
+            {
+                "id": "derive-total-value",
+                "type": "derive",
+                "data": { "newColumn": "totalValue", "expression": "row.quantity * row.unitPrice" },
+                "position": { "x": 360, "y": 200 }
+            },
+            {
+                "id": "filter-not-delivered",
+                "type": "filter",
+                "data": { "column": "status", "operator": "neq", "value": "delivered" },
+                "position": { "x": 640, "y": 200 }
+            },
+            {
+                "id": "output-active-shipments",
+                "type": "output",
+                "data": { "name": "Active Shipments" },
+                "position": { "x": 920, "y": 200 }
+            }
+        ],
+        "edges": [
+            { "id": "edge-1", "source": "src-shipments", "target": "derive-total-value" },
+            { "id": "edge-2", "source": "derive-total-value", "target": "filter-not-delivered" },
+            { "id": "edge-3", "source": "filter-not-delivered", "target": "output-active-shipments" }
+        ]
+    })
+}
+
+/// HTTP seed valves in dependency order. The pipeline stages (DB insert +
+/// run) are interleaved between "workspace" and "ontology" in `all`.
+const STAGE_ONTOLOGY: (&str, &str) = ("ontology", "/api/ontology/seed-demo");
+const STAGE_TRANSFORMS: (&str, &str) = ("transforms", "/api/transforms/seed-demo");
+const STAGE_GOVERNANCE: (&str, &str) = ("governance", "/api/governance/seed-demo");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -67,29 +112,51 @@ async fn main() -> anyhow::Result<()> {
             println!(r#"{{"ensured":{n}}}"#);
         }
         Commands::All => {
-            let n = seed_users(&pool).await?;
             let mut failed: Vec<String> = Vec::new();
-            println!(r#"{{"stage":"users","status":"ok","ensured":{n}}}"#);
-            for (stage, path) in SEED_STAGES {
+            let mut stage = |name: &str, res: Result<String, String>| match res {
+                Ok(status) => println!(r#"{{"stage":"{name}","status":"{status}"}}"#),
+                Err(e) => {
+                    eprintln!(r#"{{"stage":"{name}","status":"failed","error":{}}}"#, json_str(&e));
+                    failed.push(name.to_string());
+                }
+            };
+
+            match seed_users(&pool).await {
+                Ok(n) => stage("users", Ok(format!("ok (ensured {n})"))),
+                Err(e) => stage("users", Err(e.to_string())),
+            }
+            stage(
+                "workspace",
+                seed_via_gateway("/api/seed")
+                    .await
+                    .map(str_to_owned)
+                    .map_err(|e| e.to_string()),
+            );
+            match seed_demo_pipeline(&pool).await {
+                Ok(status) => stage("pipeline", Ok(status)),
+                Err(e) => stage("pipeline", Err(e.to_string())),
+            }
+            match run_demo_pipeline().await {
+                Ok(status) => stage("pipeline-run", Ok(status)),
+                Err(e) => stage("pipeline-run", Err(e.to_string())),
+            }
+            for (name, path) in [STAGE_ONTOLOGY, STAGE_TRANSFORMS, STAGE_GOVERNANCE] {
                 match seed_via_gateway(path).await {
-                    Ok(status) => {
-                        println!(r#"{{"stage":"{stage}","status":"{status}"}}"#);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            r#"{{"stage":"{stage}","status":"failed","error":{}}}"#,
-                            json_str(&e.to_string())
-                        );
-                        failed.push(stage.to_string());
-                    }
+                    Ok(status) => stage(name, Ok(status.to_string())),
+                    Err(e) => stage(name, Err(e.to_string())),
                 }
             }
+
             if !failed.is_empty() {
                 anyhow::bail!("seed stages failed: {}", failed.join(", "));
             }
         }
     }
     Ok(())
+}
+
+fn str_to_owned(s: &'static str) -> String {
+    s.to_string()
 }
 
 fn json_str(s: &str) -> String {
@@ -106,7 +173,7 @@ async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
     for (email, name, role) in SEED_USERS {
         let password_hash = mf_auth::hash_password(DEMO_USER_PASSWORD)
             .map_err(|e| anyhow::anyhow!("scrypt failed: {e}"))?;
-        let result = sqlx::query(
+        sqlx::query(
             "INSERT INTO auth.users (id, email, name, role, password_hash) \
              VALUES ($1, $2, $3, $4, $5) \
              ON CONFLICT (email) DO NOTHING",
@@ -117,11 +184,9 @@ async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
         .bind(role)
         .bind(&password_hash)
         .execute(pool)
-        .await;
-        match result {
-            Ok(_) => ensured += 1,
-            Err(e) => anyhow::bail!("seed user {email} failed (auth migrations applied?): {e}"),
-        }
+        .await
+        .map_err(|e| anyhow::anyhow!("seed user {email} failed (auth migrations applied?): {e}"))?;
+        ensured += 1;
     }
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM auth.users")
         .fetch_one(pool)
@@ -130,11 +195,130 @@ async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
     Ok(ensured)
 }
 
+/// Insert the legacy demo pipeline directly into orchestration.pipelines
+/// (idempotent by name), resolving the __SHIPMENTS__ placeholder against
+/// catalog.datasets — the exact legacy seed.ts behavior.
+async fn seed_demo_pipeline(pool: &PgPool) -> anyhow::Result<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM orchestration.pipelines WHERE name = $1")
+            .bind(DEMO_PIPELINE_NAME)
+            .fetch_optional(pool)
+            .await?;
+    if let Some((id,)) = existing {
+        return Ok(format!("skipped (already seeded {id})"));
+    }
+
+    let shipments: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM catalog.datasets WHERE name = 'Shipments' LIMIT 1")
+            .fetch_optional(pool)
+            .await?;
+    let (shipments_id,) = shipments.ok_or_else(|| {
+        anyhow::anyhow!("Seed error: Shipments dataset was not created (run the workspace stage first)")
+    })?;
+
+    let graph = demo_pipeline_graph(&shipments_id);
+    let id = mf_db::new_id();
+    sqlx::query(
+        "INSERT INTO orchestration.pipelines (id, name, description, graph_json) \
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(&id)
+    .bind(DEMO_PIPELINE_NAME)
+    .bind(DEMO_PIPELINE_DESCRIPTION)
+    .bind(sqlx::types::Json(graph))
+    .execute(pool)
+    .await?;
+    tracing::info!(id, "demo pipeline seeded");
+    Ok(format!("ok ({id})"))
+}
+
+/// Run the demo pipeline through the gateway (service actor) and wait for the
+/// job to settle, so "Active Shipments" exists for the transforms seed —
+/// reproducing the legacy demo-workspace state.
+async fn run_demo_pipeline() -> anyhow::Result<String> {
+    let base = gateway_url();
+    let token = std::env::var("MF_SERVICE_TOKEN").unwrap_or_default();
+    if token.is_empty() {
+        anyhow::bail!("MF_SERVICE_TOKEN must be set for the pipeline-run stage");
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()?;
+
+    // Find the pipeline id.
+    let pipelines: serde_json::Value = client
+        .get(format!("{base}/api/pipelines"))
+        .header("x-service-token", &token)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("gateway unreachable: {e}"))?
+        .error_for_status()
+        .map_err(|e| anyhow::anyhow!("GET /api/pipelines: {e}"))?
+        .json()
+        .await?;
+    let id = pipelines
+        .get("pipelines")
+        .and_then(|p| p.as_array())
+        .and_then(|arr| arr.iter().find(|p| p.get("name").and_then(|n| n.as_str()) == Some(DEMO_PIPELINE_NAME)))
+        .and_then(|p| p.get("id"))
+        .and_then(|i| i.as_str())
+        .ok_or_else(|| anyhow::anyhow!("demo pipeline '{DEMO_PIPELINE_NAME}' not found"))?
+        .to_string();
+
+    // Enqueue a run.
+    let run: serde_json::Value = client
+        .post(format!("{base}/api/pipelines/{id}/run"))
+        .header("x-service-token", &token)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("run enqueue failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| anyhow::anyhow!("POST run: {e}"))?
+        .json()
+        .await?;
+    let job_id = run
+        .pointer("/job/id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("run response has no job id"))?
+        .to_string();
+
+    // Poll until the job settles (worker lease + engine; generous timeout).
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let job: serde_json::Value = match client
+            .get(format!("{base}/api/execution-jobs/{job_id}"))
+            .header("x-service-token", &token)
+            .send()
+            .await
+        {
+            Ok(r) => match r.json().await {
+                Ok(v) => v,
+                Err(_) => continue,
+            },
+            Err(_) => continue,
+        };
+        let status = job.pointer("/job/status").and_then(|s| s.as_str()).unwrap_or("");
+        match status {
+            "succeeded" => return Ok(format!("ok (job {job_id} succeeded)")),
+            "failed" => {
+                let err = job.pointer("/job/error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                anyhow::bail!("demo pipeline run failed: {err}");
+            }
+            _ => {}
+        }
+    }
+    anyhow::bail!("demo pipeline run did not settle within 60s (job {job_id})")
+}
+
+fn gateway_url() -> String {
+    std::env::var("GATEWAY_URL").unwrap_or_else(|_| "http://gateway:8080".to_string())
+}
+
 /// POST a service seed valve through the gateway with the service token.
 /// Returns "ok" | "skipped (already seeded)". 4xx bodies whose `error`
 /// message indicates existing data count as skipped; anything else fails.
 async fn seed_via_gateway(path: &str) -> anyhow::Result<&'static str> {
-    let base = std::env::var("GATEWAY_URL").unwrap_or_else(|_| "http://gateway:8080".to_string());
+    let base = gateway_url();
     let token = std::env::var("MF_SERVICE_TOKEN").unwrap_or_default();
     if token.is_empty() {
         anyhow::bail!("MF_SERVICE_TOKEN must be set for gateway seeding");
