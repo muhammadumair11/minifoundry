@@ -13,7 +13,7 @@ JetStream + custom gateway, all in Docker Compose, 100% route parity
 | 1 | auth-service (users/JWT/refresh/tokens/usage), gateway (routing/actor/demo-mode/auth wall/transparent refresh), SPA conversion (Vite + TanStack Router; vite build + tsc green; proxy chain verified) — E2E 27/27; frontend Docker image verified (SPA + nginx /api proxy + deep-link fallback) | ✅ done |
 | 2 | catalog service (28 routes, datasets/versions/branches/quality/publish, connectors/ingest/egress, lineage, /api/seed) | 🔨 agent finishing (~7.8K lines drafted, in compile/verify cycles) |
 | 3 | orchestration (19 routes, engine 12 node types, jobs/leases, scheduler, triggers, replay/retry, /api/health) + mf-js (rquickjs) | 🔨 agent finishing (~4.6K lines + mf-js engine, compile/verify) |
-| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ✅ committed (ed6eb0a); agent running live container verification |
+| 4 | compute (transforms SQL/JS/Python + replay + seed-demo) | ✅ COMPLETE (ed6eb0a; clippy clean, 23/23 tests, all 3 languages live-verified on :8084; catalog-dependent E2E flows deferred to integration) |
 | 5 | ontology (objects/links/actions/write-back/views, dashboards, applications) | 🔨 agent finishing (~5.5K lines, compile/verify) |
 | 6 | governance (markings/approvals/audit/ACL/notifications/curriculum/settings/search/stats) + public-api (foundry/v1) | 🔨 agent finishing (governance ~3.9K lines; public-api next) |
 | 7 | full smoke (`scripts/integrate.ps1` gate), compose hardening, README rewrite, DELETE legacy Next.js app (see CUTOVER.md), final CI | ⏳ pending agent completions |
