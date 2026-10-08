@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 
 pub mod auth_routes;
 pub mod internal;
+pub mod organizations;
 pub mod session;
 pub mod tokens;
 pub mod users;
@@ -230,12 +231,19 @@ fn push_min_len(field: &str, value: &str, min: usize, issues: &mut Vec<String>) 
 
 /// Validate the signup body. Returns (name_trimmed, email_normalized, password)
 /// or a 400 with every issue joined ("; ").
-pub fn validate_signup(m: &Map<String, Value>) -> Result<(String, String, String), ApiError> {
+pub fn validate_signup(
+    m: &Map<String, Value>,
+) -> Result<(String, String, String, String), ApiError> {
     let mut issues: Vec<String> = Vec::new();
 
     let name = collect_str(m, "name", &mut issues).map(|s| s.trim().to_string());
     if let Some(n) = &name {
         push_min_len("name", n, 1, &mut issues);
+    }
+    let organization_name =
+        collect_str(m, "organizationName", &mut issues).map(|s| s.trim().to_string());
+    if let Some(n) = &organization_name {
+        push_min_len("organizationName", n, 1, &mut issues);
     }
 
     let email = collect_str(m, "email", &mut issues).map(|s| s.trim().to_lowercase());
@@ -253,7 +261,12 @@ pub fn validate_signup(m: &Map<String, Value>) -> Result<(String, String, String
     if !issues.is_empty() {
         return Err(ApiError::bad_request(issues.join("; ")));
     }
-    Ok((name.unwrap(), email.unwrap(), password.unwrap()))
+    Ok((
+        organization_name.unwrap(),
+        name.unwrap(),
+        email.unwrap(),
+        password.unwrap(),
+    ))
 }
 
 /// Validate the password-change body: currentPassword (min 1) + newPassword
@@ -301,22 +314,34 @@ mod tests {
         assert_eq!(
             err.message,
             "name: Invalid input: expected string, received undefined; \
+             organizationName: Invalid input: expected string, received undefined; \
              email: Invalid input: expected string, received undefined; \
              password: Invalid input: expected string, received undefined"
         );
-        let err = validate_signup(&map(json!({"name": "", "email": "x", "password": "short"})))
-            .unwrap_err();
+        let err = validate_signup(&map(
+            json!({"name": "", "organizationName": "", "email": "x", "password": "short"}),
+        ))
+        .unwrap_err();
         assert_eq!(
             err.message,
             "name: Too small: expected string to have >=1 characters; \
+             organizationName: Too small: expected string to have >=1 characters; \
              email: Invalid email address; \
              password: Too small: expected string to have >=8 characters"
         );
         let ok = validate_signup(&map(
-            json!({"name": "  Ada  ", "email": " ADA@X.Dev ", "password": "longenough"}),
+            json!({"organizationName": " Acme ", "name": "  Ada  ", "email": " ADA@X.Dev ", "password": "longenough"}),
         ))
         .unwrap();
-        assert_eq!(ok, ("Ada".into(), "ada@x.dev".into(), "longenough".into()));
+        assert_eq!(
+            ok,
+            (
+                "Acme".into(),
+                "Ada".into(),
+                "ada@x.dev".into(),
+                "longenough".into()
+            )
+        );
     }
 
     #[test]

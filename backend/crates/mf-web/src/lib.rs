@@ -158,6 +158,7 @@ pub fn actor_from_headers(headers: &axum::http::HeaderMap) -> mf_auth::Actor {
         uid: get(mf_auth::HEADER_ACTOR_UID),
         name: get(mf_auth::HEADER_ACTOR_NAME).map(|n| mf_auth::hdr_decode(&n)),
         real_role: get(mf_auth::HEADER_ACTOR_REAL_ROLE),
+        organization_id: get(mf_auth::HEADER_ORGANIZATION_ID),
         is_service: get(mf_auth::HEADER_IS_SERVICE).as_deref() == Some("1"),
     }
 }

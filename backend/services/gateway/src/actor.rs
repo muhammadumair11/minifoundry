@@ -96,6 +96,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
             uid: Some(p.uid),
             name: Some(p.name),
             real_role: p.real_role,
+            organization_id: Some(p.organization_id),
             is_service,
         },
         None => {
@@ -114,6 +115,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
                     uid: None,
                     name: None,
                     real_role: None,
+                    organization_id: None,
                     is_service,
                 }
             } else {

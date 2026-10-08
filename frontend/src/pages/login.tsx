@@ -293,7 +293,7 @@ export default function LoginPage() {
                 >
                   Create one
                 </Link>{' '}
-                — new accounts start as viewer.
+                — new accounts create an organization and start as its owner.
               </p>
             </CardContent>
           </Card>

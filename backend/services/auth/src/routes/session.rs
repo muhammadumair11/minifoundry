@@ -9,7 +9,9 @@ use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 
 use crate::audit::{self, AuditOptions};
 use crate::cookies;
-use crate::routes::{as_object, parse_body, req_enum, with_cookies};
+use crate::routes::{
+    as_object, auth_routes::active_membership, parse_body, req_enum, req_str, with_cookies,
+};
 use crate::state::{AppState, UserRow};
 use crate::tokens_common::{build_access_token, refresh_ttl};
 
@@ -42,7 +44,36 @@ pub async fn get_session(
         _ => serde_json::Value::Null,
     };
     Ok(json_ok(
-        serde_json::json!({ "role": actor.role, "session": session }),
+        serde_json::json!({ "role": actor.role, "organizationId": actor.organization_id, "session": session }),
+    ))
+}
+
+pub async fn switch_organization(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> ApiResult<Response> {
+    let actor = actor_from_headers(&headers);
+    let uid = actor
+        .uid
+        .ok_or_else(|| ApiError::unauthorized("authentication required"))?;
+    let m = as_object(parse_body(&body)?)?;
+    let organization_id = req_str(&m, "organizationId")?;
+    let membership = active_membership(&state, &uid, Some(organization_id)).await?;
+    let user: UserRow = sqlx::query_as("SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at FROM users WHERE id = $1")
+        .bind(&uid).fetch_one(&state.db).await?;
+    sqlx::query("UPDATE users SET default_organization_id = $1 WHERE id = $2")
+        .bind(organization_id)
+        .bind(&uid)
+        .execute(&state.db)
+        .await?;
+    let (specs, _) =
+        crate::tokens_common::issue_session_pair(&state, &user, &membership, None).await?;
+    Ok(with_cookies(
+        json_ok(
+            serde_json::json!({ "organizationId": membership.organization_id, "role": membership.role }),
+        ),
+        specs,
     ))
 }
 
@@ -70,6 +101,12 @@ pub async fn set_role(
         if real_role != "admin" {
             return Err(ApiError::forbidden("only admin users can switch roles"));
         }
+        let membership = active_membership(
+            &state,
+            actor.uid.as_deref().unwrap_or_default(),
+            actor.organization_id.as_deref(),
+        )
+        .await?;
 
         let mut specs = Vec::new();
         if target != actor.role {
@@ -83,8 +120,9 @@ pub async fn set_role(
                 is_active: true,
                 last_login_at: None,
                 created_at: mf_db::now(),
+                default_organization_id: actor.organization_id.clone(),
             };
-            let (_payload, access) = build_access_token(&state, &user, Some(target))?;
+            let (_payload, access) = build_access_token(&state, &user, &membership, Some(target))?;
             specs.push(cookies::session_cookie(
                 access,
                 state.cookie_secure,

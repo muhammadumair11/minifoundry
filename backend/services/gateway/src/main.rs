@@ -208,6 +208,9 @@ fn build_actor_headers(actor: &mf_auth::Actor, demo: bool) -> Vec<(HeaderName, H
     if let Some(real_role) = &actor.real_role {
         push(&mut out, mf_auth::HEADER_ACTOR_REAL_ROLE, real_role.clone());
     }
+    if let Some(org_id) = &actor.organization_id {
+        push(&mut out, mf_auth::HEADER_ORGANIZATION_ID, org_id.clone());
+    }
     if actor.is_service {
         push(&mut out, mf_auth::HEADER_IS_SERVICE, "1".to_string());
     }

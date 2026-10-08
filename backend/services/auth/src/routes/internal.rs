@@ -10,7 +10,7 @@ use mf_web::{json_ok, ApiError, ApiResult};
 use sha2::{Digest, Sha256};
 
 use crate::ratelimit::TOKEN_RATE_LIMIT;
-use crate::routes::{as_object, parse_body, req_str};
+use crate::routes::{as_object, auth_routes::active_membership, parse_body, req_str};
 use crate::state::{serialize_auth_user, AppState, RefreshRow, TokenRow, UserRow};
 use crate::tokens_common::{build_access_token, new_refresh_token, refresh_ttl};
 
@@ -32,7 +32,8 @@ pub fn require_service(state: &AppState, headers: &HeaderMap) -> Result<(), ApiE
 /// (without another rotation) instead of a hard 401.
 const REFRESH_GRACE_SECONDS: i64 = 30;
 
-const REFRESH_COLS: &str = "id, user_id, token_hash, impersonated_role, expires_at, revoked_at";
+const REFRESH_COLS: &str =
+    "id, user_id, organization_id, token_hash, impersonated_role, expires_at, revoked_at";
 const USER_COLS: &str =
     "id, email, name, role, password_hash, is_active, last_login_at, created_at";
 
@@ -68,12 +69,14 @@ pub async fn refresh(
     let Some(user) = user.filter(|u| u.is_active) else {
         return Err(ApiError::unauthorized("invalid or expired refresh token"));
     };
+    let membership = active_membership(&state, &user.id, row.organization_id.as_deref()).await?;
 
     if let Some(revoked_at) = row.revoked_at {
         // Recently rotated (concurrent gateways): issue an access token only,
         // keep the winner's refresh cookie in place.
         if Utc::now() - revoked_at <= chrono::Duration::seconds(REFRESH_GRACE_SECONDS) {
-            let (_p, access) = build_access_token(&state, &user, row.impersonated_role.as_deref())?;
+            let (_p, access) =
+                build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
             return Ok(json_ok(serde_json::json!({
                 "accessToken": access,
                 "user": serialize_auth_user(&user),
@@ -92,18 +95,20 @@ pub async fn refresh(
         .await?;
     let (plain, new_hash) = new_refresh_token();
     sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, impersonated_role, expires_at) \
-         VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+        "INSERT INTO refresh_tokens (id, user_id, organization_id, token_hash, impersonated_role, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
     )
     .bind(mf_db::new_id())
     .bind(&row.user_id)
+    .bind(&membership.organization_id)
     .bind(&new_hash)
     .bind(&row.impersonated_role)
     .bind(refresh_ttl())
     .execute(&state.db)
     .await?;
 
-    let (_p, access) = build_access_token(&state, &user, row.impersonated_role.as_deref())?;
+    let (_p, access) =
+        build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
     Ok(json_ok(serde_json::json!({
         "accessToken": access,
         "refreshToken": plain,

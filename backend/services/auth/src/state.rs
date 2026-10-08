@@ -32,6 +32,28 @@ pub struct UserRow {
     pub is_active: bool,
     pub last_login_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    #[sqlx(default)]
+    pub default_organization_id: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, sqlx::FromRow)]
+pub struct MembershipRow {
+    pub id: String,
+    pub organization_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, sqlx::FromRow)]
+pub struct OrganizationRow {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -62,6 +84,8 @@ pub struct RequestLogRow {
 pub struct RefreshRow {
     pub id: String,
     pub user_id: String,
+    #[sqlx(default)]
+    pub organization_id: Option<String>,
     /// Lookup key; kept on the row for auditability, never serialized.
     #[allow(dead_code)]
     pub token_hash: String,

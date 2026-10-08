@@ -5,8 +5,9 @@
 // password + confirm, client-side pre-validation (server messages win),
 // exact server error surfaced inline. On success the backend auto-logs-in
 // (session cookies), so we invalidate the query cache and honor ?next=.
-// First-ever account becomes admin (bootstrap); everyone else viewer —
-// the server decides, the UI just reports the granted role.
+// Every signup creates an organization and makes its creator the owner. The
+// server exposes that owner as the compatible platform-admin role so existing
+// role-gated product surfaces continue to work.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/components/link'
@@ -55,6 +56,7 @@ export default function SignupPage() {
   const next = safeNext(searchParams.get('next'))
 
   const [name, setName] = useState('')
+  const [organizationName, setOrganizationName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -88,6 +90,7 @@ export default function SignupPage() {
   const signupMutation = useMutation({
     mutationFn: () =>
       apiSend<LoginResponse>('/api/auth/signup', 'POST', {
+        organizationName: organizationName.trim(),
         name: name.trim(),
         email: email.trim(),
         password,
@@ -97,8 +100,8 @@ export default function SignupPage() {
       toast.success(`Account created — welcome, ${res.user.name}`, {
         description:
           role === 'admin'
-            ? 'First account in this workspace: granted the admin role.'
-            : `Role: ${role} · an admin can promote you at any time.`,
+            ? 'Organization created — you are the organization owner.'
+            : `Role: ${role} · your organization owner can manage access.`,
       })
       invalidateAuthBootstrap()
       queryClient.invalidateQueries()
@@ -164,9 +167,8 @@ export default function SignupPage() {
             <CardHeader className="gap-1.5 p-6">
               <CardTitle className="text-base font-medium text-foreground">Sign up</CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                New accounts start as <span className="font-mono text-xs">viewer</span> — the
-                first account in a fresh workspace becomes{' '}
-                <span className="font-mono text-xs">admin</span>.
+                Each new account creates an organization. You start as its{' '}
+                <span className="font-mono text-xs">owner</span> with full access.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 pt-0">
@@ -181,6 +183,21 @@ export default function SignupPage() {
                 }}
                 className="grid gap-4"
               >
+                <div className="grid gap-2">
+                  <Label htmlFor="signup-organization" className="text-xs text-muted-foreground">
+                    Organization name
+                  </Label>
+                  <Input
+                    id="signup-organization"
+                    type="text"
+                    autoComplete="organization"
+                    placeholder="Acme Analytics"
+                    value={organizationName}
+                    onChange={(e) => { setOrganizationName(e.target.value); setError(null) }}
+                    required
+                    className="h-11"
+                  />
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor="signup-name" className="text-xs text-muted-foreground">
                     Full name

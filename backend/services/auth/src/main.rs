@@ -61,7 +61,20 @@ async fn main() -> anyhow::Result<()> {
             "/api/auth/password",
             post(routes::auth_routes::change_password),
         )
+        .route("/api/organizations", get(routes::organizations::list))
+        .route(
+            "/api/organization/members",
+            get(routes::organizations::members),
+        )
+        .route(
+            "/api/organization/invitations",
+            post(routes::organizations::invite),
+        )
         .route("/api/session", get(routes::session::get_session))
+        .route(
+            "/api/session/organization",
+            post(routes::session::switch_organization),
+        )
         .route("/api/session/role", post(routes::session::set_role))
         // user + token management
         .route("/api/users", get(routes::users::list_users))

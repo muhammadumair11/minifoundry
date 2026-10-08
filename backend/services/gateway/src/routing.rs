@@ -29,7 +29,7 @@ pub fn build_routes() -> Vec<RouteRule> {
             "public-api",
         ),
         rule(
-            &["/api/auth", "/api/session", "/api/users", "/api/tokens"],
+            &["/api/auth", "/api/session", "/api/users", "/api/tokens", "/api/organizations", "/api/organization"],
             "AUTH_INTERNAL_URL",
             "http://auth:8081",
             "auth",
