@@ -55,6 +55,8 @@ jobs:
         run: docker compose --profile tools run --rm seed all
       - name: Phase-1 E2E (auth + gateway)
         run: node scripts/e2e-phase1.mjs --base http://localhost:8080
+      - name: Signup and password E2E
+        run: node scripts/e2e-auth.mjs --base http://localhost:8080
       - name: Golden contracts
         run: node scripts/verify-contracts.mjs --base http://localhost:8080
       - name: Full smoke

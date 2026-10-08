@@ -177,3 +177,167 @@ pub(crate) fn kind_of(v: &Value) -> &'static str {
         Value::Object(_) => "object",
     }
 }
+
+// ─── Auth-flow validation (signup / password change) ────────────────────
+//
+// Collects ALL issues (schema field order, '; '-joined) like zod — the same
+// convention the login route uses. Messages follow zod v4 defaults.
+
+/// Minimum password length for self-service registration/changes.
+pub const MIN_PASSWORD_LEN: usize = 8;
+
+/// Pragmatic email shape check (learning scale — no RFC 5322 parser):
+/// one @, non-empty local/domain parts, at least one dot in the domain.
+pub fn email_is_valid(email: &str) -> bool {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap());
+    re.is_match(email)
+}
+
+fn collect_str<'a>(
+    m: &'a Map<String, Value>,
+    field: &str,
+    issues: &mut Vec<String>,
+) -> Option<&'a str> {
+    match m.get(field) {
+        Some(Value::String(s)) => Some(s.as_str()),
+        Some(other) => {
+            issues.push(format!(
+                "{field}: Invalid input: expected string, received {}",
+                kind_of(other)
+            ));
+            None
+        }
+        None => {
+            issues.push(format!(
+                "{field}: Invalid input: expected string, received undefined"
+            ));
+            None
+        }
+    }
+}
+
+fn push_min_len(field: &str, value: &str, min: usize, issues: &mut Vec<String>) -> bool {
+    if value.chars().count() < min {
+        issues.push(format!(
+            "{field}: Too small: expected string to have >={min} characters"
+        ));
+        false
+    } else {
+        true
+    }
+}
+
+/// Validate the signup body. Returns (name_trimmed, email_normalized, password)
+/// or a 400 with every issue joined ("; ").
+pub fn validate_signup(m: &Map<String, Value>) -> Result<(String, String, String), ApiError> {
+    let mut issues: Vec<String> = Vec::new();
+
+    let name = collect_str(m, "name", &mut issues).map(|s| s.trim().to_string());
+    if let Some(n) = &name {
+        push_min_len("name", n, 1, &mut issues);
+    }
+
+    let email = collect_str(m, "email", &mut issues).map(|s| s.trim().to_lowercase());
+    if let Some(e) = &email {
+        if push_min_len("email", e, 1, &mut issues) && !email_is_valid(e) {
+            issues.push("email: Invalid email address".to_string());
+        }
+    }
+
+    let password = collect_str(m, "password", &mut issues).map(|s| s.to_string());
+    if let Some(p) = &password {
+        push_min_len("password", p, MIN_PASSWORD_LEN, &mut issues);
+    }
+
+    if !issues.is_empty() {
+        return Err(ApiError::bad_request(issues.join("; ")));
+    }
+    Ok((name.unwrap(), email.unwrap(), password.unwrap()))
+}
+
+/// Validate the password-change body: currentPassword (min 1) + newPassword
+/// (min 8). Same all-issues-joined convention.
+pub fn validate_password_change(m: &Map<String, Value>) -> Result<(String, String), ApiError> {
+    let mut issues: Vec<String> = Vec::new();
+
+    let current = collect_str(m, "currentPassword", &mut issues).map(|s| s.to_string());
+    if let Some(c) = &current {
+        push_min_len("currentPassword", c, 1, &mut issues);
+    }
+    let new = collect_str(m, "newPassword", &mut issues).map(|s| s.to_string());
+    if let Some(n) = &new {
+        push_min_len("newPassword", n, MIN_PASSWORD_LEN, &mut issues);
+    }
+
+    if !issues.is_empty() {
+        return Err(ApiError::bad_request(issues.join("; ")));
+    }
+    Ok((current.unwrap(), new.unwrap()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn map(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn email_shape() {
+        assert!(email_is_valid("a@b.co"));
+        assert!(email_is_valid("ada+tag@minifoundry.dev"));
+        assert!(!email_is_valid("nope"));
+        assert!(!email_is_valid("a@b"));
+        assert!(!email_is_valid("a b@c.de"));
+        assert!(!email_is_valid("@b.de"));
+    }
+
+    #[test]
+    fn signup_validation_collects_all_issues() {
+        let err = validate_signup(&map(json!({}))).unwrap_err();
+        assert_eq!(
+            err.message,
+            "name: Invalid input: expected string, received undefined; \
+             email: Invalid input: expected string, received undefined; \
+             password: Invalid input: expected string, received undefined"
+        );
+        let err = validate_signup(&map(json!({"name": "", "email": "x", "password": "short"})))
+            .unwrap_err();
+        assert_eq!(
+            err.message,
+            "name: Too small: expected string to have >=1 characters; \
+             email: Invalid email address; \
+             password: Too small: expected string to have >=8 characters"
+        );
+        let ok = validate_signup(&map(
+            json!({"name": "  Ada  ", "email": " ADA@X.Dev ", "password": "longenough"}),
+        ))
+        .unwrap();
+        assert_eq!(ok, ("Ada".into(), "ada@x.dev".into(), "longenough".into()));
+    }
+
+    #[test]
+    fn password_change_validation() {
+        let err = validate_password_change(&map(json!({"currentPassword": "x"}))).unwrap_err();
+        assert_eq!(
+            err.message,
+            "newPassword: Invalid input: expected string, received undefined"
+        );
+        let err =
+            validate_password_change(&map(json!({"currentPassword": "", "newPassword": "abc"})))
+                .unwrap_err();
+        assert_eq!(
+            err.message,
+            "currentPassword: Too small: expected string to have >=1 characters; \
+             newPassword: Too small: expected string to have >=8 characters"
+        );
+        let ok = validate_password_change(&map(
+            json!({"currentPassword": "old", "newPassword": "newlongpass"}),
+        ))
+        .unwrap();
+        assert_eq!(ok, ("old".into(), "newlongpass".into()));
+    }
+}

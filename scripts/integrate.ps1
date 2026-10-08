@@ -46,6 +46,9 @@ $results = @{}
 node (Join-Path $root 'scripts\e2e-phase1.mjs') --base http://localhost:8080
 $results['e2e-phase1'] = $LASTEXITCODE
 
+node (Join-Path $root 'scripts\e2e-auth.mjs') --base http://localhost:8080
+$results['e2e-auth'] = $LASTEXITCODE
+
 node (Join-Path $root 'scripts\verify-contracts.mjs') --base http://localhost:8080
 $results['verify-contracts'] = $LASTEXITCODE
 

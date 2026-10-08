@@ -1335,6 +1335,7 @@ dependencies = [
  "mf-types",
  "mf-web",
  "rand 0.8.8",
+ "regex",
  "serde",
  "serde_json",
  "sha2",
