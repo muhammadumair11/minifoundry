@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as ApiDocsRouteImport } from './routes/api-docs'
 import { Route as ApiTokensRouteImport } from './routes/api-tokens'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
@@ -22,6 +23,7 @@ import { Route as OntologyRouteImport } from './routes/ontology'
 import { Route as OrchestrationRouteImport } from './routes/orchestration'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TransformsRouteImport } from './routes/transforms'
 import { Route as ApplicationsIndexRouteImport } from './routes/applications.index'
 import { Route as ApplicationsIdRouteImport } from './routes/applications.$id'
@@ -37,6 +39,11 @@ import { Route as PipelinesIdRouteImport } from './routes/pipelines.$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDocsRoute = ApiDocsRouteImport.update({
@@ -99,6 +106,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TransformsRoute = TransformsRouteImport.update({
   id: '/transforms',
   path: '/transforms',
@@ -157,6 +169,7 @@ const PipelinesIdRoute = PipelinesIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/api-docs': typeof ApiDocsRoute
   '/api-tokens': typeof ApiTokensRoute
   '/connectors': typeof ConnectorsRoute
@@ -169,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/orchestration': typeof OrchestrationRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/signup': typeof SignupRoute
   '/transforms': typeof TransformsRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
@@ -183,6 +197,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/api-docs': typeof ApiDocsRoute
   '/api-tokens': typeof ApiTokensRoute
   '/connectors': typeof ConnectorsRoute
@@ -195,6 +210,7 @@ export interface FileRoutesByTo {
   '/orchestration': typeof OrchestrationRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/signup': typeof SignupRoute
   '/transforms': typeof TransformsRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
@@ -210,6 +226,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/api-docs': typeof ApiDocsRoute
   '/api-tokens': typeof ApiTokensRoute
   '/connectors': typeof ConnectorsRoute
@@ -222,6 +239,7 @@ export interface FileRoutesById {
   '/orchestration': typeof OrchestrationRoute
   '/projects': typeof ProjectsRoute
   '/settings': typeof SettingsRoute
+  '/signup': typeof SignupRoute
   '/transforms': typeof TransformsRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
@@ -238,6 +256,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/account'
     | '/api-docs'
     | '/api-tokens'
     | '/connectors'
@@ -250,6 +269,7 @@ export interface FileRouteTypes {
     | '/orchestration'
     | '/projects'
     | '/settings'
+    | '/signup'
     | '/transforms'
     | '/applications/$id'
     | '/dashboards/$id'
@@ -264,6 +284,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/account'
     | '/api-docs'
     | '/api-tokens'
     | '/connectors'
@@ -276,6 +297,7 @@ export interface FileRouteTypes {
     | '/orchestration'
     | '/projects'
     | '/settings'
+    | '/signup'
     | '/transforms'
     | '/applications/$id'
     | '/dashboards/$id'
@@ -290,6 +312,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/account'
     | '/api-docs'
     | '/api-tokens'
     | '/connectors'
@@ -302,6 +325,7 @@ export interface FileRouteTypes {
     | '/orchestration'
     | '/projects'
     | '/settings'
+    | '/signup'
     | '/transforms'
     | '/applications/$id'
     | '/dashboards/$id'
@@ -317,6 +341,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   ApiDocsRoute: typeof ApiDocsRoute
   ApiTokensRoute: typeof ApiTokensRoute
   ConnectorsRoute: typeof ConnectorsRoute
@@ -329,6 +354,7 @@ export interface RootRouteChildren {
   OrchestrationRoute: typeof OrchestrationRoute
   ProjectsRoute: typeof ProjectsRoute
   SettingsRoute: typeof SettingsRoute
+  SignupRoute: typeof SignupRoute
   TransformsRoute: typeof TransformsRoute
   ApplicationsIdRoute: typeof ApplicationsIdRoute
   DashboardsIdRoute: typeof DashboardsIdRoute
@@ -349,6 +375,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api-docs': {
@@ -435,6 +468,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/transforms': {
       id: '/transforms'
       path: '/transforms'
@@ -517,6 +557,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   ApiDocsRoute: ApiDocsRoute,
   ApiTokensRoute: ApiTokensRoute,
   ConnectorsRoute: ConnectorsRoute,
@@ -529,6 +570,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrchestrationRoute: OrchestrationRoute,
   ProjectsRoute: ProjectsRoute,
   SettingsRoute: SettingsRoute,
+  SignupRoute: SignupRoute,
   TransformsRoute: TransformsRoute,
   ApplicationsIdRoute: ApplicationsIdRoute,
   DashboardsIdRoute: DashboardsIdRoute,

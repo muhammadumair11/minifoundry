@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from '@/components/link'
-import { useRouter } from '@/lib/next-navigation'
+import { useRouter, useSearchParams } from '@/lib/next-navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -30,6 +30,7 @@ import { Label } from '@/components/ui/label'
 import { apiSend } from '@/lib/foundry-api'
 import { cn } from '@/lib/utils'
 import { getRoleClasses } from '@/components/foundry/governance/role-badge'
+import { invalidateAuthBootstrap } from '@/routes/__root'
 import type { FoundryRole, LoginResponse, MeResponse } from '@/lib/foundry-types'
 
 // Seeded demo identities (password shared — see the mono note under the form).
@@ -57,9 +58,17 @@ function initialsOf(name: string): string {
     .toUpperCase()
 }
 
+/** Only honor same-origin, app-relative post-login destinations. */
+function safeNext(value: string | null): string {
+  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  // Auth-gate deep link: /login?next=/datasets%3Fproject%3Dx
+  const next = safeNext(searchParams.get('next'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -72,13 +81,16 @@ export default function LoginPage() {
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((me: MeResponse | null) => {
-        if (!cancelled && me?.authenticated) router.replace('/')
+        if (!cancelled && me?.authenticated) {
+          invalidateAuthBootstrap()
+          router.replace(next)
+        }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [router, next])
 
   const loginMutation = useMutation({
     mutationFn: () =>
@@ -88,12 +100,13 @@ export default function LoginPage() {
       }),
     onSuccess: (res) => {
       toast.success(`Signed in as ${res.user.name}`, {
-        description: `Role: ${res.user.role} · session valid for 7 days.`,
+        description: `Role: ${res.user.role}`,
       })
       // Full sweep — role-gated data (masking, tokens, users) re-resolves
       // under the new identity. ['session'] refetch flips the header menu.
+      invalidateAuthBootstrap()
       queryClient.invalidateQueries()
-      router.push('/')
+      router.replace(next)
     },
     onError: (err) => {
       // Exact server message (401 'invalid email or password' etc.).
@@ -272,11 +285,21 @@ export default function LoginPage() {
                   seeded password: <span className="text-muted-foreground"><redacted></span>
                 </p>
               </div>
+              <p className="mt-5 border-t border-border pt-4 text-center text-xs text-muted-foreground">
+                No account yet?{' '}
+                <Link
+                  href={next !== '/' ? `/signup?next=${encodeURIComponent(next)}` : '/signup'}
+                  className="font-medium text-foreground underline-offset-2 hover:underline"
+                >
+                  Create one
+                </Link>{' '}
+                — new accounts start as viewer.
+              </p>
             </CardContent>
           </Card>
 
           <p className="mt-4 text-center font-mono text-[11px] leading-relaxed text-muted-foreground/80">
-            Sessions are stateless HMAC tokens · 7-day expiry · HttpOnly cookie ·{' '}
+            Signed JWT access tokens (15 min) + rotating 7-day refresh · HttpOnly cookies ·{' '}
             <Link href="/" className="underline-offset-2 hover:text-foreground hover:underline">
               back to demo mode
             </Link>

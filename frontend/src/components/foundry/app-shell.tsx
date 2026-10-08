@@ -37,10 +37,13 @@ import {
   Terminal,
   UserCog,
   Undo2,
+  UserPlus,
+  UserRound,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+import { fetchAuthBootstrap, invalidateAuthBootstrap } from '@/routes/__root'
 import type { ApiStats, FoundryRole, SessionResponse, SessionUserInfo } from '@/lib/foundry-types'
 import { RoleBadge } from '@/components/foundry/governance/role-badge'
 import { useFocusMode } from '@/components/foundry/focus-mode'
@@ -472,6 +475,17 @@ function DemoAuthControls({ session }: { session: SessionResponse | undefined })
           <span className="hidden 2xl:inline">Sign in</span>
         </Link>
       </Button>
+      <Button
+        asChild
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground"
+      >
+        <Link href="/signup" aria-label="Sign up">
+          <UserPlus className="size-3.5 shrink-0" aria-hidden />
+          <span className="hidden 2xl:inline">Sign up</span>
+        </Link>
+      </Button>
       <span
         className="hidden rounded border border-dashed border-border px-1 py-0 font-mono text-[9px] leading-4 text-muted-foreground xl:inline"
         aria-label="Demo mode — simulator role"
@@ -539,6 +553,18 @@ function UserMenu({ session }: { session: SessionResponse }) {
         await apiSend('/api/session/role', 'POST', { role: 'viewer' })
       } catch {
         /* demo default only — the refetch below settles the UI either way */
+      }
+      // Re-resolve the auth gate: in SHARED mode the anonymous actor is
+      // locked out, so send the user to /login with a full navigation
+      // (clean slate for every role-gated cache). In DEMO mode the sandbox
+      // continues as the viewer simulator — legacy behavior.
+      invalidateAuthBootstrap()
+      const s = await fetchAuthBootstrap()
+      if (s && s.session === null && s.role === 'anonymous') {
+        toast.success('Signed out')
+        queryClient.clear()
+        window.location.assign('/login')
+        return
       }
       toast.success('Signed out', {
         description: 'Demo mode — acting as viewer. Sign in to use a real identity.',
@@ -655,6 +681,13 @@ function UserMenu({ session }: { session: SessionResponse }) {
           </>
         )}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="gap-2 text-xs">
+          <Link href="/account">
+            <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
+            Account &amp; password
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => logoutMutation.mutate()}
           disabled={logoutMutation.isPending}
@@ -736,9 +769,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Rail preference lives in useSidebarCollapsed (localStorage-backed).
   const toggleCollapsed = () => setCollapsed(!collapsed)
 
-  // /login renders a focused, chrome-free shell (logo-only bar, no sidebar)
-  // — the auth showpiece keeps the screen clean; the footer still sticks.
-  if (pathname === '/login') {
+  // /login and /signup render a focused, chrome-free shell (logo-only bar,
+  // no sidebar) — the auth showpiece keeps the screen clean; footer sticks.
+  if (pathname === '/login' || pathname === '/signup') {
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
         <header className="sticky top-0 z-40 h-14 shrink-0 border-b border-border bg-background/95 backdrop-blur">

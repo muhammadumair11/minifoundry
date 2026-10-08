@@ -54,8 +54,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/healthz", get(mf_web::healthz))
         // public auth surface (gateway allowlist)
         .route("/api/auth/login", post(routes::auth_routes::login))
+        .route("/api/auth/signup", post(routes::auth_routes::signup))
         .route("/api/auth/logout", post(routes::auth_routes::logout))
         .route("/api/auth/me", get(routes::auth_routes::me))
+        .route(
+            "/api/auth/password",
+            post(routes::auth_routes::change_password),
+        )
         .route("/api/session", get(routes::session::get_session))
         .route("/api/session/role", post(routes::session::set_role))
         // user + token management

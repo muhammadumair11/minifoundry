@@ -92,6 +92,7 @@ cd frontend && bun install && bun run dev   # :3000, proxies /api → :8080
 | Harness | What it proves |
 |---|---|
 | `node scripts/e2e-phase1.mjs` | auth + gateway flows (login, sessions, impersonation, tokens, guards) — 27 checks |
+| `node scripts/e2e-auth.mjs` | signup, password changes, session continuity, promotion and audit trail |
 | `node scripts/verify-contracts.mjs` | replays captured golden fixtures from the legacy Next.js API against the new stack (strict on deterministic surfaces, shape-mode on history-dependent ones) — 70 checks |
 | `bash scripts/smoke.sh` | full cross-service journey: seed → datasets/branches/quality/publish → pipeline run+replay → SQL/JS/Python transforms → ontology → governance → v1 API rate limits → masking matrix → SPA — ~94 checks |
 | `scripts/integrate.ps1` | runs all of the above as one gate |
