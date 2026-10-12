@@ -1,5 +1,7 @@
 'use client'
 
+import { usePermissions } from '@/lib/use-permissions'
+
 // R14.6 — ontology action-type editor. Create or edit an action type,
 // including the optional "Write-back" section: target dataset + write mode
 // (append / upsert by key) + key property. Used from the /ontology page.
@@ -154,6 +156,8 @@ interface ActionTypeEditorProps {
 }
 
 export function ActionTypeEditor({ open, onOpenChange, action, objectTypes }: ActionTypeEditorProps) {
+  const { canEdit } = usePermissions()
+  if (!canEdit) return null
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-hidden bg-card sm:max-w-lg">

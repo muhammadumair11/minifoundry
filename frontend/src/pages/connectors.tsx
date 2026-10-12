@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { EditorButton } from '@/components/foundry/editor-button'
 import {
   Card,
   CardContent,
@@ -158,7 +159,7 @@ export default function ConnectorsPage() {
                 e.target.value = ''
               }}
             />
-            <Button
+            <EditorButton
               onClick={() => csvInputRef.current?.click()}
               disabled={ingestMutation.isPending || pendingFile !== null}
               variant="outline"
@@ -170,7 +171,7 @@ export default function ConnectorsPage() {
                 <Upload className="h-4 w-4" aria-hidden />
               )}
               Choose CSV file…
-            </Button>
+            </EditorButton>
           </CardContent>
         </Card>
 
@@ -201,7 +202,7 @@ export default function ConnectorsPage() {
                 e.target.value = ''
               }}
             />
-            <Button
+            <EditorButton
               onClick={() => jsonInputRef.current?.click()}
               disabled={ingestMutation.isPending || pendingFile !== null}
               variant="outline"
@@ -213,7 +214,7 @@ export default function ConnectorsPage() {
                 <Upload className="h-4 w-4" aria-hidden />
               )}
               Choose JSON file…
-            </Button>
+            </EditorButton>
           </CardContent>
         </Card>
 
@@ -263,7 +264,7 @@ export default function ConnectorsPage() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-2 p-4 pt-2 sm:grid-cols-2">
             {SAMPLE_PACKS.map((pack) => (
-              <Button
+              <EditorButton
                 key={pack.key}
                 variant="outline"
                 size="sm"
@@ -279,7 +280,7 @@ export default function ConnectorsPage() {
               >
                 <span className="text-sm font-medium">{pack.name}</span>
                 <span className="font-mono text-[10px] text-muted-foreground">{pack.description}</span>
-              </Button>
+              </EditorButton>
             ))}
           </CardContent>
         </Card>

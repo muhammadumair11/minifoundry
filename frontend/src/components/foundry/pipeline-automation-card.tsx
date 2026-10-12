@@ -291,7 +291,7 @@ export function PipelineAutomation({ pipelineId, config, datasets }: PipelineAut
         )}
 
         <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
-          {canEdit ? (
+          {sessionQuery.data?.role === 'admin' ? (
             <AclDialog resourceType="pipeline" resourceId={pipelineId} canManage />
           ) : (
             <span />

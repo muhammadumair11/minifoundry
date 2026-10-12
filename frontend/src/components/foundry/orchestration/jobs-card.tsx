@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { GitBranch, RotateCcw, ScanSearch, Workflow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EditorButton } from '@/components/foundry/editor-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -278,7 +279,7 @@ export function JobsCard() {
                           <ScanSearch className="h-3.5 w-3.5" aria-hidden />
                         </Button>
                         {run.status === 'failed' && (
-                          <Button
+                          <EditorButton
                             variant="ghost"
                             size="sm"
                             onClick={() => retryMutation.mutate(run.id)}
@@ -288,7 +289,7 @@ export function JobsCard() {
                             title="Retry run (latest inputs)"
                           >
                             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                          </Button>
+                          </EditorButton>
                         )}
                       </div>
                     </TableCell>

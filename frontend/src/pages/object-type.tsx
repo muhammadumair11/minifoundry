@@ -457,7 +457,7 @@ function WorkshopView() {
     queryKey: ['session'],
     queryFn: () => apiJson<SessionResponse>('/api/session'),
   })
-  const isEditor = sessionQuery.data ? sessionQuery.data.role !== 'viewer' : false
+  const isEditor = sessionQuery.data?.role === 'editor' || sessionQuery.data?.role === 'admin'
 
   const viewsQuery = useQuery<{ views: ObjectViewInfo[] }>({
     queryKey: ['object-views', typeApiName],

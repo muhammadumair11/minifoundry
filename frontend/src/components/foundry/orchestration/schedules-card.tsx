@@ -16,7 +16,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { EditorButton as Button } from '@/components/foundry/editor-button'
+import { usePermissions } from '@/lib/use-permissions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -78,6 +79,7 @@ function SchedulesTableSkeleton() {
 }
 
 export function SchedulesCard() {
+  const { canEdit } = usePermissions()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pipelineId, setPipelineId] = useState('')
@@ -370,7 +372,7 @@ export function SchedulesCard() {
                       <Switch
                         checked={s.enabled}
                         disabled={
-                          toggleMutation.isPending &&
+                          !canEdit || toggleMutation.isPending &&
                           toggleMutation.variables?.schedule.id === s.id
                         }
                         onCheckedChange={(enabled) => toggleMutation.mutate({ schedule: s, enabled })}

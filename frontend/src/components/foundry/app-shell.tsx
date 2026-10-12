@@ -2,7 +2,7 @@
 
 import Link from '@/components/link'
 import { usePathname } from '@/lib/next-navigation'
-import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -44,6 +44,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+import { canViewMembers, grantableRoles, roleLabel } from '@/lib/permissions'
 import { fetchAuthBootstrap, invalidateAuthBootstrap } from '@/routes/__root'
 import type { ApiStats, FoundryRole, SessionResponse, SessionUserInfo } from '@/lib/foundry-types'
 import { RoleBadge } from '@/components/foundry/governance/role-badge'
@@ -252,6 +253,7 @@ function NavLink({
 }
 
 function NavLists({ rail, onNavigate }: { rail: boolean; onNavigate?: () => void }) {
+  const { data: session } = useQuery<SessionResponse>({ queryKey: ['session'], queryFn: () => apiJson('/api/session'), staleTime: 30_000 })
   return (
     <>
       {NAV_GROUPS.map((group, gi) => (
@@ -265,7 +267,7 @@ function NavLists({ rail, onNavigate }: { rail: boolean; onNavigate?: () => void
             </p>
           )}
           <div className={cn('flex flex-col', rail && 'gap-1')}>
-            {group.items.map((item) => (
+            {group.items.filter((item) => item.href !== '/api-tokens' || session?.role === 'admin').map((item) => (
               <NavLink
                 key={item.href}
                 item={item}
@@ -461,6 +463,9 @@ function DemoAuthControls({ session }: { session: SessionResponse | undefined })
   if (!role) {
     return <Skeleton className="h-7 w-[86px] rounded-md" aria-hidden />
   }
+  if (!session?.demoMode) {
+    return <Button asChild variant="outline" size="sm"><Link href="/login">Sign in</Link></Button>
+  }
 
   const meta = ROLE_META[role]
   return (
@@ -541,7 +546,7 @@ function UserMenu({ session }: { session: SessionResponse }) {
   const user: SessionUserInfo | null = session.session ?? null
   // EFFECTIVE role (impersonation-aware); `user.role` stays the TRUE role.
   const effectiveRole = user?.effectiveRole ?? session.role
-  const isAdminUser = user?.role === 'admin'
+  const isAdminUser = Boolean(session.demoMode && user?.role === 'admin')
   const impersonating = Boolean(user?.impersonating)
   const organizationsQuery = useQuery<{ organizations: Array<{ id: string; name: string; role: string }> }>({
     queryKey: ['organizations'],
@@ -559,10 +564,8 @@ function UserMenu({ session }: { session: SessionResponse }) {
     onSuccess: (result) => {
       invalidateAuthBootstrap()
       toast.success('Organization switched')
-      queryClient.setQueryData<SessionResponse>(['session'], (old) =>
-        old ? { ...old, organizationId: result.organizationId } : old,
-      )
-      void queryClient.invalidateQueries()
+      queryClient.clear()
+      window.location.assign('/')
     },
     onError: (err) => toastApiError(err, 'Could not switch organization'),
   })
@@ -644,7 +647,7 @@ function UserMenu({ session }: { session: SessionResponse }) {
           {activeOrganization && (
             <span className="hidden min-w-0 max-w-28 text-left lg:block">
               <span className="block truncate text-[10px] font-medium leading-tight text-foreground">{activeOrganization.name}</span>
-              <span className="block truncate text-[9px] leading-tight text-muted-foreground">{activeOrganization.role.replaceAll('_', ' ')}</span>
+              <span className="block truncate text-[9px] leading-tight text-muted-foreground">{roleLabel(session.organizationRole ?? activeOrganization.role)}</span>
             </span>
           )}
           <span className="hidden max-w-32 truncate text-xs font-medium text-foreground md:inline">
@@ -658,7 +661,7 @@ function UserMenu({ session }: { session: SessionResponse }) {
           <span className="block text-sm font-semibold text-foreground">{user.name}</span>
           <span className="block truncate font-mono text-[11px] text-muted-foreground">{user.email}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <RoleBadge role={effectiveRole} />
+            {session.organizationRole && !impersonating ? <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">{roleLabel(session.organizationRole)}</span> : <RoleBadge role={effectiveRole} />}
             {impersonating && (
               <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400">
                 impersonated — true role {user.role}
@@ -675,14 +678,14 @@ function UserMenu({ session }: { session: SessionResponse }) {
                 Organization
               </span>
               <span className="mt-1 block truncate text-sm font-semibold text-foreground">{activeOrganization.name}</span>
-              <span className="block text-[11px] text-muted-foreground">Your organization role: {activeOrganization.role.replaceAll('_', ' ')}</span>
+              <span className="block text-[11px] text-muted-foreground">Your organization role: {roleLabel(session.organizationRole ?? activeOrganization.role)}</span>
             </DropdownMenuLabel>
-            <DropdownMenuItem asChild className="gap-2 text-xs">
+            {canViewMembers(session.organizationRole) && <DropdownMenuItem asChild className="gap-2 text-xs">
               <Link href="/settings#organization">
                 <Building2 className="size-3.5 text-muted-foreground" aria-hidden />
-                Manage organization &amp; members
+                {grantableRoles(session.organizationRole).length ? 'Manage organization & members' : 'View organization members'}
               </Link>
-            </DropdownMenuItem>
+            </DropdownMenuItem>}
           </>
         )}
         {isAdminUser && impersonating && (
@@ -841,7 +844,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryKey: ['session'],
     queryFn: () => apiJson<SessionResponse>('/api/session'),
     staleTime: 30_000,
+    refetchInterval: 30_000,
   })
+
+  useEffect(() => {
+    const publicPage = pathname === '/login' || pathname === '/signup' || pathname.startsWith('/invite/')
+    if (session && !session.demoMode && session.session === null && !publicPage) {
+      invalidateAuthBootstrap()
+      window.location.replace(`/login?next=${encodeURIComponent(pathname)}`)
+    }
+  }, [session, pathname])
 
   // Rail preference lives in useSidebarCollapsed (localStorage-backed).
   const toggleCollapsed = () => setCollapsed(!collapsed)

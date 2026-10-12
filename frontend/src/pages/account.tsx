@@ -18,9 +18,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
-import { RoleBadge } from '@/components/foundry/governance/role-badge'
 import { invalidateAuthBootstrap } from '@/routes/__root'
-import type { MeResponse } from '@/lib/foundry-types'
+import type { MeResponse, SessionResponse } from '@/lib/foundry-types'
+import { permissions, roleLabel } from '@/lib/permissions'
 
 const MIN_PASSWORD = 8
 
@@ -40,6 +40,7 @@ function fmtDate(iso: string | null | undefined): string {
 export default function AccountPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { data: session } = useQuery<SessionResponse>({ queryKey: ['session'], queryFn: () => apiJson('/api/session'), staleTime: 30_000 })
 
   const meQuery = useQuery<MeResponse>({
     queryKey: ['auth-me'],
@@ -161,7 +162,7 @@ export default function AccountPage() {
                 <Separator />
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">Role</span>
-                  <RoleBadge role={user.role} />
+                  <span className="text-xs font-medium">{roleLabel(session?.organizationRole ?? user.role)}</span>
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between gap-3">
@@ -170,17 +171,17 @@ export default function AccountPage() {
                     {fmtDate(user.lastLoginAt)}
                   </span>
                 </div>
-                {user.role === 'admin' && (
+                {permissions(session).canManageMembers && (
                   <>
                     <Separator />
                     <p className="flex items-start gap-2 pt-1 text-xs text-muted-foreground">
                       <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                      Admins manage users, roles and activation in{' '}
+                      Manage invitations and organization roles in{' '}
                       <Link
-                        href="/governance"
+                        href="/settings#organization"
                         className="font-medium text-foreground underline-offset-2 hover:underline"
                       >
-                        Governance → Users
+                        Organization settings
                       </Link>
                       .
                     </p>

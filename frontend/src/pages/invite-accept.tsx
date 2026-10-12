@@ -137,10 +137,10 @@ export default function InviteAcceptPage() {
       }),
     onSuccess: (res) => {
       toast.success(`Welcome to ${invitation?.organizationName}, ${res.user.name}!`, {
-        description: `Role: ${res.user.role}`,
+        description: `Role: ${formatRole(invitation?.role ?? res.user.role).label}`,
       })
       invalidateAuthBootstrap()
-      queryClient.invalidateQueries()
+      queryClient.clear()
       router.replace(next)
     },
     onError: (err) => {

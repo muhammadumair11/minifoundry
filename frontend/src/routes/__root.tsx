@@ -46,7 +46,11 @@ export const Route = createRootRoute({
     // Invitation links are deliberately public: recipients must be able to
     // inspect and accept one before they have a session.
     if (AUTH_FREE_PATHS.includes(location.pathname) || location.pathname.startsWith('/invite/')) return
+    if (location.pathname.startsWith('/api-tokens')) invalidateAuthBootstrap()
     const s = await fetchAuthBootstrap()
+    if (location.pathname.startsWith('/api-tokens') && s && s.role !== 'admin') {
+      throw redirect({ to: '/settings' })
+    }
     if (s && s.session === null && s.role === 'anonymous') {
       const next = `${location.pathname}${location.searchStr ?? ''}`
       throw redirect({ to: '/login', search: { next } })

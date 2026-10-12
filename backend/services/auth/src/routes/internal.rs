@@ -37,6 +37,40 @@ const REFRESH_COLS: &str =
 const USER_COLS: &str =
     "id, email, name, role, password_hash, is_active, last_login_at, created_at";
 
+/// Resolve current membership on every authenticated gateway request. Access
+/// JWTs establish identity; the database establishes current authorization.
+pub async fn validate_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> ApiResult<Response> {
+    require_service(&state, &headers)?;
+    let m = as_object(parse_body(&body)?)?;
+    let uid = req_str(&m, "userId")?;
+    let organization_id = req_str(&m, "organizationId")?;
+    let active: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND is_active)")
+            .bind(uid)
+            .fetch_one(&state.db)
+            .await?;
+    if !active {
+        return Err(ApiError::unauthorized("account is inactive"));
+    }
+    let membership = active_membership(&state, uid, Some(organization_id)).await?;
+    let current = crate::tokens_common::platform_role(&membership.role);
+    let requested = m.get("effectiveRole").and_then(|value| value.as_str());
+    let effective = if state.mode.demo && current == "admin" {
+        requested
+            .filter(|role| matches!(*role, "admin" | "editor" | "viewer"))
+            .unwrap_or(current)
+    } else {
+        current
+    };
+    Ok(json_ok(
+        serde_json::json!({ "role": effective, "organizationRole": membership.role, "realRole": if effective != current { Some(current) } else { None } }),
+    ))
+}
+
 /// POST /internal/auth/refresh — rotate a refresh token, return a new access
 /// JWT (+ new refresh plaintext when rotated). Called by the gateway.
 pub async fn refresh(

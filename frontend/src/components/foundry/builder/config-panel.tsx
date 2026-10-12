@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Check, ChevronDown, Trash2, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { EditorButton as Button } from '@/components/foundry/editor-button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'

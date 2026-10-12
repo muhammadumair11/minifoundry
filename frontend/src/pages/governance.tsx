@@ -8,10 +8,12 @@ import { ShieldCheck } from 'lucide-react'
 import { RoleCapabilitiesCard } from '@/components/foundry/governance/role-capabilities-card'
 import { MarkingsCard } from '@/components/foundry/governance/markings-card'
 import { ApprovalsCard } from '@/components/foundry/governance/approvals-card'
-import { UsersCard } from '@/components/foundry/governance/users-card'
+import { OrganizationSettings } from '@/components/foundry/organization-settings'
 import { AuditLogCard } from '@/components/foundry/governance/audit-card'
+import { usePermissions } from '@/lib/use-permissions'
 
 export default function GovernancePage() {
+  const { canAudit } = usePermissions()
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">
       <header className="mb-4 flex flex-wrap items-center gap-2">
@@ -33,10 +35,10 @@ export default function GovernancePage() {
           <ApprovalsCard />
         </div>
         <div className="lg:col-span-3">
-          <UsersCard />
+          <OrganizationSettings rosterOnly />
         </div>
         <div className="lg:col-span-5">
-          <AuditLogCard />
+          {canAudit && <AuditLogCard />}
         </div>
       </div>
     </div>

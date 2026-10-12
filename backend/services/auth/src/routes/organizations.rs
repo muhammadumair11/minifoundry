@@ -92,6 +92,9 @@ pub async fn invite(
     }
     let m = as_object(parse_body(&body)?)?;
     let email = req_str(&m, "email")?.trim().to_lowercase();
+    if !crate::routes::email_is_valid(&email) {
+        return Err(ApiError::bad_request("enter a valid invitation email"));
+    }
     let role = req_enum(&m, "role", INVITABLE)?;
     if !can_grant(&membership.role, role) {
         return Err(ApiError::forbidden("cannot grant that organization role"));
@@ -134,25 +137,34 @@ pub async fn update_member_role(
     if !can_grant(&membership.role, role) {
         return Err(ApiError::forbidden("cannot grant that organization role"));
     }
+    let mut tx = state.db.begin().await?;
     let current: Option<(String,)> = sqlx::query_as(
-        "SELECT role FROM organization_memberships WHERE organization_id = $1 AND user_id = $2 AND is_active",
+        "SELECT role FROM organization_memberships WHERE organization_id = $1 AND user_id = $2 AND is_active FOR UPDATE",
     )
     .bind(&organization_id)
     .bind(&member_user_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((current_role,)) = current else {
         return Err(ApiError::not_found("active organization member not found"));
     };
-    if current_role == "owner" {
-        return Err(ApiError::forbidden("owner role cannot be changed"));
+    if !can_grant(&membership.role, &current_role) {
+        return Err(ApiError::forbidden(
+            "cannot change that member's organization role",
+        ));
+    }
+    if uid == member_user_id {
+        return Err(ApiError::forbidden(
+            "cannot change your own organization role",
+        ));
     }
     sqlx::query("UPDATE organization_memberships SET role = $1 WHERE organization_id = $2 AND user_id = $3 AND is_active")
         .bind(role)
         .bind(&organization_id)
         .bind(&member_user_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(json_ok(
         serde_json::json!({ "member": { "id": member_user_id, "role": role } }),
     ))
@@ -222,17 +234,17 @@ pub async fn accept_invitation(
     }
 
     // Check if user already exists
-    let existing_user: Option<(String, String, String)> =
-        sqlx::query_as("SELECT id, password_hash, name FROM users WHERE email = $1")
+    let existing_user: Option<(String, String, String, bool)> =
+        sqlx::query_as("SELECT id, password_hash, name, is_active FROM users WHERE email = $1")
             .bind(&email)
             .fetch_optional(&mut *tx)
             .await?;
 
-    let (user_id, user_name) = if let Some((existing_id, existing_hash, existing_name)) =
+    let (user_id, user_name) = if let Some((existing_id, existing_hash, existing_name, is_active)) =
         existing_user
     {
         // User exists - verify password and add membership
-        if !mf_auth::verify_password(password, &existing_hash) {
+        if !is_active || !mf_auth::verify_password(password, &existing_hash) {
             return Err(ApiError::unauthorized(
                 "invalid password for existing account",
             ));
@@ -269,10 +281,11 @@ pub async fn accept_invitation(
         // New user - create user + membership
         let password_hash = mf_auth::hash_password(password).map_err(ApiError::internal)?;
         let id = mf_db::new_id();
-        sqlx::query("INSERT INTO users (id, email, name, role, password_hash, last_login_at) VALUES ($1, $2, $3, 'admin', $4, now())")
+        sqlx::query("INSERT INTO users (id, email, name, role, password_hash, last_login_at) VALUES ($1, $2, $3, $4, $5, now())")
             .bind(&id)
             .bind(&email)
             .bind(&name)
+            .bind(crate::tokens_common::platform_role(&role))
             .bind(&password_hash)
             .execute(&mut *tx)
             .await?;
@@ -322,7 +335,7 @@ pub async fn accept_invitation(
     let resp = axum::response::IntoResponse::into_response((
         axum::http::StatusCode::CREATED,
         axum::Json(
-            serde_json::json!({ "user": { "id": user_id, "email": email, "name": user_name, "role": "admin", "organizationId": organization_id } }),
+            serde_json::json!({ "user": { "id": user_id, "email": email, "name": user_name, "role": crate::tokens_common::platform_role(&membership.role), "organizationId": organization_id } }),
         ),
     ));
     Ok(crate::routes::with_cookies(resp, specs))

@@ -24,6 +24,8 @@ import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import { ChevronDown, History, Loader2, Maximize2, NotebookPen, Play, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EditorButton } from '@/components/foundry/editor-button'
+import { usePermissions } from '@/lib/use-permissions'
 import { useFocusMode } from '@/components/foundry/focus-mode'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -128,6 +130,7 @@ function canonicalGraphFromApi(graph: PipelineGraph | null | undefined) {
 }
 
 function Builder() {
+  const { canEdit } = usePermissions()
   const params = useParams<{ id: string }>()
   const id = params.id
   const queryClient = useQueryClient()
@@ -395,7 +398,7 @@ function Builder() {
 
   const savePipeline = useCallback(
     async (opts?: { silent?: boolean; versionNote?: string }): Promise<boolean> => {
-      if (!validateGraph()) return false
+      if (!canEdit || !validateGraph()) return false
       setSaving(true)
       try {
         await apiJson(`/api/pipelines/${id}`, {
@@ -440,7 +443,7 @@ function Builder() {
       }
     },
     // validateGraph reads current state; including it keeps the callback fresh.
-    [id, nameInput, nodes, edges, queryClient],
+    [canEdit, id, nameInput, nodes, edges, queryClient],
   )
 
   const handleSaveWithNote = useCallback(async () => {
@@ -464,6 +467,7 @@ function Builder() {
   )
 
   const handleRename = useCallback(async () => {
+    if (!canEdit) return
     const current = pipelineQuery.data?.pipeline.name
     if (!current || nameInput.trim() === current || !nameInput.trim()) return
     try {
@@ -480,9 +484,10 @@ function Builder() {
         description: err instanceof Error ? err.message : 'Unknown error',
       })
     }
-  }, [id, nameInput, pipelineQuery.data, queryClient])
+  }, [canEdit, id, nameInput, pipelineQuery.data, queryClient])
 
   const handleRun = useCallback(async () => {
+    if (!canEdit) return
     if (sourceDatasetIds.length > 0 && (sourceSchemasQuery.isPending || sourceSchemasQuery.isError)) {
       toast.error('Source columns are not ready', {
         description: sourceSchemasQuery.isError ? 'Check that the source datasets still exist.' : 'Wait for the source schemas to load.',
@@ -505,7 +510,7 @@ function Builder() {
         description: err instanceof Error ? err.message : 'Unknown error',
       })
     }
-  }, [id, savePipeline, isDirty, schemas, nodes, sourceDatasetIds.length, sourceSchemasQuery.isPending, sourceSchemasQuery.isError])
+  }, [canEdit, id, savePipeline, isDirty, schemas, nodes, sourceDatasetIds.length, sourceSchemasQuery.isPending, sourceSchemasQuery.isError])
 
   if (pipelineQuery.isLoading) {
     return (
@@ -541,6 +546,7 @@ function Builder() {
             onChange={(e) => setNameInput(e.target.value)}
             onBlur={() => void handleRename()}
             aria-label="Pipeline name"
+            readOnly={!canEdit}
             className="h-8 w-40 shrink-0 border-transparent bg-transparent px-2 text-sm font-medium text-foreground hover:border-border focus-visible:border-border sm:w-60"
           />
           {latestRun && (
@@ -578,7 +584,7 @@ function Builder() {
               versionCount={pipelineQuery.data.pipeline.versionCount}
               onRestored={handleRestored}
             />
-            <Button
+            <EditorButton
               variant="outline"
               size="sm"
               onClick={() => void savePipeline()}
@@ -592,10 +598,10 @@ function Builder() {
                 <Save className="h-3.5 w-3.5" aria-hidden />
               )}
               Save
-            </Button>
-            <DropdownMenu>
+            </EditorButton>
+            {canEdit && <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
+                <EditorButton
                   variant="outline"
                   size="sm"
                   disabled={saving || running}
@@ -603,7 +609,7 @@ function Builder() {
                   aria-label="More save options"
                 >
                   <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-                </Button>
+                </EditorButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
@@ -621,7 +627,7 @@ function Builder() {
                   Save with note…
                 </DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+            </DropdownMenu>}
             <Button
               variant="outline"
               size="sm"
@@ -633,7 +639,7 @@ function Builder() {
               <History className="h-3.5 w-3.5" aria-hidden />
               Runs {runs.length}
             </Button>
-            <Button
+            <EditorButton
               size="sm"
               onClick={() => void handleRun()}
               disabled={saving || running}
@@ -652,27 +658,29 @@ function Builder() {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-background bg-emerald-500" />
                 </span>
               )}
-            </Button>
+            </EditorButton>
           </div>
         </div>
 
         {/* Mobile palette chips */}
         <div className="px-3 pt-2 lg:hidden">
-          <NodePalette compact onAdd={addNode} />
+          {canEdit && <NodePalette compact onAdd={addNode} />}
         </div>
 
         {/* ── Main area + Run panel share vertical space ── */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex h-0 flex-1 overflow-hidden">
-            <NodePalette onAdd={addNode} className="hidden lg:flex" />
+            {canEdit && <NodePalette onAdd={addNode} className="hidden lg:flex" />}
 
             <div className="relative min-w-0 flex-1 overflow-hidden">
               <ReactFlow
                 nodes={nodes}
                 edges={visibleEdges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
+                onNodesChange={(changes) => onNodesChange(canEdit ? changes : changes.filter((change) => change.type === 'select' || change.type === 'dimensions'))}
+                onEdgesChange={(changes) => onEdgesChange(canEdit ? changes : changes.filter((change) => change.type === 'select'))}
+                onConnect={canEdit ? onConnect : undefined}
+                nodesDraggable={canEdit}
+                nodesConnectable={canEdit}
                 onSelectionChange={onSelectionChange}
                 onEdgeClick={(_, edge) => {
                   setSelectedEdgeId(edge.id)
@@ -684,7 +692,7 @@ function Builder() {
                 fitView
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
                 minZoom={0.2}
-                deleteKeyCode={['Backspace', 'Delete']}
+                deleteKeyCode={canEdit ? ['Backspace', 'Delete'] : null}
                 className="bg-background"
               >
                 <Background
@@ -699,34 +707,34 @@ function Builder() {
 
             {/* Desktop config panel */}
             <aside className="hidden w-80 shrink-0 overflow-hidden border-l border-border bg-muted/30 lg:block">
-              <ConfigPanel
+              <fieldset disabled={!canEdit} className="h-full"><ConfigPanel
                 node={selectedNode}
                 selectedEdge={selectedEdge}
-                onDeleteEdge={deleteEdgeById}
+                onDeleteEdge={canEdit ? deleteEdgeById : () => {}}
                 schema={selectedNode ? schemas.get(selectedNode.id) : null}
                 datasets={datasets}
-                onPatchData={updateNodeData}
-                onDelete={deleteNodeById}
+                onPatchData={canEdit ? updateNodeData : () => {}}
+                onDelete={canEdit ? deleteNodeById : () => {}}
                 nodeCount={nodes.length}
                 edgeCount={edges.length}
-              />
+              /></fieldset>
             </aside>
           </div>
 
           {/* Mobile config panel */}
           {(selectedNode || selectedEdge) && (
             <div className="h-0 flex-1 overflow-hidden border-t border-border bg-muted/30 lg:hidden">
-              <ConfigPanel
+              <fieldset disabled={!canEdit} className="h-full"><ConfigPanel
                 node={selectedNode}
                 selectedEdge={selectedEdge}
-                onDeleteEdge={deleteEdgeById}
+                onDeleteEdge={canEdit ? deleteEdgeById : () => {}}
                 schema={selectedNode ? schemas.get(selectedNode.id) : null}
                 datasets={datasets}
-                onPatchData={updateNodeData}
-                onDelete={deleteNodeById}
+                onPatchData={canEdit ? updateNodeData : () => {}}
+                onDelete={canEdit ? deleteNodeById : () => {}}
                 nodeCount={nodes.length}
                 edgeCount={edges.length}
-              />
+              /></fieldset>
             </div>
           )}
 
@@ -764,7 +772,7 @@ function Builder() {
               <Button variant="outline" onClick={() => setSaveNoteOpen(false)}>
                 Cancel
               </Button>
-              <Button
+              <EditorButton
                 data-dialog-submit
                 onClick={() => void handleSaveWithNote()}
                 disabled={saving}
@@ -776,7 +784,7 @@ function Builder() {
                   <Save className="h-4 w-4" aria-hidden />
                 )}
                 Save version
-              </Button>
+              </EditorButton>
             </DialogFooter>
           </DialogContent>
         </Dialog>

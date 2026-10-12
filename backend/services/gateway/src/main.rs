@@ -157,7 +157,12 @@ async fn gateway_handler(
         }
     }
 
-    let actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
+    let mut actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
+    if let Some(role) = resolved.organization_role {
+        if let Ok(value) = HeaderValue::from_str(&role) {
+            actor_headers.push((HeaderName::from_static("x-mf-organization-role"), value));
+        }
+    }
     proxy::forward(
         &state,
         proxy::ForwardRequest {

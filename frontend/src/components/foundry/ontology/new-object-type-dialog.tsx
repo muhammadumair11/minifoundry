@@ -1,5 +1,7 @@
 'use client'
 
+import { usePermissions } from '@/lib/use-permissions'
+
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -48,6 +50,7 @@ function slugify(displayName: string): string {
 const TITLE_DEFAULT = '__pk__'
 
 export function NewObjectTypeDialog() {
+  const { canEdit } = usePermissions()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [displayName, setDisplayName] = useState('')
@@ -135,6 +138,7 @@ export function NewObjectTypeDialog() {
 
   const previewColor = getObjectColorClasses(color)
 
+  if (!canEdit) return null
   return (
     <Dialog
       open={open}

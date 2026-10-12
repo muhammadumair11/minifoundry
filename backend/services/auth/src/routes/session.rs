@@ -20,11 +20,13 @@ const ROLES: &[&str] = &["viewer", "editor", "admin"];
 /// GET /api/session — current governance role + real session identity.
 /// `role` is the EFFECTIVE role (gateway-resolved, simulator-aware);
 /// `session` is null for simulator/anonymous callers.
-pub async fn get_session(
-    State(_state): State<AppState>,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
+pub async fn get_session(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
+    let organization_role = if let (Some(uid), Some(org)) = (&actor.uid, &actor.organization_id) {
+        Some(active_membership(&state, uid, Some(org)).await?.role)
+    } else {
+        None
+    };
     let session = match (&actor.uid, &actor.email) {
         (Some(_), Some(email)) => {
             let real_role = actor
@@ -44,7 +46,7 @@ pub async fn get_session(
         _ => serde_json::Value::Null,
     };
     Ok(json_ok(
-        serde_json::json!({ "role": actor.role, "organizationId": actor.organization_id, "session": session }),
+        serde_json::json!({ "role": actor.role, "organizationId": actor.organization_id, "organizationRole": organization_role, "demoMode": state.mode.demo, "session": session }),
     ))
 }
 
@@ -88,6 +90,11 @@ pub async fn set_role(
     let v = parse_body(&body)?;
     let m = as_object(v)?;
     let target = req_enum(&m, "role", ROLES)?;
+    if !state.mode.demo {
+        return Err(ApiError::forbidden(
+            "role simulation is only available in demo mode",
+        ));
+    }
 
     let actor = actor_from_headers(&headers);
     let resp = json_ok(serde_json::json!({ "role": target }));

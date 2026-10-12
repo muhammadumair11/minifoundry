@@ -18,6 +18,11 @@ const USER_COLS: &str =
 /// GET /api/users — list platform users (ADMIN ONLY), createdAt asc.
 /// The passwordHash is NEVER returned.
 pub async fn list_users(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+    if !state.mode.demo {
+        return Err(ApiError::forbidden(
+            "use organization member management in shared mode",
+        ));
+    }
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 
@@ -39,6 +44,11 @@ pub async fn update_user(
     Path(id): Path<String>,
     body: Bytes,
 ) -> ApiResult<Response> {
+    if !state.mode.demo {
+        return Err(ApiError::forbidden(
+            "use organization member management in shared mode",
+        ));
+    }
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 

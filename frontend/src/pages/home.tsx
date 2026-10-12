@@ -1,5 +1,7 @@
 'use client'
 
+import { roleLabel } from '@/lib/permissions'
+
 import { useState } from 'react'
 import Link from '@/components/link'
 import { useRouter } from '@/lib/next-navigation'
@@ -273,7 +275,7 @@ function SignedInChip({ session }: { session: SessionResponse }) {
                 : 'text-muted-foreground'
           }
         >
-          ({user.role})
+          ({roleLabel(session.organizationRole ?? user.role)})
         </span>
       </span>
     </Link>

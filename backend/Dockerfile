@@ -15,7 +15,12 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ─── builder: cook dependencies, then build the workspace ───────────────
-FROM chef AS builder
+FROM rust:1-bookworm AS builder
+WORKDIR /app
+# Copy only the recipe and tool into the dependency layer. Inheriting the
+# entire chef stage makes every source edit invalidate dependency compilation.
+COPY --from=chef /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
+COPY --from=chef /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --workspace

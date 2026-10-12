@@ -79,13 +79,11 @@ export default function LoginPage() {
         password,
       }),
     onSuccess: (res) => {
-      toast.success(`Signed in as ${res.user.name}`, {
-        description: `Role: ${res.user.role}`,
-      })
+      toast.success(`Signed in as ${res.user.name}`)
       // Full sweep — role-gated data (masking, tokens, users) re-resolves
       // under the new identity. ['session'] refetch flips the header menu.
       invalidateAuthBootstrap()
-      queryClient.invalidateQueries()
+      queryClient.clear()
       router.replace(next)
     },
     onError: (err) => {

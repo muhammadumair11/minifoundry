@@ -105,7 +105,7 @@ export default function SignupPage() {
             : `Role: ${role} · your organization owner can manage access.`,
       })
       invalidateAuthBootstrap()
-      queryClient.invalidateQueries()
+      queryClient.clear()
       router.replace(next)
     },
     onError: (err) => {

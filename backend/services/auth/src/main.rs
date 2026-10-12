@@ -105,6 +105,10 @@ async fn main() -> anyhow::Result<()> {
         // internal (service-token guarded; never routed by the gateway)
         .route("/internal/auth/refresh", post(routes::internal::refresh))
         .route(
+            "/internal/auth/validate",
+            post(routes::internal::validate_session),
+        )
+        .route(
             "/internal/tokens/verify",
             post(routes::internal::verify_token),
         )

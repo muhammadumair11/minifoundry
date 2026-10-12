@@ -59,7 +59,7 @@ pub async fn login(
 
     let updated: UserRow = sqlx::query_as(
         "UPDATE users SET last_login_at = now() WHERE id = $1 \
-         RETURNING id, email, name, role, password_hash, is_active, last_login_at, created_at",
+         RETURNING id, email, name, role, password_hash, is_active, last_login_at, created_at, default_organization_id",
     )
     .bind(&user.id)
     .fetch_one(&state.db)
@@ -88,7 +88,9 @@ pub async fn login(
     )
     .await?;
     let (specs, _refresh_plain) = issue_session_pair(&state, &updated, &membership, None).await?;
-    let resp = json_ok(serde_json::json!({ "user": serialize_auth_user(&updated) }));
+    let mut user_json = serialize_auth_user(&updated);
+    user_json["role"] = serde_json::json!(crate::tokens_common::platform_role(&membership.role));
+    let resp = json_ok(serde_json::json!({ "user": user_json }));
     Ok(with_cookies(resp, specs))
 }
 
@@ -152,9 +154,13 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
     .fetch_optional(&state.db)
     .await?;
     match user {
-        Some(u) if u.is_active => Ok(json_ok(
-            serde_json::json!({ "authenticated": true, "user": serialize_auth_user(&u) }),
-        )),
+        Some(u) if u.is_active => {
+            let mut user_json = serialize_auth_user(&u);
+            user_json["role"] = serde_json::json!(actor.role);
+            Ok(json_ok(
+                serde_json::json!({ "authenticated": true, "user": user_json }),
+            ))
+        }
         _ => Ok(json_ok(serde_json::json!({ "authenticated": false }))),
     }
 }
