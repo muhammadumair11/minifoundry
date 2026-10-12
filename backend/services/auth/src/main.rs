@@ -70,6 +70,19 @@ async fn main() -> anyhow::Result<()> {
             "/api/organization/invitations",
             post(routes::organizations::invite),
         )
+        .route(
+            "/api/organization/members/{id}",
+            patch(routes::organizations::update_member_role),
+        )
+        // public invitation acceptance (no auth required)
+        .route(
+            "/api/invitations/{token}",
+            get(routes::organizations::view_invitation),
+        )
+        .route(
+            "/api/invitations/{token}/accept",
+            post(routes::organizations::accept_invitation),
+        )
         .route("/api/session", get(routes::session::get_session))
         .route(
             "/api/session/organization",

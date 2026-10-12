@@ -29,7 +29,15 @@ pub fn build_routes() -> Vec<RouteRule> {
             "public-api",
         ),
         rule(
-            &["/api/auth", "/api/session", "/api/users", "/api/tokens", "/api/organizations", "/api/organization"],
+            &[
+                "/api/auth",
+                "/api/session",
+                "/api/users",
+                "/api/tokens",
+                "/api/organizations",
+                "/api/organization",
+                "/api/invitations",
+            ],
             "AUTH_INTERNAL_URL",
             "http://auth:8081",
             "auth",
@@ -118,12 +126,13 @@ pub fn resolve<'a>(path: &str, routes: &'a [RouteRule]) -> Option<&'a RouteRule>
 /// Legacy middleware allowlist: reachable WITHOUT a session/service token in
 /// shared mode (auth + session routes must stay open so users can sign in;
 /// /api/health is a liveness probe; /api/foundry/v1 validates its own bearer
-/// tokens).
-const ALLOWED_PREFIXES: [&str; 4] = [
+/// tokens; /api/invitations for invitation acceptance).
+const ALLOWED_PREFIXES: [&str; 5] = [
     "/api/auth",
     "/api/session",
     "/api/health",
     "/api/foundry/v1",
+    "/api/invitations",
 ];
 
 pub fn is_allowlisted(path: &str) -> bool {

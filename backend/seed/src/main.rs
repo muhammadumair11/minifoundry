@@ -119,17 +119,21 @@ async fn reset_database(pool: &PgPool, yes: bool) -> anyhow::Result<()> {
     }
 
     let schemas = [
-        "auth", "catalog", "orchestration", "compute", "ontology", "governance",
+        "auth",
+        "catalog",
+        "orchestration",
+        "compute",
+        "ontology",
+        "governance",
     ];
 
     for schema in schemas {
         // Get all tables in the schema
-        let tables: Vec<(String,)> = sqlx::query_as(
-            "SELECT tablename FROM pg_tables WHERE schemaname = $1",
-        )
-        .bind(schema)
-        .fetch_all(pool)
-        .await?;
+        let tables: Vec<(String,)> =
+            sqlx::query_as("SELECT tablename FROM pg_tables WHERE schemaname = $1")
+                .bind(schema)
+                .fetch_all(pool)
+                .await?;
 
         if tables.is_empty() {
             println!("Schema '{}' has no tables", schema);
@@ -140,9 +144,12 @@ async fn reset_database(pool: &PgPool, yes: bool) -> anyhow::Result<()> {
         for (table,) in tables {
             let full_table = format!("{}.{}", schema, table);
             println!("Truncating {}", full_table);
-            sqlx::query(&format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", full_table))
-                .execute(pool)
-                .await?;
+            sqlx::query(&format!(
+                "TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
+                full_table
+            ))
+            .execute(pool)
+            .await?;
         }
     }
 

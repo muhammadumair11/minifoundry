@@ -43,7 +43,9 @@ const AUTH_FREE_PATHS = ['/login', '/signup']
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
-    if (AUTH_FREE_PATHS.includes(location.pathname)) return
+    // Invitation links are deliberately public: recipients must be able to
+    // inspect and accept one before they have a session.
+    if (AUTH_FREE_PATHS.includes(location.pathname) || location.pathname.startsWith('/invite/')) return
     const s = await fetchAuthBootstrap()
     if (s && s.session === null && s.role === 'anonymous') {
       const next = `${location.pathname}${location.searchStr ?? ''}`

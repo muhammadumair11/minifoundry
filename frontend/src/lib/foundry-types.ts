@@ -592,6 +592,7 @@ export type MarkingColor = 'rose' | 'amber' | 'teal' | 'zinc'
 
 export interface SessionResponse {
   role: FoundryRole
+  organizationId?: string | null
   /** M9 (additive): real-auth identity when a valid `foundry-session` cookie is present; null in simulator/anonymous mode. */
   session?: SessionUserInfo | null
 }

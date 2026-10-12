@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   BookOpen,
+  Building2,
   Boxes,
   CalendarClock,
   Check,
@@ -542,6 +543,26 @@ function UserMenu({ session }: { session: SessionResponse }) {
   const effectiveRole = user?.effectiveRole ?? session.role
   const isAdminUser = user?.role === 'admin'
   const impersonating = Boolean(user?.impersonating)
+  const organizationsQuery = useQuery<{ organizations: Array<{ id: string; name: string; role: string }> }>({
+    queryKey: ['organizations'],
+    queryFn: () => apiJson('/api/organizations'),
+    enabled: Boolean(user),
+    staleTime: 30_000,
+  })
+
+  const switchOrganizationMutation = useMutation({
+    mutationFn: (organizationId: string) =>
+      apiSend<{ organizationId: string; role: string }>('/api/session/organization', 'POST', { organizationId }),
+    onSuccess: (result) => {
+      invalidateAuthBootstrap()
+      toast.success('Organization switched')
+      queryClient.setQueryData<SessionResponse>(['session'], (old) =>
+        old ? { ...old, organizationId: result.organizationId } : old,
+      )
+      void queryClient.invalidateQueries()
+    },
+    onError: (err) => toastApiError(err, 'Could not switch organization'),
+  })
 
   const logoutMutation = useMutation({
     mutationFn: () => apiSend<{ ok: true }>('/api/auth/logout', 'POST'),
@@ -680,6 +701,34 @@ function UserMenu({ session }: { session: SessionResponse }) {
             </DropdownMenuSub>
           </>
         )}
+        {organizationsQuery.data && organizationsQuery.data.organizations.length > 1 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2 text-xs">
+                <Building2 className="size-3.5 text-muted-foreground" aria-hidden />
+                Switch organization
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="min-w-48">
+                {organizationsQuery.data.organizations.map((organization) => {
+                  const current = organization.id === session.organizationId
+                  return (
+                    <DropdownMenuItem
+                      key={organization.id}
+                      disabled={current || switchOrganizationMutation.isPending}
+                      onClick={() => switchOrganizationMutation.mutate(organization.id)}
+                      className="gap-2 text-xs"
+                    >
+                      <Building2 className="size-3.5 text-muted-foreground" aria-hidden />
+                      <span className="max-w-40 truncate">{organization.name}</span>
+                      {current && <Check className="ml-auto size-3.5" aria-hidden />}
+                    </DropdownMenuItem>
+                  )
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="gap-2 text-xs">
           <Link href="/account">
@@ -771,7 +820,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // /login and /signup render a focused, chrome-free shell (logo-only bar,
   // no sidebar) — the auth showpiece keeps the screen clean; footer sticks.
-  if (pathname === '/login' || pathname === '/signup') {
+  if (pathname === '/login' || pathname === '/signup' || pathname.startsWith('/invite/')) {
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
         <header className="sticky top-0 z-40 h-14 shrink-0 border-b border-border bg-background/95 backdrop-blur">

@@ -15,6 +15,7 @@ import { useRouter } from '@/lib/next-navigation'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import {
+  Building2,
   DatabaseZap,
   Loader2,
   Moon,
@@ -23,6 +24,7 @@ import {
   ShieldAlert,
   Sun,
   Type,
+  UserPlus,
   UserRound,
 } from 'lucide-react'
 import {
@@ -52,6 +54,14 @@ import { RoleBadge } from '@/components/foundry/governance/role-badge'
 import { useEditorFontSize, EDITOR_FONT_SIZES, type EditorFontSize } from '@/components/foundry/editor-prefs'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
 import type { ResetResponse, SessionResponse, WorkspaceOverview } from '@/lib/foundry-types'
+
+type Organization = { id: string; name: string; slug: string; role: string }
+type OrganizationMember = { id: string; email: string; name: string; isActive: boolean; role: string }
+const ORGANIZATION_ROLES = ['org_admin', 'access_manager', 'auditor', 'editor', 'viewer'] as const
+
+function readableRole(role: string): string {
+  return role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
 
 // ── Appearance ───────────────────────────────────────────────────────────
 
@@ -420,6 +430,54 @@ function SessionSection() {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 
+function OrganizationSection() {
+  const queryClient = useQueryClient()
+  const sessionQuery = useQuery<SessionResponse>({ queryKey: ['session'], queryFn: () => apiJson('/api/session'), staleTime: 30_000 })
+  const organizationsQuery = useQuery<{ organizations: Organization[] }>({
+    queryKey: ['organizations'], queryFn: () => apiJson('/api/organizations'), staleTime: 30_000,
+    enabled: Boolean(sessionQuery.data?.session),
+  })
+  const activeOrganization = organizationsQuery.data?.organizations.find((organization) => organization.id === sessionQuery.data?.organizationId)
+  const canManage = ['owner', 'org_admin', 'access_manager'].includes(activeOrganization?.role ?? '')
+  const membersQuery = useQuery<{ members: OrganizationMember[] }>({
+    queryKey: ['organization-members', sessionQuery.data?.organizationId], queryFn: () => apiJson('/api/organization/members'),
+    enabled: canManage || activeOrganization?.role === 'auditor',
+  })
+  const [email, setEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<string>('viewer')
+  const inviteMutation = useMutation({
+    mutationFn: () => apiSend<{ invitation: { acceptUrl: string } }>('/api/organization/invitations', 'POST', { email, role: inviteRole }),
+    onSuccess: async ({ invitation }) => {
+      const url = `${window.location.origin}${invitation.acceptUrl}`
+      try { await navigator.clipboard.writeText(url) } catch { /* Clipboard may be unavailable outside HTTPS. */ }
+      setEmail('')
+      toast.success('Invitation created and copied', { description: url, duration: 12_000 })
+    },
+    onError: (err) => toastApiError(err, 'Could not create invitation'),
+  })
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: string }) => apiSend(`/api/organization/members/${id}`, 'PATCH', { role }),
+    onSuccess: () => { toast.success('Member role updated'); void queryClient.invalidateQueries({ queryKey: ['organization-members'] }) },
+    onError: (err) => toastApiError(err, 'Could not update member role'),
+  })
+
+  if (!sessionQuery.data?.session) return null
+  return (
+    <section aria-labelledby="settings-organization">
+      <h2 id="settings-organization" className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Organization</h2>
+      <Card className="py-0"><CardContent className="space-y-4 p-4">
+        <div className="flex items-center gap-2 text-sm"><Building2 className="h-4 w-4 text-muted-foreground" aria-hidden /><span className="font-medium">{activeOrganization?.name ?? 'Loading organization…'}</span>{activeOrganization && <span className="text-xs text-muted-foreground">Your role: {readableRole(activeOrganization.role)}</span>}</div>
+        {canManage && <form className="flex flex-col gap-2 border-y border-border py-4 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (!inviteMutation.isPending) inviteMutation.mutate() }}>
+          <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="colleague@example.com" required aria-label="Invitee email" />
+          <Select value={inviteRole} onValueChange={setInviteRole}><SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger><SelectContent>{ORGANIZATION_ROLES.map((role) => <SelectItem key={role} value={role}>{readableRole(role)}</SelectItem>)}</SelectContent></Select>
+          <Button type="submit" disabled={inviteMutation.isPending} className="shrink-0">{inviteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />} Invite</Button>
+        </form>}
+        {membersQuery.isLoading ? <Skeleton className="h-20 w-full" /> : membersQuery.data ? <div className="space-y-2">{membersQuery.data.members.map((member) => <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"><div className="min-w-0"><p className="truncate font-medium">{member.name}</p><p className="truncate font-mono text-xs text-muted-foreground">{member.email}</p></div>{canManage && member.role !== 'owner' ? <Select value={member.role} onValueChange={(role) => roleMutation.mutate({ id: member.id, role })}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{ORGANIZATION_ROLES.map((role) => <SelectItem key={role} value={role}>{readableRole(role)}</SelectItem>)}</SelectContent></Select> : <span className="text-xs text-muted-foreground">{readableRole(member.role)}</span>}</div>)}</div> : <p className="text-xs text-muted-foreground">Only organization administrators and auditors can view the member roster.</p>}
+      </CardContent></Card>
+    </section>
+  )
+}
+
 export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:py-8">
@@ -433,6 +491,7 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         <AppearanceSection />
+        <OrganizationSection />
         <DataSection />
         <DangerZoneSection />
         <SessionSection />
