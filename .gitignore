@@ -47,3 +47,10 @@ db/test-*.db
 
 # vercel
 .vercel
+
+# Local authentication smoke-test payloads and session cookie jars
+/accept.json
+/invite.json
+/login.json
+/cookies.txt
+/cookies2.txt

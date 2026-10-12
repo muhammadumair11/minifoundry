@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use crate::audit::{self, AuditOptions};
 use crate::cookies;
 use crate::routes::{as_object, get_cookie, parse_body, req_str_min1, with_cookies};
-use crate::state::{serialize_auth_user, AppState, UserRow};
+use crate::state::{serialize_auth_user, AppState, MembershipRow, UserRow};
 use crate::tokens_common::issue_session_pair;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 
@@ -40,7 +40,7 @@ pub async fn login(
 
     let email = email_in.trim().to_lowercase();
     let user: Option<UserRow> = sqlx::query_as(
-        "SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at \
+        "SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at, default_organization_id \
          FROM users WHERE email = $1",
     )
     .bind(&email)
@@ -59,30 +59,37 @@ pub async fn login(
 
     let updated: UserRow = sqlx::query_as(
         "UPDATE users SET last_login_at = now() WHERE id = $1 \
-         RETURNING id, email, name, role, password_hash, is_active, last_login_at, created_at",
+         RETURNING id, email, name, role, password_hash, is_active, last_login_at, created_at, default_organization_id",
     )
     .bind(&user.id)
     .fetch_one(&state.db)
     .await?;
 
+    let membership = active_membership(
+        &state,
+        &updated.id,
+        updated.default_organization_id.as_deref(),
+    )
+    .await?;
     let actor = actor_from_headers(&headers);
     audit::audit(
         &state,
         &actor,
         AuditOptions::new("auth.login", "user")
-            .actor_role(&updated.role)
+            .actor_role(&membership.role)
             .actor_email(Some(&updated.email))
             .resource_id(Some(&updated.id))
             .resource_name(Some(&updated.email))
             .detail(Some(&format!(
                 "email={} role={}",
-                updated.email, updated.role
+                updated.email, membership.role
             ))),
     )
     .await;
 
-    let (specs, _refresh_plain) = issue_session_pair(&state, &updated, None).await?;
-    let resp = json_ok(serde_json::json!({ "user": serialize_auth_user(&updated) }));
+    let (specs, _refresh_plain) = issue_session_pair(&state, &updated, &membership, None).await?;
+    let user_json = serialize_auth_user(&updated, &membership, None);
+    let resp = json_ok(serde_json::json!({ "user": user_json }));
     Ok(with_cookies(resp, specs))
 }
 
@@ -146,9 +153,13 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
     .fetch_optional(&state.db)
     .await?;
     match user {
-        Some(u) if u.is_active => Ok(json_ok(
-            serde_json::json!({ "authenticated": true, "user": serialize_auth_user(&u) }),
-        )),
+        Some(u) if u.is_active => {
+            let membership = active_membership(&state, &u.id, actor.organization_id.as_deref()).await?;
+            let user_json = serialize_auth_user(&u, &membership, Some(&actor.role));
+            Ok(json_ok(
+                serde_json::json!({ "authenticated": true, "user": user_json }),
+            ))
+        }
         _ => Ok(json_ok(serde_json::json!({ "authenticated": false }))),
     }
 }
@@ -156,12 +167,14 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
 /// POST /api/auth/signup — public self-registration.
 ///
 /// Contract:
-/// - body { name, email, password } — zod-v4-style all-issues validation
-///   (name ≥1 char, valid email shape, password ≥8 chars);
+/// - body { organizationName, name, email, password } — zod-v4-style
+///   all-issues validation (all names ≥1 char, valid email shape, password
+///   ≥8 chars);
 /// - email is normalized (trim + lowercase) and unique → 409
 ///   { error: "an account with this email already exists" };
-/// - BOOTSTRAP: the very first account in an empty workspace becomes `admin`
-///   (otherwise nobody could ever promote anyone); everyone else `viewer`;
+/// - each signup creates an organization and an `owner` membership; the
+///   compatibility user role is `admin` so existing platform surfaces grant
+///   the owner full access;
 /// - auto-login: same cookie set as /api/auth/login (access JWT + rotating
 ///   refresh + legacy role cookie) and the same { user } response at 201;
 /// - audits `auth.signup`.
@@ -176,7 +189,7 @@ pub async fn signup(
 ) -> ApiResult<Response> {
     let v = parse_body(&body)?;
     let m = as_object(v)?;
-    let (name, email, password) = crate::routes::validate_signup(&m)?;
+    let (organization_name, name, email, password) = crate::routes::validate_signup(&m)?;
 
     // Serialize the bootstrap decision. A transaction by itself is not
     // sufficient under PostgreSQL's default Read Committed isolation: two
@@ -189,22 +202,23 @@ pub async fn signup(
         .bind(7_189_430_221_i64)
         .execute(&mut *tx)
         .await?;
-    let user_count: i64 = sqlx::query_scalar("SELECT count(*) FROM users")
-        .fetch_one(&mut *tx)
-        .await?;
-    let role = if user_count == 0 { "admin" } else { "viewer" };
-
     let password_hash = mf_auth::hash_password(&password).map_err(ApiError::internal)?;
     let id = mf_db::new_id();
+    let organization_id = mf_db::new_id();
+    sqlx::query("INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)")
+        .bind(&organization_id)
+        .bind(&organization_name)
+        .bind(format!("org-{}", &organization_id[..8]))
+        .execute(&mut *tx)
+        .await?;
     let insert = sqlx::query_as(
         "INSERT INTO users (id, email, name, role, password_hash, last_login_at) \
-         VALUES ($1, $2, $3, $4, $5, now()) \
+         VALUES ($1, $2, $3, 'admin', $4, now()) \
          RETURNING id, email, name, role, password_hash, is_active, last_login_at, created_at",
     )
     .bind(&id)
     .bind(&email)
     .bind(&name)
-    .bind(role)
     .bind(&password_hash)
     .fetch_one(&mut *tx)
     .await;
@@ -218,32 +232,52 @@ pub async fn signup(
         }
         Err(e) => return Err(e.into()),
     };
+    sqlx::query("INSERT INTO organization_memberships (id, organization_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(mf_db::new_id()).bind(&organization_id).bind(&user.id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE users SET default_organization_id = $1 WHERE id = $2")
+        .bind(&organization_id)
+        .bind(&user.id)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
 
     let actor = actor_from_headers(&headers);
-    let bootstrap = if user_count == 0 { "yes" } else { "no" };
     audit::audit(
         &state,
         &actor,
         AuditOptions::new("auth.signup", "user")
-            .actor_role(&user.role)
+            .actor_role("owner")
             .actor_email(Some(&user.email))
             .resource_id(Some(&user.id))
             .resource_name(Some(&user.email))
             .detail(Some(&format!(
-                "email={} role={} bootstrap={}",
-                user.email, user.role, bootstrap
+                "email={} organization={} role=owner",
+                user.email, organization_name
             ))),
     )
     .await;
 
     // Auto-login: identical cookie set to /api/auth/login.
-    let (specs, _refresh) = issue_session_pair(&state, &user, None).await?;
+    let membership = active_membership(&state, &user.id, Some(&organization_id)).await?;
+    let (specs, _refresh) = issue_session_pair(&state, &user, &membership, None).await?;
     let resp = axum::response::IntoResponse::into_response((
         axum::http::StatusCode::CREATED,
-        axum::Json(serde_json::json!({ "user": serialize_auth_user(&user) })),
+        axum::Json(serde_json::json!({ "user": serialize_auth_user(&user, &membership, None) })),
     ));
     Ok(with_cookies(resp, specs))
+}
+
+pub(crate) async fn active_membership(
+    state: &AppState,
+    user_id: &str,
+    preferred_org: Option<&str>,
+) -> ApiResult<MembershipRow> {
+    let m: Option<MembershipRow> = sqlx::query_as(
+        "SELECT id, organization_id, user_id, role, is_active, created_at FROM organization_memberships \
+         WHERE user_id = $1 AND is_active AND ($2::text IS NULL OR organization_id = $2) \
+         ORDER BY created_at ASC LIMIT 1",
+    ).bind(user_id).bind(preferred_org).fetch_optional(&state.db).await?;
+    m.ok_or_else(|| ApiError::unauthorized("no active organization membership"))
 }
 
 /// POST /api/auth/password — change the signed-in user's password.

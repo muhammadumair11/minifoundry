@@ -22,10 +22,15 @@ const LOG_COLS: &str = "id, token_id, route, status, duration_ms, created_at";
 pub async fn list_tokens(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     let tokens: Vec<TokenRow> = sqlx::query_as(&format!(
-        "SELECT {TOKEN_COLS} FROM api_tokens ORDER BY created_at DESC"
+        "SELECT {TOKEN_COLS} FROM api_tokens WHERE organization_id = $1 ORDER BY created_at DESC"
     ))
+    .bind(&organization_id)
     .fetch_all(&state.db)
     .await?;
     let out: Vec<serde_json::Value> = tokens.iter().map(serialize_token).collect();
@@ -41,6 +46,10 @@ pub async fn create_token(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     let v = parse_body(&body)?;
     let m = as_object(v)?;
@@ -62,10 +71,11 @@ pub async fn create_token(
     let id = mf_db::new_id();
 
     let result = sqlx::query_as(&format!(
-        "INSERT INTO api_tokens (id, name, token_hash, prefix) VALUES ($1, $2, $3, $4) \
+        "INSERT INTO api_tokens (id, organization_id, name, token_hash, prefix) VALUES ($1, $2, $3, $4, $5) \
          RETURNING {TOKEN_COLS}"
     ))
     .bind(&id)
+    .bind(&organization_id)
     .bind(name)
     .bind(&token_hash)
     .bind(&prefix)
@@ -112,11 +122,16 @@ pub async fn revoke_token(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     let token: Option<TokenRow> = sqlx::query_as(&format!(
-        "SELECT {TOKEN_COLS} FROM api_tokens WHERE id = $1"
+        "SELECT {TOKEN_COLS} FROM api_tokens WHERE id = $1 AND organization_id = $2"
     ))
     .bind(&id)
+    .bind(organization_id)
     .fetch_optional(&state.db)
     .await?;
     let Some(token) = token else {
@@ -163,15 +178,20 @@ fn hour_iso(dt: DateTime<Utc>) -> String {
 pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     let now = Utc::now();
     let now_ms = now.timestamp_millis();
     let since = now - ChronoDuration::hours(USAGE_WINDOW_HOURS);
 
     let rows: Vec<RequestLogRow> = sqlx::query_as(&format!(
-        "SELECT {LOG_COLS} FROM api_request_logs WHERE created_at >= $1 LIMIT {USAGE_ROW_CAP}"
+        "SELECT {LOG_COLS} FROM api_request_logs WHERE created_at >= $1 AND token_id IN (SELECT id FROM api_tokens WHERE organization_id = $2) LIMIT {USAGE_ROW_CAP}"
     ))
     .bind(since)
+    .bind(organization_id)
     .fetch_all(&state.db)
     .await?;
 
@@ -326,12 +346,17 @@ pub async fn usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
 pub async fn clear_usage(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     // Data-modifying statements are only legal in a WITH clause (not a FROM
     // subquery) in Postgres.
     let count: i64 = sqlx::query_scalar(
-        "WITH deleted AS (DELETE FROM api_request_logs RETURNING id) SELECT count(*) FROM deleted",
+        "WITH deleted AS (DELETE FROM api_request_logs WHERE token_id IN (SELECT id FROM api_tokens WHERE organization_id = $1) RETURNING id) SELECT count(*) FROM deleted",
     )
+    .bind(organization_id)
     .fetch_one(&state.db)
     .await?;
     audit::audit(
@@ -399,6 +424,10 @@ pub async fn seed_usage(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
+    let organization_id = actor
+        .organization_id
+        .as_ref()
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
 
     let v = parse_body_or_empty(&body)?;
     let m = as_object(v)?;
@@ -408,12 +437,14 @@ pub async fn seed_usage(
     let now = Utc::now();
     let now_ms = now.timestamp_millis();
     let recent: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM api_request_logs WHERE created_at >= now() - interval '1 hour'",
+        "SELECT count(*) FROM api_request_logs WHERE token_id IN (SELECT id FROM api_tokens WHERE organization_id = $1) AND created_at >= now() - interval '1 hour'",
     )
+    .bind(organization_id)
     .fetch_one(&state.db)
     .await?;
     let future: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM api_request_logs WHERE created_at > now()")
+        sqlx::query_scalar("SELECT count(*) FROM api_request_logs WHERE token_id IN (SELECT id FROM api_tokens WHERE organization_id = $1) AND created_at > now()")
+            .bind(organization_id)
             .fetch_one(&state.db)
             .await?;
     if recent > 20 || future > 0 {
@@ -423,8 +454,9 @@ pub async fn seed_usage(
     }
 
     let token: Option<TokenRow> = sqlx::query_as(&format!(
-        "SELECT {TOKEN_COLS} FROM api_tokens WHERE revoked_at IS NULL ORDER BY created_at DESC LIMIT 1"
+        "SELECT {TOKEN_COLS} FROM api_tokens WHERE organization_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1"
     ))
+    .bind(organization_id)
     .fetch_optional(&state.db)
     .await?;
     let Some(token) = token else {

@@ -203,6 +203,7 @@ pub fn service_admin_actor() -> Actor {
         uid: None,
         name: None,
         real_role: None,
+        organization_id: None,
         is_service: true,
     }
 }

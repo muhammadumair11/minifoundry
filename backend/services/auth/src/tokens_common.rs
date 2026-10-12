@@ -1,10 +1,23 @@
 //! Session issuance helpers shared by login and the internal refresh flow.
 
 use crate::cookies::{self, CookieSpec};
-use crate::state::{AppState, UserRow};
+use crate::state::{AppState, MembershipRow, UserRow};
 use mf_auth::{build_session, sign_token, SessionPayload};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+
+/// Map organization membership roles onto the platform role vocabulary used
+/// by the existing services and frontend. Organization ownership is an
+/// administrative capability, so an owner receives the same effective
+/// platform role as an admin session. The membership row remains the source
+/// of truth for organization-specific authorization.
+pub fn platform_role(membership_role: &str) -> &str {
+    match membership_role {
+        "owner" | "org_admin" => "admin",
+        "editor" => "editor",
+        _ => "viewer",
+    }
+}
 
 /// Access-JWT lifetime (legacy session TTL was 7d; short access + rotating
 /// refresh preserves the UX while bounding stolen-token exposure).
@@ -36,15 +49,18 @@ pub fn new_refresh_token() -> (String, String) {
 pub fn build_access_token(
     state: &AppState,
     user: &UserRow,
+    membership: &MembershipRow,
     role_override: Option<&str>,
 ) -> Result<(SessionPayload, String), mf_web::ApiError> {
-    let override_role = role_override.filter(|r| *r != user.role);
+    let membership_platform_role = platform_role(&membership.role);
+    let override_role = role_override.filter(|r| *r != membership_platform_role);
     let payload = build_session(
         &user.id,
         &user.email,
         &user.name,
-        override_role.unwrap_or(&user.role),
-        override_role.map(|_| user.role.clone()),
+        override_role.unwrap_or(membership_platform_role),
+        override_role.map(|_| membership_platform_role.to_string()),
+        &membership.organization_id,
         access_ttl(),
     );
     let token = sign_token(&payload, &state.secret)
@@ -59,20 +75,22 @@ pub fn build_access_token(
 pub async fn issue_session_pair(
     state: &AppState,
     user: &UserRow,
+    membership: &MembershipRow,
     role_override: Option<&str>,
 ) -> Result<(Vec<CookieSpec>, String), mf_web::ApiError> {
-    let (payload, access) = build_access_token(state, user, role_override)?;
+    let (payload, access) = build_access_token(state, user, membership, role_override)?;
 
     let (refresh_plain, refresh_hash) = new_refresh_token();
     let id = mf_db::new_id();
     sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, impersonated_role, expires_at) \
-         VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+        "INSERT INTO refresh_tokens (id, user_id, organization_id, token_hash, impersonated_role, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
     )
     .bind(&id)
     .bind(&user.id)
+    .bind(&membership.organization_id)
     .bind(&refresh_hash)
-    .bind(role_override.filter(|r| *r != user.role))
+    .bind(role_override.filter(|r| *r != platform_role(&membership.role)))
     .bind(refresh_ttl())
     .execute(&state.db)
     .await

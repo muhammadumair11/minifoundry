@@ -157,7 +157,12 @@ async fn gateway_handler(
         }
     }
 
-    let actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
+    let mut actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
+    if let Some(role) = resolved.organization_role {
+        if let Ok(value) = HeaderValue::from_str(&role) {
+            actor_headers.push((HeaderName::from_static("x-mf-organization-role"), value));
+        }
+    }
     proxy::forward(
         &state,
         proxy::ForwardRequest {
@@ -207,6 +212,9 @@ fn build_actor_headers(actor: &mf_auth::Actor, demo: bool) -> Vec<(HeaderName, H
     }
     if let Some(real_role) = &actor.real_role {
         push(&mut out, mf_auth::HEADER_ACTOR_REAL_ROLE, real_role.clone());
+    }
+    if let Some(org_id) = &actor.organization_id {
+        push(&mut out, mf_auth::HEADER_ORGANIZATION_ID, org_id.clone());
     }
     if actor.is_service {
         push(&mut out, mf_auth::HEADER_IS_SERVICE, "1".to_string());

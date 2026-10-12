@@ -5,16 +5,18 @@
 // password + confirm, client-side pre-validation (server messages win),
 // exact server error surfaced inline. On success the backend auto-logs-in
 // (session cookies), so we invalidate the query cache and honor ?next=.
-// First-ever account becomes admin (bootstrap); everyone else viewer —
-// the server decides, the UI just reports the granted role.
+// Every signup creates an organization and makes its creator the owner. The
+// server exposes that owner as the compatible platform-admin role so existing
+// role-gated product surfaces continue to work.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/components/link'
-import { useRouter, useSearchParams } from '@/lib/next-navigation'
+import { useSearchParams } from '@/lib/next-navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Boxes,
+  Building2,
   Eye,
   EyeOff,
   GitBranch,
@@ -28,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiSend } from '@/lib/foundry-api'
+import { roleLabel } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { invalidateAuthBootstrap } from '@/routes/__root'
 import type { LoginResponse, MeResponse } from '@/lib/foundry-types'
@@ -45,16 +48,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /** Only honor same-origin, app-relative post-signup destinations. */
 function safeNext(value: string | null): string {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  return value?.startsWith('/') && !value.startsWith('//') && !/[\\\u0000-\u0020]/.test(value) ? value : '/'
 }
 
 export default function SignupPage() {
-  const router = useRouter()
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get('next'))
 
   const [name, setName] = useState('')
+  const [organizationName, setOrganizationName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -65,16 +68,19 @@ export default function SignupPage() {
   // Already signed in? Straight through (same convenience as /login).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((me: MeResponse | null) => {
-        if (!cancelled && me?.authenticated) router.replace(next)
+        if (!cancelled && me?.authenticated) {
+          invalidateAuthBootstrap()
+          window.location.replace(next)
+        }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [router, next])
+  }, [next])
 
   const clientIssue = useMemo(() => {
     if (!name.trim()) return null // let the server own required-field messages
@@ -88,21 +94,22 @@ export default function SignupPage() {
   const signupMutation = useMutation({
     mutationFn: () =>
       apiSend<LoginResponse>('/api/auth/signup', 'POST', {
+        organizationName: organizationName.trim(),
         name: name.trim(),
         email: email.trim(),
         password,
       }),
     onSuccess: (res) => {
-      const role = res.user.role
+      const role = res.user.organizationRole
       toast.success(`Account created — welcome, ${res.user.name}`, {
         description:
-          role === 'admin'
-            ? 'First account in this workspace: granted the admin role.'
-            : `Role: ${role} · an admin can promote you at any time.`,
+          role === 'owner'
+            ? 'Organization created — you are the organization owner.'
+            : `Role: ${roleLabel(role)} · your organization owner can manage access.`,
       })
       invalidateAuthBootstrap()
-      queryClient.invalidateQueries()
-      router.replace(next)
+      queryClient.clear()
+      window.location.replace(next)
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Sign up failed')
@@ -162,14 +169,16 @@ export default function SignupPage() {
         <div className="w-full max-w-sm">
           <Card>
             <CardHeader className="gap-1.5 p-6">
-              <CardTitle className="text-base font-medium text-foreground">Sign up</CardTitle>
+              <CardTitle className="text-base font-medium text-foreground">Create your organization</CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                New accounts start as <span className="font-mono text-xs">viewer</span> — the
-                first account in a fresh workspace becomes{' '}
-                <span className="font-mono text-xs">admin</span>.
+                You&apos;ll create an organization and become its owner with full access.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 pt-0">
+              <div className="mb-5 flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>Joining an existing organization? Use the invitation link sent by its administrator instead of creating a second organization.</span>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -181,6 +190,21 @@ export default function SignupPage() {
                 }}
                 className="grid gap-4"
               >
+                <div className="grid gap-2">
+                  <Label htmlFor="signup-organization" className="text-xs text-muted-foreground">
+                    Organization name
+                  </Label>
+                  <Input
+                    id="signup-organization"
+                    type="text"
+                    autoComplete="organization"
+                    placeholder="Acme Analytics"
+                    value={organizationName}
+                    onChange={(e) => { setOrganizationName(e.target.value); setError(null) }}
+                    required
+                    className="h-11"
+                  />
+                </div>
                 <div className="grid gap-2">
                   <Label htmlFor="signup-name" className="text-xs text-muted-foreground">
                     Full name
@@ -314,7 +338,7 @@ export default function SignupPage() {
                   ) : (
                     <UserPlus className="h-4 w-4" aria-hidden />
                   )}
-                  Create account
+                  Create organization &amp; account
                 </Button>
               </form>
 

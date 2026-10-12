@@ -1,5 +1,7 @@
 'use client'
 
+import { roleLabel } from '@/lib/permissions'
+
 import { useState } from 'react'
 import Link from '@/components/link'
 import { useRouter } from '@/lib/next-navigation'
@@ -259,7 +261,7 @@ function SignedInChip({ session }: { session: SessionResponse }) {
     <Link
       href="/governance"
       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      aria-label={`Signed in as ${user.name} (${user.role}) — open governance.`}
+      aria-label={`Signed in as ${user.name} (${roleLabel(session.organizationRole ?? user.role)}) — open governance.`}
     >
       <UserCircle className="h-3 w-3 text-muted-foreground" aria-hidden />
       <span>
@@ -273,7 +275,7 @@ function SignedInChip({ session }: { session: SessionResponse }) {
                 : 'text-muted-foreground'
           }
         >
-          ({user.role})
+          ({roleLabel(session.organizationRole ?? user.role)})
         </span>
       </span>
     </Link>

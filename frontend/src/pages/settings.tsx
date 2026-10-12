@@ -51,6 +51,8 @@ import { GatedButton } from '@/components/foundry/governance/gated-button'
 import { RoleBadge } from '@/components/foundry/governance/role-badge'
 import { useEditorFontSize, EDITOR_FONT_SIZES, type EditorFontSize } from '@/components/foundry/editor-prefs'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+import { OrganizationSettings } from '@/components/foundry/organization-settings'
+import { permissions, roleLabel } from '@/lib/permissions'
 import type { ResetResponse, SessionResponse, WorkspaceOverview } from '@/lib/foundry-types'
 
 // ── Appearance ───────────────────────────────────────────────────────────
@@ -251,7 +253,7 @@ function DangerZoneSection() {
     queryFn: () => apiJson<SessionResponse>('/api/session'),
     staleTime: 30_000,
   })
-  const isAdmin = sessionQuery.data?.role === 'admin'
+  const isAdmin = permissions(sessionQuery.data).canReset
 
   const resetMutation = useMutation({
     mutationFn: () => apiSend<ResetResponse>('/api/settings/reset', 'POST'),
@@ -276,6 +278,8 @@ function DangerZoneSection() {
     },
     onError: (err) => toastApiError(err, 'Reset failed'),
   })
+
+  if (!isAdmin) return null
 
   return (
     <section aria-labelledby="settings-danger">
@@ -407,10 +411,10 @@ function SessionSection() {
                 )}
               </div>
             )}
-            {sessionQuery.data ? <RoleBadge role={sessionQuery.data.role} /> : null}
+            {sessionQuery.data?.organizationRole ? <span className="text-xs font-medium">{roleLabel(sessionQuery.data.organizationRole)}</span> : sessionQuery.data ? <RoleBadge role={sessionQuery.data.role} /> : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            Effective role governs every button on the platform. Admins can reset the workspace.
+            Your active organization role determines which actions are available.
           </p>
         </CardContent>
       </Card>
@@ -433,6 +437,7 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         <AppearanceSection />
+        <OrganizationSettings />
         <DataSection />
         <DangerZoneSection />
         <SessionSection />

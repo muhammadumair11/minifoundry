@@ -592,6 +592,9 @@ export type MarkingColor = 'rose' | 'amber' | 'teal' | 'zinc'
 
 export interface SessionResponse {
   role: FoundryRole
+  organizationId?: string | null
+  organizationRole?: import('@/lib/permissions').OrganizationRole | null
+  demoMode?: boolean
   /** M9 (additive): real-auth identity when a valid `foundry-session` cookie is present; null in simulator/anonymous mode. */
   session?: SessionUserInfo | null
 }
@@ -996,6 +999,8 @@ export interface AuthUser {
   email: string
   name: string
   role: FoundryRole
+  organizationId: string
+  organizationRole: import('@/lib/permissions').OrganizationRole
   lastLoginAt: string | null
 }
 
@@ -1003,8 +1008,10 @@ export interface AuthUser {
 export interface SessionUserInfo {
   email: string
   name: string
-  /** The user's TRUE role (never the impersonated one). */
+  /** Legacy service permission level, NOT the organization membership role. */
   role: FoundryRole
+  organizationId?: string | null
+  organizationRole?: import('@/lib/permissions').OrganizationRole | null
   /** M9 impersonation (additive): EFFECTIVE role — differs from `role` only while an admin impersonates. */
   effectiveRole?: FoundryRole
   /** M9 impersonation (additive): true while the session carries a role override. */

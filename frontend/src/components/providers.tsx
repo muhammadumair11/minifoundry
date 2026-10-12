@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ThemeProvider, useTheme } from 'next-themes'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { seedAuthQueries, type AuthBootstrap } from '@/lib/auth-bootstrap'
 
 // Toasts follow the resolved theme so light (default) and dark both read well.
 function ThemedToaster() {
@@ -22,10 +23,10 @@ function ThemedToaster() {
   )
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({ children, initialAuth }: { children: React.ReactNode; initialAuth?: AuthBootstrap | null }) {
   const [queryClient] = useState(
-    () =>
-      new QueryClient({
+    () => {
+      const client = new QueryClient({
         defaultOptions: {
           queries: {
             staleTime: 5_000,
@@ -33,7 +34,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
             retry: 1,
           },
         },
-      }),
+      })
+      seedAuthQueries(client, initialAuth)
+      return client
+    },
   )
 
   return (

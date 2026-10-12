@@ -41,6 +41,7 @@ pub fn new_inflight() -> InflightMap {
 }
 
 pub struct ResolvedActor {
+    pub organization_role: Option<String>,
     pub actor: Actor,
     /// Present when this request triggered a transparent refresh — the
     /// handler attaches the new cookies to the proxied response.
@@ -86,6 +87,41 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
         }
     }
 
+    let mut organization_role = None;
+    // Recheck live membership so demotions and disabled accounts take effect
+    // immediately, including for previously issued access tokens.
+    if let Some(p) = &mut payload {
+        let result = state.http
+            .post(format!("{}/internal/auth/validate", state.auth_url.trim_end_matches('/')))
+            .header(mf_auth::SERVICE_TOKEN_HEADER, state.mode.service_token.as_deref().unwrap_or_default())
+            .json(&serde_json::json!({ "userId": p.uid, "organizationId": p.organization_id, "effectiveRole": p.role }))
+            .send().await;
+        let validated = match result {
+            Ok(response) if response.status().is_success() => {
+                response.json::<serde_json::Value>().await.ok()
+            }
+            _ => None,
+        };
+        if let Some(value) = validated {
+            organization_role = value
+                .get("organizationRole")
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            if let Some(role) = value.get("role").and_then(|value| value.as_str()) {
+                p.role = role.to_string();
+                p.real_role = value
+                    .get("realRole")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string);
+            } else {
+                payload = None;
+                refreshed = None;
+            }
+        } else {
+            payload = None;
+            refreshed = None;
+        }
+    }
     let has_session = payload.is_some();
 
     // 2/3) cookie-less fallbacks per mode
@@ -96,6 +132,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
             uid: Some(p.uid),
             name: Some(p.name),
             real_role: p.real_role,
+            organization_id: Some(p.organization_id),
             is_service,
         },
         None => {
@@ -114,6 +151,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
                     uid: None,
                     name: None,
                     real_role: None,
+                    organization_id: None,
                     is_service,
                 }
             } else {
@@ -126,6 +164,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
     };
 
     ResolvedActor {
+        organization_role,
         actor,
         refreshed,
         has_session,

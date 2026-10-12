@@ -10,7 +10,7 @@ use mf_web::{json_ok, ApiError, ApiResult};
 use sha2::{Digest, Sha256};
 
 use crate::ratelimit::TOKEN_RATE_LIMIT;
-use crate::routes::{as_object, parse_body, req_str};
+use crate::routes::{as_object, auth_routes::active_membership, parse_body, req_str};
 use crate::state::{serialize_auth_user, AppState, RefreshRow, TokenRow, UserRow};
 use crate::tokens_common::{build_access_token, new_refresh_token, refresh_ttl};
 
@@ -32,9 +32,44 @@ pub fn require_service(state: &AppState, headers: &HeaderMap) -> Result<(), ApiE
 /// (without another rotation) instead of a hard 401.
 const REFRESH_GRACE_SECONDS: i64 = 30;
 
-const REFRESH_COLS: &str = "id, user_id, token_hash, impersonated_role, expires_at, revoked_at";
+const REFRESH_COLS: &str =
+    "id, user_id, organization_id, token_hash, impersonated_role, expires_at, revoked_at";
 const USER_COLS: &str =
     "id, email, name, role, password_hash, is_active, last_login_at, created_at";
+
+/// Resolve current membership on every authenticated gateway request. Access
+/// JWTs establish identity; the database establishes current authorization.
+pub async fn validate_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> ApiResult<Response> {
+    require_service(&state, &headers)?;
+    let m = as_object(parse_body(&body)?)?;
+    let uid = req_str(&m, "userId")?;
+    let organization_id = req_str(&m, "organizationId")?;
+    let active: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND is_active)")
+            .bind(uid)
+            .fetch_one(&state.db)
+            .await?;
+    if !active {
+        return Err(ApiError::unauthorized("account is inactive"));
+    }
+    let membership = active_membership(&state, uid, Some(organization_id)).await?;
+    let current = crate::tokens_common::platform_role(&membership.role);
+    let requested = m.get("effectiveRole").and_then(|value| value.as_str());
+    let effective = if state.mode.demo && current == "admin" {
+        requested
+            .filter(|role| matches!(*role, "admin" | "editor" | "viewer"))
+            .unwrap_or(current)
+    } else {
+        current
+    };
+    Ok(json_ok(
+        serde_json::json!({ "role": effective, "organizationRole": membership.role, "realRole": if effective != current { Some(current) } else { None } }),
+    ))
+}
 
 /// POST /internal/auth/refresh — rotate a refresh token, return a new access
 /// JWT (+ new refresh plaintext when rotated). Called by the gateway.
@@ -68,15 +103,17 @@ pub async fn refresh(
     let Some(user) = user.filter(|u| u.is_active) else {
         return Err(ApiError::unauthorized("invalid or expired refresh token"));
     };
+    let membership = active_membership(&state, &user.id, row.organization_id.as_deref()).await?;
 
     if let Some(revoked_at) = row.revoked_at {
         // Recently rotated (concurrent gateways): issue an access token only,
         // keep the winner's refresh cookie in place.
         if Utc::now() - revoked_at <= chrono::Duration::seconds(REFRESH_GRACE_SECONDS) {
-            let (_p, access) = build_access_token(&state, &user, row.impersonated_role.as_deref())?;
+            let (payload, access) =
+                build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
             return Ok(json_ok(serde_json::json!({
                 "accessToken": access,
-                "user": serialize_auth_user(&user),
+                "user": serialize_auth_user(&user, &membership, Some(&payload.role)),
             })));
         }
         return Err(ApiError::unauthorized("invalid or expired refresh token"));
@@ -92,22 +129,24 @@ pub async fn refresh(
         .await?;
     let (plain, new_hash) = new_refresh_token();
     sqlx::query(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, impersonated_role, expires_at) \
-         VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5))",
+        "INSERT INTO refresh_tokens (id, user_id, organization_id, token_hash, impersonated_role, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6))",
     )
     .bind(mf_db::new_id())
     .bind(&row.user_id)
+    .bind(&membership.organization_id)
     .bind(&new_hash)
     .bind(&row.impersonated_role)
     .bind(refresh_ttl())
     .execute(&state.db)
     .await?;
 
-    let (_p, access) = build_access_token(&state, &user, row.impersonated_role.as_deref())?;
+    let (payload, access) =
+        build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
     Ok(json_ok(serde_json::json!({
         "accessToken": access,
         "refreshToken": plain,
-        "user": serialize_auth_user(&user),
+        "user": serialize_auth_user(&user, &membership, Some(&payload.role)),
     })))
 }
 

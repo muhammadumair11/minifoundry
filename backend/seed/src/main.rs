@@ -37,6 +37,13 @@ enum Commands {
     /// run it (creates "Active Shipments") → ontology → transforms →
     /// governance. Idempotent: "already seeded" responses count as success.
     All,
+    /// Truncate ALL tables in ALL service schemas (auth, catalog, orchestration, compute, ontology, governance).
+    /// WARNING: This permanently deletes all data. Use with caution.
+    Reset {
+        /// Skip confirmation prompt (use with caution!)
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 /// Password for every demo user (legacy DEMO_USER_PASSWORD).
@@ -97,6 +104,63 @@ const STAGE_ONTOLOGY: (&str, &str) = ("ontology", "/api/ontology/seed-demo");
 const STAGE_TRANSFORMS: (&str, &str) = ("transforms", "/api/transforms/seed-demo");
 const STAGE_GOVERNANCE: (&str, &str) = ("governance", "/api/governance/seed-demo");
 
+/// Truncate application tables in all service schemas.
+/// This is a destructive operation that removes ALL application data, but it
+/// deliberately preserves SQLx's migration ledger. Removing that ledger makes
+/// services replay their initial migrations against existing tables on restart.
+async fn reset_database(pool: &PgPool, yes: bool) -> anyhow::Result<()> {
+    if !yes {
+        eprint!("⚠️  This will PERMANENTLY DELETE ALL DATA in all service schemas (auth, catalog, orchestration, compute, ontology, governance).\nType 'yes' to confirm: ");
+        use std::io::{self, Write};
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim() != "yes" {
+            anyhow::bail!("Reset cancelled");
+        }
+    }
+
+    let schemas = [
+        "auth",
+        "catalog",
+        "orchestration",
+        "compute",
+        "ontology",
+        "governance",
+    ];
+
+    for schema in schemas {
+        // Get all tables in the schema
+        let tables: Vec<(String,)> =
+            sqlx::query_as(
+                "SELECT tablename FROM pg_tables WHERE schemaname = $1 AND tablename <> '_sqlx_migrations'",
+            )
+                .bind(schema)
+                .fetch_all(pool)
+                .await?;
+
+        if tables.is_empty() {
+            println!("Schema '{}' has no tables", schema);
+            continue;
+        }
+
+        // Disable triggers and truncate all tables
+        for (table,) in tables {
+            let full_table = format!("{}.{}", schema, table);
+            println!("Truncating {}", full_table);
+            sqlx::query(&format!(
+                "TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
+                full_table
+            ))
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    println!("✅ All service schemas truncated successfully");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter("info").init();
@@ -110,6 +174,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Users => {
             let n = seed_users(&pool).await?;
             println!(r#"{{"ensured":{n}}}"#);
+        }
+        Commands::Reset { yes } => {
+            reset_database(&pool, yes).await?;
         }
         Commands::All => {
             let mut failed: Vec<String> = Vec::new();

@@ -1,5 +1,7 @@
 'use client'
 
+import { usePermissions } from '@/lib/use-permissions'
+
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -115,6 +117,8 @@ export function ActionDialog({ action, open, onOpenChange, prefillPk }: ActionDi
   const close = () => onOpenChange(false)
   const writeback = action.writeback ?? null
 
+  const { canEdit } = usePermissions()
+  if (!canEdit) return null
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card sm:max-w-md">

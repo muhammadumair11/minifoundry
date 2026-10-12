@@ -171,6 +171,11 @@ async fn auth_counts(state: &AppState) -> Result<Value, ()> {
 
 /// POST /api/settings/reset — admin-only workspace wipe.
 pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
+    if !state.mode.demo {
+        return Err(mf_web::ApiError::forbidden(
+            "global workspace reset is only available in demo mode",
+        ));
+    }
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
 

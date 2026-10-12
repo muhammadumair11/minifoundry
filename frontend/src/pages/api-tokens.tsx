@@ -86,6 +86,7 @@ export default function ApiTokensPage() {
     queryKey: ['tokens'],
     queryFn: () => apiJson<TokensListResponse>('/api/tokens'),
     retry: false,
+    enabled: isAdmin,
   })
   const tokens = tokensQuery.data?.tokens ?? []
   const activeCount = tokens.filter((t) => !t.revokedAt).length
@@ -103,6 +104,8 @@ export default function ApiTokensPage() {
     },
     onError: (err) => toastApiError(err, 'Could not revoke token'),
   })
+
+  if (!isAdmin) return <p className="p-6 text-sm text-muted-foreground">{sessionQuery.isLoading ? 'Checking permissions…' : 'API tokens require Organization Owner or Organization Admin access.'}</p>
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-8">

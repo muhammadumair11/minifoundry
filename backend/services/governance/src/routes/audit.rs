@@ -16,7 +16,19 @@ pub async fn list_audit(
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> ApiResult<Response> {
-    let _ = headers; // any role (legacy had no guard on the audit read)
+    let actor = mf_web::actor_from_headers(&headers);
+    let organization_role = headers
+        .get("x-mf-organization-role")
+        .and_then(|value| value.to_str().ok());
+    if !state.mode.demo
+        && !actor.is_service
+        && actor.role != "admin"
+        && organization_role != Some("auditor")
+    {
+        return Err(mf_web::ApiError::forbidden(
+            "audit access requires organization administration or auditor role",
+        ));
+    }
     let resource_type = params
         .get("resourceType")
         .filter(|s| !s.is_empty())

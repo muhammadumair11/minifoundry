@@ -45,7 +45,7 @@ $spec = @{
 }
 
 $commonEnv = @(
-    '-e', 'MF_DEMO_MODE=true',
+    '-e', 'MF_DEMO_MODE=false',
     '-e', 'MF_SERVICE_TOKEN=<redacted>',
     '-e', 'AUTH_SECRET=<redacted>',
     '-e', 'MF_COOKIE_SECURE=0',

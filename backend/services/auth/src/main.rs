@@ -61,7 +61,33 @@ async fn main() -> anyhow::Result<()> {
             "/api/auth/password",
             post(routes::auth_routes::change_password),
         )
+        .route("/api/organizations", get(routes::organizations::list))
+        .route(
+            "/api/organization/members",
+            get(routes::organizations::members),
+        )
+        .route(
+            "/api/organization/invitations",
+            post(routes::organizations::invite),
+        )
+        .route(
+            "/api/organization/members/{id}",
+            patch(routes::organizations::update_member_role),
+        )
+        // public invitation acceptance (no auth required)
+        .route(
+            "/api/invitations/{token}",
+            get(routes::organizations::view_invitation),
+        )
+        .route(
+            "/api/invitations/{token}/accept",
+            post(routes::organizations::accept_invitation),
+        )
         .route("/api/session", get(routes::session::get_session))
+        .route(
+            "/api/session/organization",
+            post(routes::session::switch_organization),
+        )
         .route("/api/session/role", post(routes::session::set_role))
         // user + token management
         .route("/api/users", get(routes::users::list_users))
@@ -78,6 +104,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/tokens/usage/seed", post(routes::tokens::seed_usage))
         // internal (service-token guarded; never routed by the gateway)
         .route("/internal/auth/refresh", post(routes::internal::refresh))
+        .route(
+            "/internal/auth/validate",
+            post(routes::internal::validate_session),
+        )
         .route(
             "/internal/tokens/verify",
             post(routes::internal::verify_token),

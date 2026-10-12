@@ -1,5 +1,7 @@
 'use client'
 
+import { usePermissions } from '@/lib/use-permissions'
+
 // M4 Code Workbooks — "New workbook" dialog (Task 5-b).
 // name, language select, multi-checkbox dataset inputs, auto-suggested
 // output dataset name. POST /api/transforms → 201 { transform }.
@@ -54,6 +56,8 @@ export function NewWorkbookDialog({
   datasets: DatasetSummary[]
   onCreated: (id: string) => void
 }) {
+  const { canEdit } = usePermissions()
+  if (!canEdit) return null
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card sm:max-w-lg">

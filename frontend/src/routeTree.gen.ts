@@ -31,6 +31,7 @@ import { Route as DashboardsIndexRouteImport } from './routes/dashboards.index'
 import { Route as DashboardsIdRouteImport } from './routes/dashboards.$id'
 import { Route as DatasetsIndexRouteImport } from './routes/datasets.index'
 import { Route as DatasetsIdRouteImport } from './routes/datasets.$id'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ObjectsIndexRouteImport } from './routes/objects.index'
 import { Route as ObjectsTypeRouteImport } from './routes/objects.$type'
 import { Route as PipelinesIndexRouteImport } from './routes/pipelines.index'
@@ -146,6 +147,11 @@ const DatasetsIdRoute = DatasetsIdRouteImport.update({
   path: '/datasets/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ObjectsIndexRoute = ObjectsIndexRouteImport.update({
   id: '/objects/',
   path: '/objects/',
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
   '/datasets/$id': typeof DatasetsIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/objects/$type': typeof ObjectsTypeRoute
   '/pipelines/$id': typeof PipelinesIdRoute
   '/applications/': typeof ApplicationsIndexRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
   '/datasets/$id': typeof DatasetsIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/objects/$type': typeof ObjectsTypeRoute
   '/pipelines/$id': typeof PipelinesIdRoute
   '/applications': typeof ApplicationsIndexRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/applications/$id': typeof ApplicationsIdRoute
   '/dashboards/$id': typeof DashboardsIdRoute
   '/datasets/$id': typeof DatasetsIdRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/objects/$type': typeof ObjectsTypeRoute
   '/pipelines/$id': typeof PipelinesIdRoute
   '/applications/': typeof ApplicationsIndexRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/applications/$id'
     | '/dashboards/$id'
     | '/datasets/$id'
+    | '/invite/$token'
     | '/objects/$type'
     | '/pipelines/$id'
     | '/applications/'
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/applications/$id'
     | '/dashboards/$id'
     | '/datasets/$id'
+    | '/invite/$token'
     | '/objects/$type'
     | '/pipelines/$id'
     | '/applications'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/applications/$id'
     | '/dashboards/$id'
     | '/datasets/$id'
+    | '/invite/$token'
     | '/objects/$type'
     | '/pipelines/$id'
     | '/applications/'
@@ -359,6 +371,7 @@ export interface RootRouteChildren {
   ApplicationsIdRoute: typeof ApplicationsIdRoute
   DashboardsIdRoute: typeof DashboardsIdRoute
   DatasetsIdRoute: typeof DatasetsIdRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   ObjectsTypeRoute: typeof ObjectsTypeRoute
   PipelinesIdRoute: typeof PipelinesIdRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
@@ -524,6 +537,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DatasetsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/objects/': {
       id: '/objects/'
       path: '/objects'
@@ -575,6 +595,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApplicationsIdRoute: ApplicationsIdRoute,
   DashboardsIdRoute: DashboardsIdRoute,
   DatasetsIdRoute: DatasetsIdRoute,
+  InviteTokenRoute: InviteTokenRoute,
   ObjectsTypeRoute: ObjectsTypeRoute,
   PipelinesIdRoute: PipelinesIdRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,

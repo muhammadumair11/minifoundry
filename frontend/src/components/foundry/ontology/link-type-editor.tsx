@@ -1,5 +1,7 @@
 'use client'
 
+import { usePermissions } from '@/lib/use-permissions'
+
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -47,6 +49,7 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
   types: OntologyObjectType[]
   editing: EditingLink | null
 }) {
+  const { canEdit } = usePermissions()
   const queryClient = useQueryClient()
   const [displayName, setDisplayName] = useState(editing?.link.displayName ?? '')
   const [apiName, setApiName] = useState(editing?.link.apiName ?? '')
@@ -110,6 +113,7 @@ export function LinkTypeEditor({ open, onOpenChange, types, editing }: {
       : !!fkProperty && !!fkHolder?.properties.some((property) => property.apiName === fkProperty)) &&
     !mutation.isPending
 
+  if (!canEdit) return null
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="bg-card sm:max-w-lg">
       <DialogHeader>

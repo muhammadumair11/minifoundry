@@ -35,6 +35,7 @@ pub const HEADER_ACTOR_EMAIL: &str = "x-mf-actor-email";
 pub const HEADER_ACTOR_UID: &str = "x-mf-actor-uid";
 pub const HEADER_ACTOR_NAME: &str = "x-mf-actor-name";
 pub const HEADER_ACTOR_REAL_ROLE: &str = "x-mf-actor-real-role";
+pub const HEADER_ORGANIZATION_ID: &str = "x-mf-organization-id";
 /// `"1"` when the caller presented a valid service token (trusted machine).
 pub const HEADER_IS_SERVICE: &str = "x-mf-service";
 /// `"1"` when the platform runs in demo mode.
@@ -50,6 +51,10 @@ pub const ACCESS_TTL_SECONDS: i64 = 15 * 60;
 pub const ROLE_VIEWER: &str = "viewer";
 pub const ROLE_EDITOR: &str = "editor";
 pub const ROLE_ADMIN: &str = "admin";
+pub const ROLE_OWNER: &str = "owner";
+pub const ROLE_ORG_ADMIN: &str = "org_admin";
+pub const ROLE_ACCESS_MANAGER: &str = "access_manager";
+pub const ROLE_AUDITOR: &str = "auditor";
 pub const ROLE_ANONYMOUS: &str = "anonymous";
 pub const ROLE_SYSTEM: &str = "system";
 
@@ -57,9 +62,9 @@ pub const ROLE_SYSTEM: &str = "system";
 /// Mirrors `roleLevel()` in governance.ts.
 pub fn role_level(role: &str) -> i8 {
     match role {
-        ROLE_VIEWER => 0,
+        ROLE_VIEWER | ROLE_ACCESS_MANAGER => 0,
         ROLE_EDITOR => 1,
-        ROLE_ADMIN => 2,
+        ROLE_ADMIN | ROLE_ORG_ADMIN | ROLE_OWNER => 2,
         _ => -1,
     }
 }
@@ -85,6 +90,8 @@ pub struct Actor {
     pub name: Option<String>,
     /// True while an admin impersonates another role (demo simulator).
     pub real_role: Option<String>,
+    /// Active tenant selected for this session. None only for demo/system actors.
+    pub organization_id: Option<String>,
     /// True when the caller presented a valid service token (bypasses role
     /// guards exactly like `isServiceAuthorized()` did in the old routes).
     pub is_service: bool,
@@ -99,6 +106,7 @@ impl Actor {
             uid: None,
             name: None,
             real_role: None,
+            organization_id: None,
             is_service: false,
         }
     }
@@ -111,6 +119,7 @@ impl Actor {
             uid: None,
             name: None,
             real_role: None,
+            organization_id: None,
             is_service: true,
         }
     }
@@ -123,6 +132,7 @@ impl Actor {
             uid: None,
             name: None,
             real_role: None,
+            organization_id: None,
             is_service: false,
         }
     }
@@ -214,6 +224,8 @@ pub struct SessionPayload {
     /// Present only while an admin impersonates another role.
     #[serde(rename = "realRole", skip_serializing_if = "Option::is_none")]
     pub real_role: Option<String>,
+    #[serde(rename = "organizationId")]
+    pub organization_id: String,
     pub iat: i64,
     pub exp: i64,
 }
@@ -242,10 +254,18 @@ pub fn verify_token(token: &str, secret: &str) -> Result<SessionPayload, TokenEr
     let key = jsonwebtoken::DecodingKey::from_secret(secret.as_bytes());
     let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     validation.validate_exp = true;
-    validation.required_spec_claims = ["exp", "iat", "uid", "email", "name", "role"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    validation.required_spec_claims = [
+        "exp",
+        "iat",
+        "uid",
+        "email",
+        "name",
+        "role",
+        "organizationId",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
     let data =
         jsonwebtoken::decode::<SessionPayload>(token, &key, &validation).map_err(|e| {
             match e.kind() {
@@ -263,6 +283,7 @@ pub fn build_session(
     name: &str,
     role: &str,
     real_role: Option<String>,
+    organization_id: &str,
     ttl_seconds: i64,
 ) -> SessionPayload {
     let iat = Utc::now().timestamp();
@@ -272,6 +293,7 @@ pub fn build_session(
         name: name.into(),
         role: role.into(),
         real_role,
+        organization_id: organization_id.into(),
         iat,
         exp: iat + ttl_seconds,
     }
@@ -409,7 +431,7 @@ mod tests {
     #[test]
     fn jwt_round_trip() {
         let secret = "test-secret-value-that-is-long-enough";
-        let s = build_session("u1", "a@b.c", "A B", "admin", None, 60);
+        let s = build_session("u1", "a@b.c", "A B", "admin", None, "org1", 60);
         let token = sign_token(&s, secret).unwrap();
         let back = verify_token(&token, secret).unwrap();
         assert_eq!(back.uid, "u1");
@@ -422,7 +444,7 @@ mod tests {
         let secret = "test-secret-value-that-is-long-enough";
         // NOTE: jsonwebtoken applies a 60s verification leeway, so expiry
         // must be tested beyond it.
-        let s = build_session("u1", "a@b.c", "A", "viewer", None, -120);
+        let s = build_session("u1", "a@b.c", "A", "viewer", None, "org1", -120);
         let token = sign_token(&s, secret).unwrap();
         assert!(matches!(
             verify_token(&token, secret),
