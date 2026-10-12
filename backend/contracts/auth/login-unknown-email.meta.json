@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "path": "/api/auth/login",
+  "status": 401,
+  "requestBody": {
+    "email": "nobody@minifoundry.dev",
+    "password": "x"
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.057Z",
+  "source": "http://localhost:3000"
+}

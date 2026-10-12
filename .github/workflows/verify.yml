@@ -2,21 +2,65 @@ name: verify
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  app:
+  backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     env:
-      DATABASE_URL: file:../db/ci.db
-      MF_DEMO_MODE: "true"
+      SQLX_OFFLINE: "true"
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend -> target
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test
+        run: cargo test --workspace
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bunx prisma generate
-      - run: bunx prisma validate
-      - run: bunx prisma db push --skip-generate
-      - run: bun run lint
-      - run: bunx tsc --noEmit
-      - run: bun test
-      - run: bunx next build --webpack
+      - run: bun run build   # vite build (generates route tree) then tsc --noEmit
+
+  # Full-stack gate: compose build + boot + seed + all three harnesses.
+  # Heavy (release workspace build inside Docker) — runs on main + manual.
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build stack
+        run: docker compose build
+      - name: Boot stack
+        run: docker compose up -d --wait
+      - name: Seed demo workspace
+        run: docker compose --profile tools run --rm seed all
+      - name: Phase-1 E2E (auth + gateway)
+        run: node scripts/e2e-phase1.mjs --base http://localhost:8080
+      - name: Signup and password E2E
+        run: node scripts/e2e-auth.mjs --base http://localhost:8080
+      - name: Golden contracts
+        run: node scripts/verify-contracts.mjs --base http://localhost:8080
+      - name: Full smoke
+        run: bash scripts/smoke.sh http://localhost:8080
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail 100

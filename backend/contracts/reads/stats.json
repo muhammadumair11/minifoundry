@@ -1,0 +1,78 @@
+{
+  "projects": 1,
+  "datasets": 6,
+  "pipelines": 1,
+  "runs": 8,
+  "successRuns": 8,
+  "failedRuns": 0,
+  "totalRows": 55,
+  "recentRuns": [
+    {
+      "id": "cmuviicjb000rfi6opnu0787u",
+      "pipelineName": "p_orders_enriched",
+      "status": "success",
+      "startedAt": "2026-10-05T17:17:00.791Z",
+      "finishedAt": "2026-10-05T17:17:00.868Z"
+    },
+    {
+      "id": "cmuvib3jv0001fi6ox6lhx390",
+      "pipelineName": "p_orders_enriched",
+      "status": "success",
+      "startedAt": "2026-10-05T17:11:22.555Z",
+      "finishedAt": "2026-10-05T17:11:22.686Z"
+    },
+    {
+      "id": "cmuves44d003hfii4iavuhqa9",
+      "pipelineName": "p_orders_enriched",
+      "status": "success",
+      "startedAt": "2026-10-05T15:32:37.981Z",
+      "finishedAt": "2026-10-05T15:32:38.071Z"
+    },
+    {
+      "id": "cmuveoafa002tfii443hmcv1o",
+      "pipelineName": "p_orders_enriched",
+      "status": "success",
+      "startedAt": "2026-10-05T15:29:39.526Z",
+      "finishedAt": "2026-10-05T15:29:39.635Z"
+    },
+    {
+      "id": "cmuvdv7c70025fii419ky0hy9",
+      "pipelineName": "p_orders_enriched",
+      "status": "success",
+      "startedAt": "2026-10-05T15:07:02.503Z",
+      "finishedAt": "2026-10-05T15:07:02.582Z"
+    }
+  ],
+  "recentDatasets": [
+    {
+      "id": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Supplier Risk Scores",
+      "rowCount": 5,
+      "updatedAt": "2026-10-07T17:45:23.943Z"
+    },
+    {
+      "id": "cmuvdmbfw0003fii42hlv7gfv",
+      "name": "curated_orders",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T19:01:59.864Z"
+    },
+    {
+      "id": "cmuvgni0f000afivsfmn8atge",
+      "name": "sales_by_city_transform",
+      "rowCount": 4,
+      "updatedAt": "2026-10-05T17:16:02.756Z"
+    },
+    {
+      "id": "cmuvd25ra000gfij0xcf8udvm",
+      "name": "orders",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T16:52:44.079Z"
+    },
+    {
+      "id": "cmuvd20vw0003fij0njxv1koz",
+      "name": "products",
+      "rowCount": 6,
+      "updatedAt": "2026-10-05T14:44:54.639Z"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[package]
+name = "mf-js"
+description = "MiniFoundry sandboxed JavaScript evaluation (derive expressions + workbooks)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+regex.workspace = true
+# quickjs compiles its own C sources via cc (gcc is present in the rust build
+# images). NO "bindgen" feature: it requires libclang, which is absent from
+# both the mf-rust-dev build image and the production Dockerfile builder.
+# rquickjs ships pre-generated bindings for the default mode.
+rquickjs = { version = "0.9" }

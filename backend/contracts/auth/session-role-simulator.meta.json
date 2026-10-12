@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/session/role",
+  "status": 200,
+  "requestBody": {
+    "role": "viewer"
+  },
+  "setCookieNames": [
+    "foundry-role"
+  ],
+  "capturedAt": "2026-10-07T17:41:19.247Z",
+  "source": "http://localhost:3000"
+}

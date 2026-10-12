@@ -1,0 +1,27 @@
+[package]
+name = "mf-public-api"
+description = "Public API service: foundry/v1 token-authed read API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mf-public-api"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+futures.workspace = true
+async-nats.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+mf-web.workspace = true
+mf-auth.workspace = true
+mf-types.workspace = true
+mf-events.workspace = true

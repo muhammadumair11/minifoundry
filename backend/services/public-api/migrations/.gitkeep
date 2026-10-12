@@ -1,0 +1,2 @@
+# public-api is stateless — no database, no migrations.
+# This directory exists only for structural uniformity with the other services.

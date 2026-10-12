@@ -1,0 +1,81 @@
+{
+  "dataset": {
+    "id": "cmuyeejj1008jfibkrh1gazob",
+    "name": "Supplier Risk Scores",
+    "description": "Vendor risk scores with the publication gate ON — v2 is a failing draft, so publishing it is blocked until quality passes.",
+    "projectId": null,
+    "sourceConnectorId": "cmuyeejhv008ffibkbhct9cur",
+    "tags": [
+      "sample",
+      "supply-chain",
+      "governed"
+    ],
+    "createdAt": "2026-10-07T17:45:23.293Z",
+    "updatedAt": "2026-10-07T17:45:23.943Z",
+    "versionsCount": 2,
+    "keepLastN": 20,
+    "qualityGate": true,
+    "publishedVersion": 1
+  },
+  "versions": [
+    {
+      "id": "cmuyeek4m008ufibkojrgq7mr",
+      "versionNumber": 2,
+      "rowCount": 5,
+      "createdBy": "cmuyeejia008hfibk6e774kog",
+      "createdAt": "2026-10-07T17:45:24.070Z",
+      "branch": "main",
+      "lifecycle": "draft",
+      "qualityState": "failed",
+      "provenance": {
+        "kind": "ingestion",
+        "label": "Ingestion — Sample: Supplier Risk",
+        "detail": "success · sample connector",
+        "href": "/connectors"
+      }
+    },
+    {
+      "id": "cmuyeejji008lfibkt8966ww8",
+      "versionNumber": 1,
+      "rowCount": 5,
+      "createdBy": "cmuyeejia008hfibk6e774kog",
+      "createdAt": "2026-10-07T17:45:23.310Z",
+      "branch": "main",
+      "lifecycle": "published",
+      "qualityState": "passed",
+      "provenance": {
+        "kind": "ingestion",
+        "label": "Ingestion — Sample: Supplier Risk",
+        "detail": "success · sample connector",
+        "href": "/connectors"
+      }
+    }
+  ],
+  "current": {
+    "id": "cmuyeek4m008ufibkojrgq7mr",
+    "versionNumber": 2,
+    "schema": [
+      {
+        "name": "supplier",
+        "type": "string",
+        "markedWith": null
+      },
+      {
+        "name": "region",
+        "type": "string",
+        "markedWith": null
+      },
+      {
+        "name": "risk_score",
+        "type": "number",
+        "markedWith": null
+      },
+      {
+        "name": "tier",
+        "type": "string",
+        "markedWith": null
+      }
+    ],
+    "rowCount": 5
+  }
+}

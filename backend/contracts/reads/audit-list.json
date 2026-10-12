@@ -1,0 +1,20 @@
+{
+  "entries": [
+    {
+      "id": "cmuyeotec009ofibki6zi2sy6",
+      "actorRole": "admin",
+      "actorEmail": "demo-admin@example.invalid",
+      "action": "dataset.export",
+      "resourceType": "dataset",
+      "resourceId": "cmuyeejj1008jfibkrh1gazob",
+      "resourceName": "Supplier Risk Scores",
+      "detail": "version=2 rows=5 format=csv",
+      "createdAt": "2026-10-07T17:53:22.644Z"
+    }
+  ],
+  "meta": {
+    "total": 189,
+    "limit": 1,
+    "offset": 0
+  }
+}

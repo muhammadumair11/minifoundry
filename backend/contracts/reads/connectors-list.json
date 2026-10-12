@@ -1,0 +1,21 @@
+{
+  "connectors": [
+    {
+      "id": "cmuyeejhv008ffibkbhct9cur",
+      "name": "Sample: Supplier Risk",
+      "type": "sample",
+      "config": {
+        "sampleKey": "supplier-risk",
+        "description": "Vendor risk scoring export (governed — quality gate on)"
+      },
+      "createdAt": "2026-10-07T17:45:23.251Z",
+      "updatedAt": "2026-10-07T17:45:23.251Z",
+      "lastIngestion": {
+        "id": "cmuyeejia008hfibk6e774kog",
+        "status": "success",
+        "finishedAt": "2026-10-07T17:45:24.873Z",
+        "rowsIngested": 5
+      }
+    }
+  ]
+}

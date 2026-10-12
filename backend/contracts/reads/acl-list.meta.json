@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/acl?resourceType=dataset&resourceId=cmuyeejj1008jfibkrh1gazob",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:54:21.562Z",
+  "source": "http://localhost:3000"
+}

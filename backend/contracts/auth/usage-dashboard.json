@@ -1,0 +1,237 @@
+{
+  "windowHours": 24,
+  "total": 271,
+  "ok": 256,
+  "errors": 15,
+  "limited": 7,
+  "avgDurationMs": 27,
+  "byHour": [
+    {
+      "hourIso": "2026-10-06T18:00",
+      "count": 17,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-06T19:00",
+      "count": 14,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-06T20:00",
+      "count": 11,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-06T21:00",
+      "count": 8,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-06T22:00",
+      "count": 7,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-06T23:00",
+      "count": 6,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T00:00",
+      "count": 3,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T01:00",
+      "count": 3,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T02:00",
+      "count": 3,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T03:00",
+      "count": 4,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T04:00",
+      "count": 5,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T05:00",
+      "count": 5,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T06:00",
+      "count": 6,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T07:00",
+      "count": 8,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T08:00",
+      "count": 11,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T09:00",
+      "count": 13,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T10:00",
+      "count": 16,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T11:00",
+      "count": 18,
+      "errors": 3
+    },
+    {
+      "hourIso": "2026-10-07T12:00",
+      "count": 19,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T13:00",
+      "count": 20,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T14:00",
+      "count": 19,
+      "errors": 0
+    },
+    {
+      "hourIso": "2026-10-07T15:00",
+      "count": 19,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T16:00",
+      "count": 19,
+      "errors": 1
+    },
+    {
+      "hourIso": "2026-10-07T17:00",
+      "count": 17,
+      "errors": 2
+    }
+  ],
+  "byToken": [
+    {
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "name": "contract-v1-1791394879927",
+      "prefix": "mf_live_7933",
+      "count": 271,
+      "lastSeen": "2026-10-07T17:58:14.117Z"
+    }
+  ],
+  "topRoutes": [
+    {
+      "route": "/datasets/:id/rows",
+      "count": 60
+    },
+    {
+      "route": "/datasets",
+      "count": 55
+    },
+    {
+      "route": "/objects/:type",
+      "count": 48
+    },
+    {
+      "route": "/datasets/:id",
+      "count": 36
+    },
+    {
+      "route": "/whoami",
+      "count": 29
+    },
+    {
+      "route": "/pipelines",
+      "count": 24
+    }
+  ],
+  "recentErrors": [
+    {
+      "id": "cmuye9bwj0082fibkpdaswhra",
+      "route": "/whoami",
+      "status": 429,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T17:37:03.529Z"
+    },
+    {
+      "id": "cmuye9bwi007tfibklaepwkon",
+      "route": "/datasets/:id/rows",
+      "status": 429,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T17:05:17.647Z"
+    },
+    {
+      "id": "cmuye9bwi007qfibkybt8plxs",
+      "route": "/datasets/:id/rows",
+      "status": 404,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T16:55:15.789Z"
+    },
+    {
+      "id": "cmuye9bwi0075fibkgszoh84c",
+      "route": "/datasets/:id/rows",
+      "status": 404,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T15:48:56.842Z"
+    },
+    {
+      "id": "cmuye9bwh005rfibkicnjhy1v",
+      "route": "/datasets/:id/rows",
+      "status": 404,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T13:13:30.000Z"
+    },
+    {
+      "id": "cmuye9bwh0051fibkderxdf5w",
+      "route": "/datasets",
+      "status": 429,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T11:51:40.000Z"
+    },
+    {
+      "id": "cmuye9bwh004tfibke1f7rp7o",
+      "route": "/datasets/:id/rows",
+      "status": 404,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T11:25:00.000Z"
+    },
+    {
+      "id": "cmuye9bwh004rfibka5vgcx3c",
+      "route": "/datasets",
+      "status": 429,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T11:18:20.000Z"
+    },
+    {
+      "id": "cmuye9bwg0044fibkdb66cnsx",
+      "route": "/datasets/:id/rows",
+      "status": 404,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T09:53:04.615Z"
+    },
+    {
+      "id": "cmuye9bwg0038fibk9pnm05k9",
+      "route": "/datasets",
+      "status": 429,
+      "tokenId": "cmuye9bsv000nfibkrwbnxwav",
+      "createdAt": "2026-10-07T06:45:00.000Z"
+    }
+  ]
+}

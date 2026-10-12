@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/search?q=ship",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:54:35.121Z",
+  "source": "http://localhost:3000"
+}

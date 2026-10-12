@@ -1,0 +1,48 @@
+{
+  "dataset": {
+    "id": "cmuyeejj1008jfibkrh1gazob",
+    "name": "Supplier Risk Scores",
+    "description": "Vendor risk scores with the publication gate ON — v2 is a failing draft, so publishing it is blocked until quality passes.",
+    "tags": [
+      "sample",
+      "supply-chain",
+      "governed"
+    ],
+    "projectId": null,
+    "keepLastN": 20,
+    "version": {
+      "versionNumber": 1,
+      "schema": [
+        {
+          "name": "supplier",
+          "type": "string",
+          "markedWith": null
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "markedWith": null
+        },
+        {
+          "name": "risk_score",
+          "type": "number",
+          "markedWith": null
+        },
+        {
+          "name": "tier",
+          "type": "string",
+          "markedWith": null
+        }
+      ],
+      "rowCount": 5,
+      "createdAt": "2026-10-07T17:45:23.310Z"
+    }
+  },
+  "versions": [
+    {
+      "versionNumber": 1,
+      "rowCount": 5,
+      "createdAt": "2026-10-07T17:45:23.310Z"
+    }
+  ]
+}

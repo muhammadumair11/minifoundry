@@ -1,0 +1,29 @@
+{
+  "transforms": [
+    {
+      "id": "cmuvev6fo004ufij0g3r7sdza",
+      "name": "sales_by_city_transform",
+      "description": null,
+      "language": "python",
+      "sourceCode": "def transform(input):\n    city_stats = {}\n\n    # 1. Aggregate metrics strictly for completed and shipped orders\n    for row in input[\"rows\"]:\n        status = row.get(\"status\")\n        \n        # STRICT FILTER: Skip the row entirely if it is not completed or shipped\n        if status not in [\"completed\", \"shipped\"]:\n            continue\n            \n        city = row.get(\"city\")\n        if not city:\n            continue\n            \n        # Safely extract and compute numeric fields\n        quantity = int(row.get(\"quantity\", 0))\n        unit_price = float(row.get(\"unit_price_at_sale\", 0))\n        revenue = quantity * unit_price\n\n        # Initialize the target accumulator structure\n        if city not in city_stats:\n            city_stats[city] = {\n                \"total_orders\": 0,\n                \"total_units\": 0,\n                \"total_revenue\": 0.0\n            }\n\n        # Update metrics for accepted rows\n        city_stats[city][\"total_orders\"] += 1\n        city_stats[city][\"total_units\"] += quantity\n        city_stats[city][\"total_revenue\"] += revenue\n\n    # 2. Convert structural data to the target output list of row dicts\n    output_rows = []\n    for city, stats in city_stats.items():\n        output_rows.append({\n            \"city\": city,\n            \"total_orders\": stats[\"total_orders\"],\n            \"total_units\": stats[\"total_units\"],\n            \"total_revenue\": round(stats[\"total_revenue\"], 2)\n        })\n\n    # 3. Sort by total revenue descending\n    output_rows.sort(key=lambda x: x[\"total_revenue\"], reverse=True)\n\n    return output_rows\n",
+      "inputs": [
+        {
+          "datasetId": "cmuvdmbfw0003fii42hlv7gfv",
+          "datasetName": "curated_orders"
+        }
+      ],
+      "outputDatasetName": "sales_by_city_transform",
+      "createdAt": "2026-10-05T15:35:00.948Z",
+      "updatedAt": "2026-10-05T16:31:21.184Z",
+      "runsCount": 6,
+      "latestRun": {
+        "id": "cmuvih3ot000tfiz836vjn6ix",
+        "status": "success",
+        "rowCount": 4,
+        "durationMs": 109,
+        "finishedAt": "2026-10-05T17:16:02.792Z",
+        "error": null
+      }
+    }
+  ]
+}

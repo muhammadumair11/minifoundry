@@ -1,0 +1,34 @@
+{
+  "datasetId": "cmuyeejj1008jfibkrh1gazob",
+  "fromVersion": 1,
+  "toVersion": 2,
+  "schema": {
+    "added": [],
+    "removed": [],
+    "changed": []
+  },
+  "rowCount": {
+    "from": 5,
+    "to": 5
+  },
+  "addedRows": [],
+  "removedRows": [],
+  "changedRows": [
+    {
+      "key": "Gulf Plastics",
+      "before": {
+        "supplier": "Gulf Plastics",
+        "region": "EMEA",
+        "risk_score": 77,
+        "tier": "C"
+      },
+      "after": {
+        "supplier": "Gulf Plastics",
+        "region": "EMEA",
+        "risk_score": 140,
+        "tier": "C"
+      }
+    }
+  ],
+  "truncated": false
+}

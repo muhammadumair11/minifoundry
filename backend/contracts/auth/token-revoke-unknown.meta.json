@@ -1,0 +1,9 @@
+{
+  "method": "DELETE",
+  "path": "/api/tokens/does-not-exist",
+  "status": 404,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.884Z",
+  "source": "http://localhost:3000"
+}

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/datasets/cmuyeejj1008jfibkrh1gazob/watch",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:18.419Z",
+  "source": "http://localhost:3000"
+}

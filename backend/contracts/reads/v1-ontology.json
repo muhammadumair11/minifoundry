@@ -1,0 +1,250 @@
+{
+  "objectTypes": [
+    {
+      "id": "cmuvivekl001gfiz8phs3azca",
+      "apiName": "customer",
+      "displayName": "Customer",
+      "description": "",
+      "primaryKey": "customer_id",
+      "icon": "globe",
+      "color": "emerald",
+      "sourceDatasetId": "cmuvd28yl0013fij0g3nknzbu",
+      "sourceDatasetName": "customers",
+      "objectCount": 8,
+      "properties": [
+        {
+          "apiName": "customer_id",
+          "displayName": "Customer Id",
+          "dataType": "string",
+          "isTitle": true,
+          "hideInTable": false
+        },
+        {
+          "apiName": "customer_name",
+          "displayName": "Customer Name",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "city",
+          "displayName": "City",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        }
+      ],
+      "linksOut": [],
+      "linksIn": [
+        {
+          "id": "cmuvkwrje0001fim4hqtnxjx5",
+          "apiName": "order-customer",
+          "displayName": "Order_Customer",
+          "fromTypeId": "cmuviwz1c001vfiz8gvsedlf1",
+          "fromTypeApiName": "order",
+          "fromTypeDisplayName": "Order",
+          "cardinality": "many-to-one"
+        }
+      ],
+      "actions": [],
+      "createdAt": "2026-10-05T17:27:09.958Z"
+    },
+    {
+      "id": "cmuviw06w001nfiz8mk4faqz8",
+      "apiName": "product",
+      "displayName": "Product",
+      "description": "",
+      "primaryKey": "product_id",
+      "icon": "package",
+      "color": "emerald",
+      "sourceDatasetId": "cmuvd20vw0003fij0njxv1koz",
+      "sourceDatasetName": "products",
+      "objectCount": 6,
+      "properties": [
+        {
+          "apiName": "product_id",
+          "displayName": "Product Id",
+          "dataType": "string",
+          "isTitle": true,
+          "hideInTable": false
+        },
+        {
+          "apiName": "product_name",
+          "displayName": "Product Name",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "category",
+          "displayName": "Category",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "unit_price",
+          "displayName": "Unit Price",
+          "dataType": "number",
+          "isTitle": false,
+          "hideInTable": false
+        }
+      ],
+      "linksOut": [],
+      "linksIn": [
+        {
+          "id": "cmuvky07j0004fim40ysl747e",
+          "apiName": "order-product",
+          "displayName": "Order_Product",
+          "fromTypeId": "cmuviwz1c001vfiz8gvsedlf1",
+          "fromTypeApiName": "order",
+          "fromTypeDisplayName": "Order",
+          "cardinality": "many-to-one"
+        }
+      ],
+      "actions": [],
+      "createdAt": "2026-10-05T17:27:37.976Z"
+    },
+    {
+      "id": "cmuviwz1c001vfiz8gvsedlf1",
+      "apiName": "order",
+      "displayName": "Order",
+      "description": "",
+      "primaryKey": "order_id",
+      "icon": "truck",
+      "color": "emerald",
+      "sourceDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+      "sourceDatasetName": "curated_orders",
+      "objectCount": 16,
+      "properties": [
+        {
+          "apiName": "order_id",
+          "displayName": "Order Id",
+          "dataType": "string",
+          "isTitle": true,
+          "hideInTable": false
+        },
+        {
+          "apiName": "customer_id",
+          "displayName": "Customer Id",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "product_id",
+          "displayName": "Product Id",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "quantity",
+          "displayName": "Quantity",
+          "dataType": "number",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "order_date",
+          "displayName": "Order Date",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "status",
+          "displayName": "Status",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "customer_name",
+          "displayName": "Customer Name",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "city",
+          "displayName": "City",
+          "dataType": "string",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "unit_price_at_sale",
+          "displayName": "Unit Price At Sale",
+          "dataType": "number",
+          "isTitle": false,
+          "hideInTable": false
+        },
+        {
+          "apiName": "revenue",
+          "displayName": "Revenue",
+          "dataType": "number",
+          "isTitle": false,
+          "hideInTable": false
+        }
+      ],
+      "linksOut": [
+        {
+          "id": "cmuvkwrje0001fim4hqtnxjx5",
+          "apiName": "order-customer",
+          "displayName": "Order_Customer",
+          "toTypeId": "cmuvivekl001gfiz8phs3azca",
+          "toTypeApiName": "customer",
+          "toTypeDisplayName": "Customer",
+          "cardinality": "many-to-one",
+          "fkProperty": "customer_id",
+          "fkSide": "from",
+          "linkDatasetId": null,
+          "linkDatasetName": null,
+          "fromKeyColumn": null,
+          "toKeyColumn": null
+        },
+        {
+          "id": "cmuvky07j0004fim40ysl747e",
+          "apiName": "order-product",
+          "displayName": "Order_Product",
+          "toTypeId": "cmuviw06w001nfiz8mk4faqz8",
+          "toTypeApiName": "product",
+          "toTypeDisplayName": "Product",
+          "cardinality": "many-to-one",
+          "fkProperty": "product_id",
+          "fkSide": "from",
+          "linkDatasetId": null,
+          "linkDatasetName": null,
+          "fromKeyColumn": null,
+          "toKeyColumn": null
+        }
+      ],
+      "linksIn": [],
+      "actions": [
+        {
+          "id": "cmuvmd3m8000gfit4mxoeq02w",
+          "apiName": "update-order-status",
+          "displayName": "Update Order Status",
+          "operation": "update",
+          "enabled": true
+        }
+      ],
+      "createdAt": "2026-10-05T17:28:23.136Z"
+    }
+  ],
+  "actions": [
+    {
+      "id": "cmuvmd3m8000gfit4mxoeq02w",
+      "apiName": "update-order-status",
+      "displayName": "Update Order Status",
+      "operation": "update",
+      "enabled": true,
+      "objectType": {
+        "id": "cmuviwz1c001vfiz8gvsedlf1",
+        "apiName": "order",
+        "displayName": "Order"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/runs/cmuviicjb000rfi6opnu0787u",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:43.695Z",
+  "source": "http://localhost:3000"
+}

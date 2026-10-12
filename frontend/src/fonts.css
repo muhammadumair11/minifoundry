@@ -1,0 +1,9 @@
+/* Geist font CSS variables — replaces next/font/google from the old layout.
+   The Fontsource packages (imported in main.tsx) register the families;
+   these keep the exact variable names globals.css and components use. */
+:root {
+  --font-geist-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-geist-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}

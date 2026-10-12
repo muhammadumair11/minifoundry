@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/datasets/cmuyeejj1008jfibkrh1gazob/diff?from=1&to=1",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:20.477Z",
+  "source": "http://localhost:3000"
+}

@@ -1,0 +1,9 @@
+{
+  "method": "DELETE",
+  "path": "/api/tokens/cmuye9bk8000jfibkgmxv3ht1",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.827Z",
+  "source": "http://localhost:3000"
+}

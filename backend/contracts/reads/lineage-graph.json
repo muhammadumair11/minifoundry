@@ -1,0 +1,72 @@
+{
+  "nodes": [
+    {
+      "id": "cmuvd20vw0003fij0njxv1koz",
+      "name": "products",
+      "kind": "source",
+      "rowCount": 6,
+      "updatedAt": "2026-10-05T14:44:54.639Z"
+    },
+    {
+      "id": "cmuvd25ra000gfij0xcf8udvm",
+      "name": "orders",
+      "kind": "source",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T16:52:44.079Z"
+    },
+    {
+      "id": "cmuvd28yl0013fij0g3nknzbu",
+      "name": "customers",
+      "kind": "source",
+      "rowCount": 8,
+      "updatedAt": "2026-10-05T14:44:41.762Z"
+    },
+    {
+      "id": "cmuvdmbfw0003fii42hlv7gfv",
+      "name": "curated_orders",
+      "kind": "derived",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T19:01:59.864Z"
+    },
+    {
+      "id": "cmuvgni0f000afivsfmn8atge",
+      "name": "sales_by_city_transform",
+      "kind": "derived",
+      "rowCount": 4,
+      "updatedAt": "2026-10-05T17:16:02.756Z"
+    },
+    {
+      "id": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Supplier Risk Scores",
+      "kind": "source",
+      "rowCount": 5,
+      "updatedAt": "2026-10-07T17:45:23.943Z"
+    }
+  ],
+  "edges": [
+    {
+      "id": "cmuvdmbgp000mfii41xyauakh",
+      "from": "cmuvd25ra000gfij0xcf8udvm",
+      "to": "cmuvdmbfw0003fii42hlv7gfv",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j"
+    },
+    {
+      "id": "cmuvdmbgw000nfii46jcpux6n",
+      "from": "cmuvd28yl0013fij0g3nknzbu",
+      "to": "cmuvdmbfw0003fii42hlv7gfv",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j"
+    },
+    {
+      "id": "cmuvgni1b000ifivsylx42bs3",
+      "from": "cmuvdmbfw0003fii42hlv7gfv",
+      "to": "cmuvgni0f000afivsfmn8atge",
+      "pipelineId": null
+    },
+    {
+      "id": "cmuvib3mj000lfi6om03iq235",
+      "from": "cmuvd20vw0003fij0njxv1koz",
+      "to": "cmuvdmbfw0003fii42hlv7gfv",
+      "pipelineId": "cmuvdhdzc002tfij0hj1nha3j"
+    }
+  ]
+}

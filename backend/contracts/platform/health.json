@@ -1,0 +1,44 @@
+{
+  "successRatePct": 100,
+  "avgDurationMs": 97,
+  "runs7d": 8,
+  "failed7d": 0,
+  "datasets": [
+    {
+      "id": "cmuvdmbfw0003fii42hlv7gfv",
+      "name": "curated_orders",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T19:01:59.864Z",
+      "freshnessMinutes": 2799
+    },
+    {
+      "id": "cmuvgni0f000afivsfmn8atge",
+      "name": "sales_by_city_transform",
+      "rowCount": 4,
+      "updatedAt": "2026-10-05T17:16:02.756Z",
+      "freshnessMinutes": 2905
+    },
+    {
+      "id": "cmuvd25ra000gfij0xcf8udvm",
+      "name": "orders",
+      "rowCount": 16,
+      "updatedAt": "2026-10-05T16:52:44.079Z",
+      "freshnessMinutes": 2929
+    },
+    {
+      "id": "cmuvd20vw0003fij0njxv1koz",
+      "name": "products",
+      "rowCount": 6,
+      "updatedAt": "2026-10-05T14:44:54.639Z",
+      "freshnessMinutes": 3056
+    },
+    {
+      "id": "cmuvd28yl0013fij0g3nknzbu",
+      "name": "customers",
+      "rowCount": 8,
+      "updatedAt": "2026-10-05T14:44:41.762Z",
+      "freshnessMinutes": 3057
+    }
+  ],
+  "failingPipelines": []
+}

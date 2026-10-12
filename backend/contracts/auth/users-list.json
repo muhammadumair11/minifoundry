@@ -1,0 +1,31 @@
+{
+  "users": [
+    {
+      "id": "cmuu2710e0001fiy8ee36gqw7",
+      "email": "demo-admin@example.invalid",
+      "name": "Ada Admin",
+      "role": "admin",
+      "lastLoginAt": "2026-10-07T17:41:18.906Z",
+      "isActive": true,
+      "createdAt": "2026-10-04T16:52:32.606Z"
+    },
+    {
+      "id": "cmuu2710v0002fiy8giwyk4ke",
+      "email": "demo-editor@example.invalid",
+      "name": "Eddie Editor",
+      "role": "editor",
+      "lastLoginAt": null,
+      "isActive": true,
+      "createdAt": "2026-10-04T16:52:32.624Z"
+    },
+    {
+      "id": "cmuu271180003fiy8ufm7w06q",
+      "email": "demo-viewer@example.invalid",
+      "name": "Vera Viewer",
+      "role": "viewer",
+      "lastLoginAt": "2026-10-07T17:41:19.430Z",
+      "isActive": true,
+      "createdAt": "2026-10-04T16:52:32.637Z"
+    }
+  ]
+}

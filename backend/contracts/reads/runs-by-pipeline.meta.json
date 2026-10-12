@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/runs?pipelineId=cmuvdhdzc002tfij0hj1nha3j",
+  "status": 200,
+  "requestBody": null,
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:53:38.459Z",
+  "source": "http://localhost:3000"
+}

@@ -1,0 +1,11 @@
+{
+  "method": "PATCH",
+  "path": "/api/users/does-not-exist",
+  "status": 404,
+  "requestBody": {
+    "role": "editor"
+  },
+  "setCookieNames": [],
+  "capturedAt": "2026-10-07T17:41:19.623Z",
+  "source": "http://localhost:3000"
+}

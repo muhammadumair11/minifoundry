@@ -1,0 +1,15 @@
+{
+  "method": "POST",
+  "path": "/api/auth/login",
+  "status": 200,
+  "requestBody": {
+    "email": "demo-admin@example.invalid",
+    "password": "<redacted>"
+  },
+  "setCookieNames": [
+    "foundry-session",
+    "foundry-role"
+  ],
+  "capturedAt": "2026-10-07T17:41:18.922Z",
+  "source": "http://localhost:3000"
+}

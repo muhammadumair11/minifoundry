@@ -1,0 +1,170 @@
+{
+  "run": {
+    "id": "cmuviicjb000rfi6opnu0787u",
+    "pipelineId": "cmuvdhdzc002tfij0hj1nha3j",
+    "status": "success",
+    "versionNumber": 11,
+    "trigger": "manual",
+    "attempt": 1,
+    "durationMs": 70,
+    "failureCause": null,
+    "outputDatasetId": "cmuvdmbfw0003fii42hlv7gfv",
+    "outputVersionNumber": 7,
+    "replayedFromRunId": null,
+    "logs": [
+      {
+        "ts": "2026-10-05T17:17:00.798Z",
+        "level": "info",
+        "msg": "Pipeline 'p_orders_enriched' run started (graph: 8 nodes, 7 edges)"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.802Z",
+        "level": "info",
+        "msg": "source (source-1791212319514): loaded dataset 'orders' v4 (16 rows)"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.802Z",
+        "level": "info",
+        "msg": "node source (source-1791212319514): 0 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.805Z",
+        "level": "info",
+        "msg": "source (source-1791212320514): loaded dataset 'products' v1 (6 rows)"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.805Z",
+        "level": "info",
+        "msg": "node source (source-1791212320514): 0 rows in -> 6 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.807Z",
+        "level": "info",
+        "msg": "source (source-1791212456758): loaded dataset 'customers' v1 (8 rows)"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.807Z",
+        "level": "info",
+        "msg": "node source (source-1791212456758): 0 rows in -> 8 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.809Z",
+        "level": "info",
+        "msg": "node join (join-1791212343908): 22 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.810Z",
+        "level": "info",
+        "msg": "node join (join-1791212473933): 24 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.810Z",
+        "level": "info",
+        "msg": "node derive (derive-1791214212826): 16 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.810Z",
+        "level": "info",
+        "msg": "node select (select-1791214311549): 16 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.846Z",
+        "level": "info",
+        "msg": "lineage: captured 3 edge(s) into dataset 'curated_orders'"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.855Z",
+        "level": "info",
+        "msg": "lineage: recorded 3 version-level edge(s) feeding 'curated_orders' v7"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.855Z",
+        "level": "info",
+        "msg": "output (output-1791214339055): wrote 16 rows to dataset 'curated_orders' v7"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.868Z",
+        "level": "info",
+        "msg": "node output (output-1791214339055): 16 rows in -> 16 rows out"
+      },
+      {
+        "ts": "2026-10-05T17:17:00.868Z",
+        "level": "success",
+        "msg": "Pipeline 'p_orders_enriched' completed in 70ms — output dataset 'curated_orders' (v7, 16 rows)"
+      }
+    ],
+    "startedAt": "2026-10-05T17:17:00.791Z",
+    "finishedAt": "2026-10-05T17:17:00.868Z",
+    "pipelineName": "p_orders_enriched",
+    "manifest": {
+      "graphVersion": {
+        "versionNumber": 11,
+        "nodeCount": 8
+      },
+      "inputs": [
+        {
+          "datasetId": "cmuvd25ra000gfij0xcf8udvm",
+          "datasetName": "orders",
+          "versionNumber": 4,
+          "rowCount": 16
+        },
+        {
+          "datasetId": "cmuvd20vw0003fij0njxv1koz",
+          "datasetName": "products",
+          "versionNumber": 1,
+          "rowCount": 6
+        },
+        {
+          "datasetId": "cmuvd28yl0013fij0g3nknzbu",
+          "datasetName": "customers",
+          "versionNumber": 1,
+          "rowCount": 8
+        }
+      ],
+      "outputs": [
+        {
+          "datasetId": "cmuvdmbfw0003fii42hlv7gfv",
+          "datasetName": "curated_orders",
+          "versionNumber": 7,
+          "rowCount": 16
+        }
+      ],
+      "nodes": [
+        {
+          "nodeId": "source-1791212319514",
+          "type": "source"
+        },
+        {
+          "nodeId": "source-1791212320514",
+          "type": "source"
+        },
+        {
+          "nodeId": "source-1791212456758",
+          "type": "source"
+        },
+        {
+          "nodeId": "join-1791212343908",
+          "type": "join"
+        },
+        {
+          "nodeId": "join-1791212473933",
+          "type": "join"
+        },
+        {
+          "nodeId": "derive-1791214212826",
+          "type": "derive",
+          "codeSha256": "ac505083ade57b467ec7f155ae7267779404d91ffabf4ef664050dc8b6d25e95"
+        },
+        {
+          "nodeId": "select-1791214311549",
+          "type": "select"
+        },
+        {
+          "nodeId": "output-1791214339055",
+          "type": "output",
+          "label": "curated_orders"
+        }
+      ]
+    }
+  }
+}

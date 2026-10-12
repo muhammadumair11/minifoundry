@@ -1,0 +1,34 @@
+[package]
+name = "mf-catalog"
+description = "Catalog service: projects, datasets, versions, branches, quality, connectors, ingestion, lineage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mf-catalog"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+axum.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+sqlx.workspace = true
+regex.workspace = true
+url.workspace = true
+ipnet.workspace = true
+dns-lookup.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+async-nats.workspace = true
+thiserror.workspace = true
+mf-web.workspace = true
+mf-auth.workspace = true
+mf-types.workspace = true
+mf-db.workspace = true
+mf-events.workspace = true
+mf-internal.workspace = true

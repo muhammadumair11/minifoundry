@@ -1,0 +1,94 @@
+{
+  "data": [
+    {
+      "id": "cmuyeejj1008jfibkrh1gazob",
+      "name": "Supplier Risk Scores",
+      "description": "Vendor risk scores with the publication gate ON — v2 is a failing draft, so publishing it is blocked until quality passes.",
+      "tags": [
+        "sample",
+        "supply-chain",
+        "governed"
+      ],
+      "projectId": null,
+      "latestVersion": {
+        "versionNumber": 1,
+        "rowCount": 5,
+        "createdAt": "2026-10-07T17:45:23.310Z"
+      },
+      "updatedAt": "2026-10-07T17:45:23.943Z"
+    },
+    {
+      "id": "cmuvdmbfw0003fii42hlv7gfv",
+      "name": "curated_orders",
+      "description": null,
+      "tags": [
+        "derived"
+      ],
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "latestVersion": {
+        "versionNumber": 9,
+        "rowCount": 16,
+        "createdAt": "2026-10-05T19:01:59.854Z"
+      },
+      "updatedAt": "2026-10-05T19:01:59.864Z"
+    },
+    {
+      "id": "cmuvgni0f000afivsfmn8atge",
+      "name": "sales_by_city_transform",
+      "description": null,
+      "tags": [],
+      "projectId": null,
+      "latestVersion": {
+        "versionNumber": 6,
+        "rowCount": 4,
+        "createdAt": "2026-10-05T17:16:02.757Z"
+      },
+      "updatedAt": "2026-10-05T17:16:02.756Z"
+    },
+    {
+      "id": "cmuvd25ra000gfij0xcf8udvm",
+      "name": "orders",
+      "description": null,
+      "tags": [],
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "latestVersion": {
+        "versionNumber": 4,
+        "rowCount": 16,
+        "createdAt": "2026-10-05T16:52:44.080Z"
+      },
+      "updatedAt": "2026-10-05T16:52:44.079Z"
+    },
+    {
+      "id": "cmuvd20vw0003fij0njxv1koz",
+      "name": "products",
+      "description": null,
+      "tags": [],
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "latestVersion": {
+        "versionNumber": 1,
+        "rowCount": 6,
+        "createdAt": "2026-10-05T14:44:21.125Z"
+      },
+      "updatedAt": "2026-10-05T14:44:54.639Z"
+    },
+    {
+      "id": "cmuvd28yl0013fij0g3nknzbu",
+      "name": "customers",
+      "description": null,
+      "tags": [],
+      "projectId": "cmuvcgpn30003fim4z4voo9ln",
+      "latestVersion": {
+        "versionNumber": 1,
+        "rowCount": 8,
+        "createdAt": "2026-10-05T14:44:31.589Z"
+      },
+      "updatedAt": "2026-10-05T14:44:41.762Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 50,
+    "total": 6,
+    "totalPages": 1
+  }
+}
