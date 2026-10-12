@@ -549,6 +549,9 @@ function UserMenu({ session }: { session: SessionResponse }) {
     enabled: Boolean(user),
     staleTime: 30_000,
   })
+  const activeOrganization = organizationsQuery.data?.organizations.find(
+    (organization) => organization.id === session.organizationId,
+  )
 
   const switchOrganizationMutation = useMutation({
     mutationFn: (organizationId: string) =>
@@ -638,6 +641,12 @@ function UserMenu({ session }: { session: SessionResponse }) {
           >
             {initials}
           </span>
+          {activeOrganization && (
+            <span className="hidden min-w-0 max-w-28 text-left lg:block">
+              <span className="block truncate text-[10px] font-medium leading-tight text-foreground">{activeOrganization.name}</span>
+              <span className="block truncate text-[9px] leading-tight text-muted-foreground">{activeOrganization.role.replaceAll('_', ' ')}</span>
+            </span>
+          )}
           <span className="hidden max-w-32 truncate text-xs font-medium text-foreground md:inline">
             {user.name}
           </span>
@@ -657,6 +666,25 @@ function UserMenu({ session }: { session: SessionResponse }) {
             )}
           </span>
         </DropdownMenuLabel>
+        {activeOrganization && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="font-normal">
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Building2 className="size-3.5" aria-hidden />
+                Organization
+              </span>
+              <span className="mt-1 block truncate text-sm font-semibold text-foreground">{activeOrganization.name}</span>
+              <span className="block text-[11px] text-muted-foreground">Your organization role: {activeOrganization.role.replaceAll('_', ' ')}</span>
+            </DropdownMenuLabel>
+            <DropdownMenuItem asChild className="gap-2 text-xs">
+              <Link href="/settings#organization">
+                <Building2 className="size-3.5 text-muted-foreground" aria-hidden />
+                Manage organization &amp; members
+              </Link>
+            </DropdownMenuItem>
+          </>
+        )}
         {isAdminUser && impersonating && (
           <>
             <DropdownMenuSeparator />
