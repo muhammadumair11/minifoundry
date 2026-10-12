@@ -335,7 +335,7 @@ pub async fn accept_invitation(
     let resp = axum::response::IntoResponse::into_response((
         axum::http::StatusCode::CREATED,
         axum::Json(
-            serde_json::json!({ "user": { "id": user_id, "email": email, "name": user_name, "role": crate::tokens_common::platform_role(&membership.role), "organizationId": organization_id } }),
+            serde_json::json!({ "user": { "id": user_id, "email": email, "name": user_name, "role": crate::tokens_common::platform_role(&membership.role), "organizationId": organization_id, "organizationRole": membership.role, "lastLoginAt": null } }),
         ),
     ));
     Ok(crate::routes::with_cookies(resp, specs))

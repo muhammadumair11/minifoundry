@@ -109,11 +109,11 @@ pub async fn refresh(
         // Recently rotated (concurrent gateways): issue an access token only,
         // keep the winner's refresh cookie in place.
         if Utc::now() - revoked_at <= chrono::Duration::seconds(REFRESH_GRACE_SECONDS) {
-            let (_p, access) =
+            let (payload, access) =
                 build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
             return Ok(json_ok(serde_json::json!({
                 "accessToken": access,
-                "user": serialize_auth_user(&user),
+                "user": serialize_auth_user(&user, &membership, Some(&payload.role)),
             })));
         }
         return Err(ApiError::unauthorized("invalid or expired refresh token"));
@@ -141,12 +141,12 @@ pub async fn refresh(
     .execute(&state.db)
     .await?;
 
-    let (_p, access) =
+    let (payload, access) =
         build_access_token(&state, &user, &membership, row.impersonated_role.as_deref())?;
     Ok(json_ok(serde_json::json!({
         "accessToken": access,
         "refreshToken": plain,
-        "user": serialize_auth_user(&user),
+        "user": serialize_auth_user(&user, &membership, Some(&payload.role)),
     })))
 }
 

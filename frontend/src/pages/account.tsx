@@ -162,7 +162,7 @@ export default function AccountPage() {
                 <Separator />
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">Role</span>
-                  <span className="text-xs font-medium">{roleLabel(session?.organizationRole ?? user.role)}</span>
+                  <span className="text-xs font-medium">{roleLabel(session?.organizationRole ?? user.organizationRole)}</span>
                 </div>
                 <Separator />
                 <div className="flex items-center justify-between gap-3">

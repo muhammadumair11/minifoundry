@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from '@/components/link'
-import { useRouter, useSearchParams } from '@/lib/next-navigation'
+import { useSearchParams } from '@/lib/next-navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -28,6 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiSend } from '@/lib/foundry-api'
+import { roleLabel } from '@/lib/permissions'
 import { invalidateAuthBootstrap } from '@/routes/__root'
 import type { LoginResponse, MeResponse } from '@/lib/foundry-types'
 
@@ -40,11 +41,10 @@ const FEATURES = [
 
 /** Only honor same-origin, app-relative post-login destinations. */
 function safeNext(value: string | null): string {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  return value?.startsWith('/') && !value.startsWith('//') && !/[\\\u0000-\u0020]/.test(value) ? value : '/'
 }
 
 export default function LoginPage() {
-  const router = useRouter()
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   // Auth-gate deep link: /login?next=/datasets%3Fproject%3Dx
@@ -58,19 +58,19 @@ export default function LoginPage() {
   // Already signed in? Straight to the platform (session cookie still valid).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((me: MeResponse | null) => {
         if (!cancelled && me?.authenticated) {
           invalidateAuthBootstrap()
-          router.replace(next)
+          window.location.replace(next)
         }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [router, next])
+  }, [next])
 
   const loginMutation = useMutation({
     mutationFn: () =>
@@ -79,12 +79,15 @@ export default function LoginPage() {
         password,
       }),
     onSuccess: (res) => {
-      toast.success(`Signed in as ${res.user.name}`)
+      toast.success(`Signed in as ${res.user.name}`, {
+        description: roleLabel(res.user.organizationRole),
+      })
       // Full sweep — role-gated data (masking, tokens, users) re-resolves
       // under the new identity. ['session'] refetch flips the header menu.
       invalidateAuthBootstrap()
       queryClient.clear()
-      router.replace(next)
+      // Remount the shell so no previous identity/query observer survives signin.
+      window.location.replace(next)
     },
     onError: (err) => {
       // Exact server message (401 'invalid email or password' etc.).

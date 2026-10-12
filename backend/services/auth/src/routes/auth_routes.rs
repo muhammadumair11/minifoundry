@@ -40,7 +40,7 @@ pub async fn login(
 
     let email = email_in.trim().to_lowercase();
     let user: Option<UserRow> = sqlx::query_as(
-        "SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at \
+        "SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at, default_organization_id \
          FROM users WHERE email = $1",
     )
     .bind(&email)
@@ -65,31 +65,30 @@ pub async fn login(
     .fetch_one(&state.db)
     .await?;
 
-    let actor = actor_from_headers(&headers);
-    audit::audit(
-        &state,
-        &actor,
-        AuditOptions::new("auth.login", "user")
-            .actor_role(&updated.role)
-            .actor_email(Some(&updated.email))
-            .resource_id(Some(&updated.id))
-            .resource_name(Some(&updated.email))
-            .detail(Some(&format!(
-                "email={} role={}",
-                updated.email, updated.role
-            ))),
-    )
-    .await;
-
     let membership = active_membership(
         &state,
         &updated.id,
         updated.default_organization_id.as_deref(),
     )
     .await?;
+    let actor = actor_from_headers(&headers);
+    audit::audit(
+        &state,
+        &actor,
+        AuditOptions::new("auth.login", "user")
+            .actor_role(&membership.role)
+            .actor_email(Some(&updated.email))
+            .resource_id(Some(&updated.id))
+            .resource_name(Some(&updated.email))
+            .detail(Some(&format!(
+                "email={} role={}",
+                updated.email, membership.role
+            ))),
+    )
+    .await;
+
     let (specs, _refresh_plain) = issue_session_pair(&state, &updated, &membership, None).await?;
-    let mut user_json = serialize_auth_user(&updated);
-    user_json["role"] = serde_json::json!(crate::tokens_common::platform_role(&membership.role));
+    let user_json = serialize_auth_user(&updated, &membership, None);
     let resp = json_ok(serde_json::json!({ "user": user_json }));
     Ok(with_cookies(resp, specs))
 }
@@ -155,8 +154,8 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
     .await?;
     match user {
         Some(u) if u.is_active => {
-            let mut user_json = serialize_auth_user(&u);
-            user_json["role"] = serde_json::json!(actor.role);
+            let membership = active_membership(&state, &u.id, actor.organization_id.as_deref()).await?;
+            let user_json = serialize_auth_user(&u, &membership, Some(&actor.role));
             Ok(json_ok(
                 serde_json::json!({ "authenticated": true, "user": user_json }),
             ))
@@ -263,7 +262,7 @@ pub async fn signup(
     let (specs, _refresh) = issue_session_pair(&state, &user, &membership, None).await?;
     let resp = axum::response::IntoResponse::into_response((
         axum::http::StatusCode::CREATED,
-        axum::Json(serde_json::json!({ "user": serialize_auth_user(&user) })),
+        axum::Json(serde_json::json!({ "user": serialize_auth_user(&user, &membership, None) })),
     ));
     Ok(with_cookies(resp, specs))
 }

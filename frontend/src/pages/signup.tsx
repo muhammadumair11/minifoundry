@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/components/link'
-import { useRouter, useSearchParams } from '@/lib/next-navigation'
+import { useSearchParams } from '@/lib/next-navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -30,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiSend } from '@/lib/foundry-api'
+import { roleLabel } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 import { invalidateAuthBootstrap } from '@/routes/__root'
 import type { LoginResponse, MeResponse } from '@/lib/foundry-types'
@@ -47,11 +48,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /** Only honor same-origin, app-relative post-signup destinations. */
 function safeNext(value: string | null): string {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  return value?.startsWith('/') && !value.startsWith('//') && !/[\\\u0000-\u0020]/.test(value) ? value : '/'
 }
 
 export default function SignupPage() {
-  const router = useRouter()
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get('next'))
@@ -68,16 +68,19 @@ export default function SignupPage() {
   // Already signed in? Straight through (same convenience as /login).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((me: MeResponse | null) => {
-        if (!cancelled && me?.authenticated) router.replace(next)
+        if (!cancelled && me?.authenticated) {
+          invalidateAuthBootstrap()
+          window.location.replace(next)
+        }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [router, next])
+  }, [next])
 
   const clientIssue = useMemo(() => {
     if (!name.trim()) return null // let the server own required-field messages
@@ -97,16 +100,16 @@ export default function SignupPage() {
         password,
       }),
     onSuccess: (res) => {
-      const role = res.user.role
+      const role = res.user.organizationRole
       toast.success(`Account created — welcome, ${res.user.name}`, {
         description:
-          role === 'admin'
+          role === 'owner'
             ? 'Organization created — you are the organization owner.'
-            : `Role: ${role} · your organization owner can manage access.`,
+            : `Role: ${roleLabel(role)} · your organization owner can manage access.`,
       })
       invalidateAuthBootstrap()
       queryClient.clear()
-      router.replace(next)
+      window.location.replace(next)
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Sign up failed')

@@ -96,13 +96,20 @@ pub struct RefreshRow {
 
 // ─── Serializers (exact legacy shapes) ──────────────────────────────────
 
-/// Login/me shape: { id, email, name, role, lastLoginAt } — NEVER passwordHash.
-pub fn serialize_auth_user(u: &UserRow) -> serde_json::Value {
+/// Authentication identity: organization role is distinct from the legacy
+/// service permission level (`role`). NEVER expose passwordHash.
+pub fn serialize_auth_user(
+    u: &UserRow,
+    membership: &MembershipRow,
+    effective_role: Option<&str>,
+) -> serde_json::Value {
     serde_json::json!({
         "id": u.id,
         "email": u.email,
         "name": u.name,
-        "role": u.role,
+        "role": effective_role.unwrap_or_else(|| crate::tokens_common::platform_role(&membership.role)),
+        "organizationId": membership.organization_id,
+        "organizationRole": membership.role,
         "lastLoginAt": u.last_login_at.map(|d| mf_types::ts::format(&d)),
     })
 }

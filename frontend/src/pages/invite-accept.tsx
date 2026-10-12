@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react'
 import Link from '@/components/link'
-import { useParams, useRouter, useSearchParams } from '@/lib/next-navigation'
+import { useParams, useSearchParams } from '@/lib/next-navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { apiSend } from '@/lib/foundry-api'
+import type { LoginResponse } from '@/lib/foundry-types'
 import { invalidateAuthBootstrap } from '@/routes/__root'
 import { cn } from '@/lib/utils'
 
@@ -41,24 +42,14 @@ interface Invitation {
   expiresAt: string
 }
 
-interface AcceptResponse {
-  user: {
-    id: string
-    email: string
-    name: string
-    role: string
-    organizationId: string
-  }
-}
-
 function safeNext(value: string | null): string {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  return value?.startsWith('/') && !value.startsWith('//') && !/[\\\u0000-\u0020]/.test(value) ? value : '/'
 }
 
 function formatRole(role: string): { label: string; color: string } {
   const roles: Record<string, { label: string; color: string }> = {
-    owner: { label: 'Owner', color: 'bg-amber-100 text-amber-800' },
-    org_admin: { label: 'Org Admin', color: 'bg-purple-100 text-purple-800' },
+    owner: { label: 'Organization Owner', color: 'bg-amber-100 text-amber-800' },
+    org_admin: { label: 'Organization Admin', color: 'bg-purple-100 text-purple-800' },
     access_manager: { label: 'Access Manager', color: 'bg-blue-100 text-blue-800' },
     auditor: { label: 'Auditor', color: 'bg-gray-100 text-gray-800' },
     editor: { label: 'Editor', color: 'bg-green-100 text-green-800' },
@@ -78,7 +69,6 @@ function formatDate(dateStr: string): string {
 }
 
 export default function InviteAcceptPage() {
-  const router = useRouter()
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const params = useParams()
@@ -131,17 +121,17 @@ export default function InviteAcceptPage() {
 
   const acceptMutation = useMutation({
     mutationFn: () =>
-      apiSend<AcceptResponse>(`/api/invitations/${token}/accept`, 'POST', {
+      apiSend<LoginResponse>(`/api/invitations/${token}/accept`, 'POST', {
         name: name.trim(),
         password,
       }),
     onSuccess: (res) => {
       toast.success(`Welcome to ${invitation?.organizationName}, ${res.user.name}!`, {
-        description: `Role: ${formatRole(invitation?.role ?? res.user.role).label}`,
+        description: `Role: ${formatRole(res.user.organizationRole).label}`,
       })
       invalidateAuthBootstrap()
       queryClient.clear()
-      router.replace(next)
+      window.location.replace(next)
     },
     onError: (err) => {
       setFormError(err instanceof Error ? err.message : 'Failed to accept invitation')

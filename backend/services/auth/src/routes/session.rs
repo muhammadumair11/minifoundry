@@ -39,6 +39,8 @@ pub async fn get_session(State(state): State<AppState>, headers: HeaderMap) -> A
                 "email": email,
                 "name": actor.name,
                 "role": real_role,
+                "organizationId": actor.organization_id,
+                "organizationRole": organization_role,
                 "effectiveRole": actor.role,
                 "impersonating": impersonating,
             })
@@ -62,7 +64,7 @@ pub async fn switch_organization(
     let m = as_object(parse_body(&body)?)?;
     let organization_id = req_str(&m, "organizationId")?;
     let membership = active_membership(&state, &uid, Some(organization_id)).await?;
-    let user: UserRow = sqlx::query_as("SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at FROM users WHERE id = $1")
+    let user: UserRow = sqlx::query_as("SELECT id, email, name, role, password_hash, is_active, last_login_at, created_at, default_organization_id FROM users WHERE id = $1")
         .bind(&uid).fetch_one(&state.db).await?;
     sqlx::query("UPDATE users SET default_organization_id = $1 WHERE id = $2")
         .bind(organization_id)

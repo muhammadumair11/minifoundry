@@ -547,16 +547,21 @@ function UserMenu({ session }: { session: SessionResponse }) {
   // EFFECTIVE role (impersonation-aware); `user.role` stays the TRUE role.
   const effectiveRole = user?.effectiveRole ?? session.role
   const isAdminUser = Boolean(session.demoMode && user?.role === 'admin')
-  const impersonating = Boolean(user?.impersonating)
+  const impersonating = Boolean(session.demoMode && user?.impersonating)
   const organizationsQuery = useQuery<{ organizations: Array<{ id: string; name: string; role: string }> }>({
     queryKey: ['organizations'],
     queryFn: () => apiJson('/api/organizations'),
     enabled: Boolean(user),
     staleTime: 30_000,
+    retry: 2,
   })
   const activeOrganization = organizationsQuery.data?.organizations.find(
     (organization) => organization.id === session.organizationId,
   )
+  const organizationRole = session.organizationRole ?? user?.organizationRole ?? activeOrganization?.role
+  const displayRole = organizationRole && !impersonating
+    ? roleLabel(organizationRole)
+    : session.demoMode ? roleLabel(effectiveRole) : 'Loading organization role…'
 
   const switchOrganizationMutation = useMutation({
     mutationFn: (organizationId: string) =>
@@ -636,7 +641,7 @@ function UserMenu({ session }: { session: SessionResponse }) {
       <DropdownMenuTrigger asChild>
         <button
           className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-1 pr-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-label={`Account menu — ${user.name} (${effectiveRole}${impersonating ? ', impersonated' : ''})`}
+          aria-label={`Account menu — ${user.name} (${displayRole}${impersonating ? ', impersonated' : ''})`}
         >
           <span
             className="flex size-6 items-center justify-center rounded-full bg-primary font-mono text-[9px] font-bold text-primary-foreground"
@@ -644,10 +649,10 @@ function UserMenu({ session }: { session: SessionResponse }) {
           >
             {initials}
           </span>
-          {activeOrganization && (
+          {(activeOrganization || !session.demoMode) && (
             <span className="hidden min-w-0 max-w-28 text-left lg:block">
-              <span className="block truncate text-[10px] font-medium leading-tight text-foreground">{activeOrganization.name}</span>
-              <span className="block truncate text-[9px] leading-tight text-muted-foreground">{roleLabel(session.organizationRole ?? activeOrganization.role)}</span>
+              <span className="block truncate text-[10px] font-medium leading-tight text-foreground">{activeOrganization?.name ?? (organizationsQuery.isError ? 'Organization unavailable' : 'Loading organization…')}</span>
+              <span className="block truncate text-[9px] leading-tight text-muted-foreground">{displayRole}</span>
             </span>
           )}
           <span className="hidden max-w-32 truncate text-xs font-medium text-foreground md:inline">
@@ -661,7 +666,7 @@ function UserMenu({ session }: { session: SessionResponse }) {
           <span className="block text-sm font-semibold text-foreground">{user.name}</span>
           <span className="block truncate font-mono text-[11px] text-muted-foreground">{user.email}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {session.organizationRole && !impersonating ? <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">{roleLabel(session.organizationRole)}</span> : <RoleBadge role={effectiveRole} />}
+            {session.demoMode && impersonating ? <RoleBadge role={effectiveRole} /> : <span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">{displayRole}</span>}
             {impersonating && (
               <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400">
                 impersonated — true role {user.role}
@@ -678,12 +683,12 @@ function UserMenu({ session }: { session: SessionResponse }) {
                 Organization
               </span>
               <span className="mt-1 block truncate text-sm font-semibold text-foreground">{activeOrganization.name}</span>
-              <span className="block text-[11px] text-muted-foreground">Your organization role: {roleLabel(session.organizationRole ?? activeOrganization.role)}</span>
+              <span className="block text-[11px] text-muted-foreground">Your organization role: {displayRole}</span>
             </DropdownMenuLabel>
-            {canViewMembers(session.organizationRole) && <DropdownMenuItem asChild className="gap-2 text-xs">
+            {canViewMembers(organizationRole) && <DropdownMenuItem asChild className="gap-2 text-xs">
               <Link href="/settings#organization">
                 <Building2 className="size-3.5 text-muted-foreground" aria-hidden />
-                {grantableRoles(session.organizationRole).length ? 'Manage organization & members' : 'View organization members'}
+                {grantableRoles(organizationRole).length ? 'Manage organization & members' : 'View organization members'}
               </Link>
             </DropdownMenuItem>}
           </>
