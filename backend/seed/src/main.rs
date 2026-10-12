@@ -104,8 +104,10 @@ const STAGE_ONTOLOGY: (&str, &str) = ("ontology", "/api/ontology/seed-demo");
 const STAGE_TRANSFORMS: (&str, &str) = ("transforms", "/api/transforms/seed-demo");
 const STAGE_GOVERNANCE: (&str, &str) = ("governance", "/api/governance/seed-demo");
 
-/// Truncate all tables in all service schemas.
-/// This is a destructive operation that removes ALL data.
+/// Truncate application tables in all service schemas.
+/// This is a destructive operation that removes ALL application data, but it
+/// deliberately preserves SQLx's migration ledger. Removing that ledger makes
+/// services replay their initial migrations against existing tables on restart.
 async fn reset_database(pool: &PgPool, yes: bool) -> anyhow::Result<()> {
     if !yes {
         eprint!("⚠️  This will PERMANENTLY DELETE ALL DATA in all service schemas (auth, catalog, orchestration, compute, ontology, governance).\nType 'yes' to confirm: ");
@@ -130,7 +132,9 @@ async fn reset_database(pool: &PgPool, yes: bool) -> anyhow::Result<()> {
     for schema in schemas {
         // Get all tables in the schema
         let tables: Vec<(String,)> =
-            sqlx::query_as("SELECT tablename FROM pg_tables WHERE schemaname = $1")
+            sqlx::query_as(
+                "SELECT tablename FROM pg_tables WHERE schemaname = $1 AND tablename <> '_sqlx_migrations'",
+            )
                 .bind(schema)
                 .fetch_all(pool)
                 .await?;
