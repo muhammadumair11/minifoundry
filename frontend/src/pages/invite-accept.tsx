@@ -29,10 +29,8 @@ import { Separator } from '@/components/ui/separator'
 import { apiSend } from '@/lib/foundry-api'
 import { invalidateAuthBootstrap } from '@/routes/__root'
 import { cn } from '@/lib/utils'
-import type { LoginResponse } from '@/lib/foundry-types'
 
 const MIN_PASSWORD = 8
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 interface Invitation {
   id: string
@@ -90,8 +88,6 @@ export default function InviteAcceptPage() {
   const [invitation, setInvitation] = useState<Invitation | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expired, setExpired] = useState(false)
-
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -124,21 +120,6 @@ export default function InviteAcceptPage() {
     fetchInvitation()
     return () => { cancelled = true }
   }, [token])
-
-  // Check if already signed in
-  useEffect(() => {
-    if (invitation) {
-      fetch('/api/auth/me')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((me) => {
-          if (me?.authenticated) {
-            // User is already signed in - they can accept directly
-            // We'll let the form handle this
-          }
-        })
-        .catch(() => {})
-    }
-  }, [invitation])
 
   const clientIssue = useMemo(() => {
     if (!name.trim()) return null
@@ -218,7 +199,7 @@ export default function InviteAcceptPage() {
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Join <strong>{invitation.organizationName}</strong> as a <strong>{roleInfo.label}</strong>.
-            Accept the invitation to create your account and start collaborating.
+            Create your account or confirm your existing account password to join.
           </p>
           <ul className="mt-8 space-y-3.5">
             <li className="flex items-center gap-3">
@@ -292,7 +273,7 @@ export default function InviteAcceptPage() {
               >
                 <div className="grid gap-2">
                   <Label htmlFor="invite-name" className="text-xs text-muted-foreground">
-                    Your Name
+                    Your name
                   </Label>
                   <Input
                     id="invite-name"
@@ -308,10 +289,11 @@ export default function InviteAcceptPage() {
                     disabled={isExpired || acceptMutation.isPending}
                     className="h-11"
                   />
+                  <p className="text-[11px] text-muted-foreground">If you already have an account with this email, your existing profile name is kept.</p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="invite-password" className="text-xs text-muted-foreground">
-                    Password
+                    Account password
                   </Label>
                   <div className="relative">
                     <Input

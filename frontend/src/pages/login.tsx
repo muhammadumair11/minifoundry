@@ -28,18 +28,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiSend } from '@/lib/foundry-api'
-import { cn } from '@/lib/utils'
-import { getRoleClasses } from '@/components/foundry/governance/role-badge'
 import { invalidateAuthBootstrap } from '@/routes/__root'
-import type { FoundryRole, LoginResponse, MeResponse } from '@/lib/foundry-types'
-
-// Seeded demo identities (password shared — see the mono note under the form).
-const DEMO_PASSWORD = '<redacted>'
-const DEMO_IDENTITIES: { name: string; email: string; role: FoundryRole }[] = [
-  { name: 'Ada Admin', email: 'demo-admin@example.invalid', role: 'admin' },
-  { name: 'Eddie Editor', email: 'demo-editor@example.invalid', role: 'editor' },
-  { name: 'Vera Viewer', email: 'demo-viewer@example.invalid', role: 'viewer' },
-]
+import type { LoginResponse, MeResponse } from '@/lib/foundry-types'
 
 const FEATURES = [
   { icon: Boxes, text: 'Versioned datasets — every write is a transaction' },
@@ -47,16 +37,6 @@ const FEATURES = [
   { icon: Network, text: 'Ontology — objects, links and write-back actions' },
   { icon: ShieldCheck, text: 'Governance — markings, approvals, full audit' },
 ]
-
-function initialsOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
-}
 
 /** Only honor same-origin, app-relative post-login destinations. */
 function safeNext(value: string | null): string {
@@ -114,13 +94,6 @@ export default function LoginPage() {
     },
   })
 
-  const fillDemo = (identity: (typeof DEMO_IDENTITIES)[number]) => {
-    setEmail(identity.email)
-    setPassword(DEMO_PASSWORD)
-    setError(null)
-    submitRef.current?.focus()
-  }
-
   return (
     <div className="grid flex-1 lg:grid-cols-2">
       {/* ── LEFT: brand panel (hidden on mobile) ─────────────────────── */}
@@ -140,8 +113,7 @@ export default function LoginPage() {
             The learning-scale data platform.
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Sign in to operate the full loop — ingest, transform, govern. Or stay anonymous and
-            explore in demo mode.
+            Sign in to your organization to ingest, transform, govern, and collaborate on data.
           </p>
           <ul className="mt-8 space-y-3.5">
             {FEATURES.map((f) => (
@@ -161,9 +133,9 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <Card>
             <CardHeader className="gap-1.5 p-6">
-              <CardTitle className="text-base font-medium text-foreground">Sign in</CardTitle>
+              <CardTitle className="text-base font-medium text-foreground">Sign in to your organization</CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                Use a demo identity or your own account.
+                Use the email address and password for your MiniFoundry account.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 pt-0">
@@ -249,49 +221,13 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              {/* Demo identity quick-fill — fills the form, never auto-submits */}
-              <div className="mt-6 border-t border-border pt-5">
-                <p className="text-xs font-medium text-muted-foreground">Demo identities</p>
-                <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {DEMO_IDENTITIES.map((d) => {
-                    const classes = getRoleClasses(d.role)
-                    return (
-                      <button
-                        key={d.email}
-                        type="button"
-                        onClick={() => fillDemo(d)}
-                        className="flex min-h-11 items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left transition-colors hover:bg-accent"
-                        aria-label={`Fill credentials for ${d.name} (${d.role})`}
-                      >
-                        <span
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted font-mono text-[9px] font-bold text-foreground"
-                          aria-hidden
-                        >
-                          {initialsOf(d.name)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-medium text-foreground">
-                            {d.name.split(' ')[0]}
-                          </span>
-                          <span className={cn('block font-mono text-[10px]', classes.text)}>
-                            {d.role}
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <p className="mt-3 font-mono text-[11px] text-muted-foreground/80">
-                  seeded password: <span className="text-muted-foreground"><redacted></span>
-                </p>
-              </div>
               <p className="mt-5 border-t border-border pt-4 text-center text-xs text-muted-foreground">
-                No account yet?{' '}
+                Need a new organization?{' '}
                 <Link
                   href={next !== '/' ? `/signup?next=${encodeURIComponent(next)}` : '/signup'}
                   className="font-medium text-foreground underline-offset-2 hover:underline"
                 >
-                  Create one
+                  Create an organization
                 </Link>{' '}
                 — new accounts create an organization and start as its owner.
               </p>
@@ -300,9 +236,7 @@ export default function LoginPage() {
 
           <p className="mt-4 text-center font-mono text-[11px] leading-relaxed text-muted-foreground/80">
             Signed JWT access tokens (15 min) + rotating 7-day refresh · HttpOnly cookies ·{' '}
-            <Link href="/" className="underline-offset-2 hover:text-foreground hover:underline">
-              back to demo mode
-            </Link>
+            Have an invitation? Open the unique link from your organization administrator.
           </p>
         </div>
       </div>

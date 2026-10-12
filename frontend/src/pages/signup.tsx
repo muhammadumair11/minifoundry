@@ -16,6 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Boxes,
+  Building2,
   Eye,
   EyeOff,
   GitBranch,
@@ -165,13 +166,16 @@ export default function SignupPage() {
         <div className="w-full max-w-sm">
           <Card>
             <CardHeader className="gap-1.5 p-6">
-              <CardTitle className="text-base font-medium text-foreground">Sign up</CardTitle>
+              <CardTitle className="text-base font-medium text-foreground">Create your organization</CardTitle>
               <CardDescription className="text-sm text-muted-foreground">
-                Each new account creates an organization. You start as its{' '}
-                <span className="font-mono text-xs">owner</span> with full access.
+                You&apos;ll create an organization and become its owner with full access.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 pt-0">
+              <div className="mb-5 flex gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>Joining an existing organization? Use the invitation link sent by its administrator instead of creating a second organization.</span>
+              </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -331,7 +335,7 @@ export default function SignupPage() {
                   ) : (
                     <UserPlus className="h-4 w-4" aria-hidden />
                   )}
-                  Create account
+                  Create organization &amp; account
                 </Button>
               </form>
 
