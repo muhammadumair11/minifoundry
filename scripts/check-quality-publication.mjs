@@ -1,10 +1,6 @@
 // Live local contract regression: disposable pipeline/output; no reset or secrets logged.
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-const base = process.env.BASE_URL ?? 'http://localhost:3000'
-const local = await readFile(new URL('../docs/qa/2026-10-12-role-flow/local-test-accounts.md', import.meta.url), 'utf8').catch(() => '')
-const password = process.env.QA_PASSWORD ?? local.match(/test password: `([^`]+)`/)?.[1]
-assert.ok(password, 'Provide the local QA password')
+import { base, password, fixtureEmail } from './test-config.mjs'
 async function request(cookie, path, status = 200, method = 'GET', body) {
   const response = await fetch(base + path, { method, headers: { cookie, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })
   const data = await response.json()
@@ -12,14 +8,14 @@ async function request(cookie, path, status = 200, method = 'GET', body) {
   return data
 }
 async function login(role) {
-  const response = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `qa.${role}.20261012@example.test`, password }) })
+  const response = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: fixtureEmail(role), password }) })
   assert.equal(response.status, 200, `login ${role}`)
   return response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ')
 }
 const owner = await login('owner'), admin = await login('admin'), editor = await login('editor'), viewer = await login('viewer'), foreign = await login('isolation')
 const input = (await request(owner, '/api/datasets')).datasets.find(d => d.name === 'Inventory')
 assert.ok(input)
-const name = `QA Publication Contract ${Date.now()}`
+const name = `Integration Publication Contract ${Date.now()}`
 const graph = { nodes: [
   { id: 'source', type: 'source', data: { datasetId: input.id }, position: { x: 80, y: 120 } },
   { id: 'limit', type: 'limit', data: { n: 5 }, position: { x: 360, y: 120 } },
@@ -47,7 +43,7 @@ try {
   const empty = await evaluate()
   assert.equal(empty.qualityState, 'not_evaluated')
   assert.equal(empty.results.length, 0)
-  approvalId = (await request(editor, '/api/approvals', 201, 'POST', { kind: 'publish_dataset', targetId: output.id, note: 'QA publication contract' })).approval.id
+  approvalId = (await request(editor, '/api/approvals', 201, 'POST', { kind: 'publish_dataset', targetId: output.id, note: 'Integration publication contract' })).approval.id
   const preview = async () => (await request(owner, '/api/approvals')).approvals.find(a => a.id === approvalId).publishPreview
   assert.equal((await preview()).qualityState, 'not_evaluated')
   await request(owner, `/api/approvals/${approvalId}/decide`, 403, 'POST', { decision: 'approved' })
@@ -55,12 +51,12 @@ try {
   console.log('PASS zero-rule draft is blocked and failed approval remains pending')
   await request(viewer, '/api/approvals', 403, 'POST', { kind: 'publish_dataset', targetId: output.id })
   await request(foreign, `/api/approvals/${approvalId}/decide`, 404, 'POST', { decision: 'approved' })
-  const rule = await request(editor, `/api/datasets/${output.id}/quality`, 201, 'POST', { name: 'QA minimum rows', kind: 'row_count_min', severity: 'error', config: { minRows: 10 } })
+  const rule = await request(editor, `/api/datasets/${output.id}/quality`, 201, 'POST', { name: 'Integration minimum rows', kind: 'row_count_min', severity: 'error', config: { minRows: 10 } })
   assert.equal((await evaluate()).qualityState, 'failed')
   const failed = await preview()
   assert.equal(failed.status, 'blocked')
   assert.equal(failed.failing.length, 1, 'approval preview must include the real failing error rule')
-  assert.equal(failed.failing[0].name, 'QA minimum rows')
+  assert.equal(failed.failing[0].name, 'Integration minimum rows')
   assert.ok(failed.failing[0].message.includes('only 5 rows'))
   await request(owner, `/api/approvals/${approvalId}/decide`, 403, 'POST', { decision: 'approved' })
   console.log('PASS error-rule name, count and reason reach the blocked approval preview')
@@ -75,7 +71,7 @@ try {
   await run()
   await request(editor, `/api/datasets/${output.id}/quality/${rule.id}`, 200, 'PATCH', { severity: 'error', config: { minRows: 1 } })
   assert.equal((await evaluate()).qualityState, 'passed')
-  approvalId = (await request(editor, `/api/datasets/${output.id}/publish`, 201, 'POST', { note: 'QA passing rules' })).approval.id
+  approvalId = (await request(editor, `/api/datasets/${output.id}/publish`, 201, 'POST', { note: 'Integration passing rules' })).approval.id
   const passingDecision = await request(owner, `/api/approvals/${approvalId}/decide`, 200, 'POST', { decision: 'approved' })
   assert.equal(passingDecision.approval.decidedBy, 'owner')
   approvalId = null
@@ -97,5 +93,5 @@ try {
   assert.ok(publicationEntries.every(e => e.actorRole === 'owner'), 'propagated publication audits retain the organization owner role')
   console.log('PASS approval history and publication audits preserve Owner and Organization Admin roles')
 } finally {
-  if (approvalId) await request(owner, `/api/approvals/${approvalId}/decide`, 200, 'POST', { decision: 'rejected', note: 'QA cleanup after an incomplete check' })
+  if (approvalId) await request(owner, `/api/approvals/${approvalId}/decide`, 200, 'POST', { decision: 'rejected', note: 'Integration cleanup after an incomplete check' })
 }

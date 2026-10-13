@@ -1,12 +1,8 @@
-// Local API regression journey. QA_CREATE_FIXTURES=1 creates only disposable
+// Local API regression journey. TEST_CREATE_FIXTURES=1 creates only disposable
 // example.test accounts; this script never resets the database automatically.
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-const base = process.env.BASE_URL ?? 'http://localhost:3000'
-const local = await readFile(new URL('../docs/qa/2026-10-12-role-flow/local-test-accounts.md', import.meta.url), 'utf8').catch(() => '')
-const password = process.env.QA_PASSWORD ?? local.match(/test password: `([^`]+)`/)?.[1]
-assert.ok(password, 'Set QA_PASSWORD or keep the ignored local QA credential file')
-const email = (role) => `qa.${role}.20261012@example.test`
+import { base, password, fixtureEmail, fixtureNamespace } from './test-config.mjs'
+const email = fixtureEmail
 const cookieFrom = (response) => response.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
 async function request(cookie, path, method = 'GET', body, extra = {}) {
   const response = await fetch(base + path, { method, headers: { cookie, ...extra, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })
@@ -28,36 +24,36 @@ async function login(role) {
 async function seedRole(role) {
     const cookie = await login(role)
     await expect(cookie, '/api/seed', 200, 'POST')
-    await expect(cookie, '/api/projects', 201, 'POST', { name: `QA ${role} Project` })
+    await expect(cookie, '/api/projects', 201, 'POST', { name: `Integration ${role} Project` })
     const { datasets } = await expect(cookie, '/api/datasets')
     const inventory = datasets.find((d) => d.name === 'Inventory')
-    await expect(cookie, '/api/transforms', 201, 'POST', { name: 'QA Workbook', language: 'sql', sourceCode: 'SELECT * FROM "inventory" LIMIT 5', inputs: [inventory.id], outputDatasetName: 'QA Workbook Output' })
+    await expect(cookie, '/api/transforms', 201, 'POST', { name: 'Integration Workbook', language: 'sql', sourceCode: 'SELECT * FROM "inventory" LIMIT 5', inputs: [inventory.id], outputDatasetName: 'Integration Workbook Output' })
     await expect(cookie, '/api/ontology/seed-demo', 200, 'POST')
-    await expect(cookie, '/api/applications', 201, 'POST', { name: 'QA Application', template: 'blank' })
+    await expect(cookie, '/api/applications', 201, 'POST', { name: 'Integration Application', template: 'blank' })
     const graph = { nodes: [
       { id: 'source', type: 'source', data: { datasetId: inventory.id }, position: { x: 80, y: 120 } },
       { id: 'limit', type: 'limit', data: { n: 5 }, position: { x: 360, y: 120 } },
-      { id: 'output', type: 'output', data: { name: 'QA Role Flow Output' }, position: { x: 640, y: 120 } },
+      { id: 'output', type: 'output', data: { name: 'Integration Output' }, position: { x: 640, y: 120 } },
     ], edges: [{ id: 'e1', source: 'source', target: 'limit' }, { id: 'e2', source: 'limit', target: 'output' }] }
-    await expect(cookie, '/api/pipelines', 201, 'POST', { name: 'QA Role Flow Pipeline', graph })
+    await expect(cookie, '/api/pipelines', 201, 'POST', { name: 'Integration Pipeline', graph })
 }
-if (process.env.QA_CREATE_FIXTURES === '1') {
-  for (const [role, organizationName] of [['owner', 'Role Flow QA — 13 Oct 2026'], ['isolation', 'QA Isolation Control — 13 Oct 2026']]) {
-    const signup = await request('', '/api/auth/signup', 'POST', { organizationName, name: `QA ${role}`, email: email(role), password })
-    assert.equal(signup.status, 201, `create fresh ${role}: ${signup.data.error ?? ''}; use fixtures mode only after an authorized reset`)
+if (process.env.TEST_CREATE_FIXTURES === '1') {
+  for (const [role, organizationName] of [['owner', `Integration ${fixtureNamespace} primary`], ['isolation', `Integration ${fixtureNamespace} control`]]) {
+    const signup = await request('', '/api/auth/signup', 'POST', { organizationName, name: `Integration ${role}`, email: email(role), password })
+    assert.equal(signup.status, 201, `create fresh ${role}: ${signup.data.error ?? ''}; choose a fresh TEST_NAMESPACE for fixture creation`)
   }
   const owner = await login('owner')
   for (const [role, organizationRole] of [['admin', 'org_admin'], ['access', 'access_manager'], ['auditor', 'auditor'], ['editor', 'editor'], ['viewer', 'viewer']]) {
     const invitation = await expect(owner, '/api/organization/invitations', 201, 'POST', { email: email(role), role: organizationRole })
     const token = invitation.invitation.acceptUrl.split('/').pop()
-    await expect('', `/api/invitations/${token}/accept`, 201, 'POST', { name: `QA ${role}`, password })
+    await expect('', `/api/invitations/${token}/accept`, 201, 'POST', { name: `Integration ${role}`, password })
   }
   for (const role of ['owner', 'isolation']) await seedRole(role)
   console.log('PASS recreated two organizations and all six roles')
 }
-if (process.env.QA_RESEED_ISOLATION === '1') await seedRole('isolation')
+if (process.env.TEST_RESEED_CONTROL === '1') await seedRole('isolation')
 // Browser onboarding can create the accounts first; seed only their resources.
-if (process.env.QA_SEED_FIXTURES === '1') for (const role of ['owner', 'isolation']) await seedRole(role)
+if (process.env.TEST_SEED_FIXTURES === '1') for (const role of ['owner', 'isolation']) await seedRole(role)
 const owner = await login('owner'), foreign = await login('isolation')
 const roles = Object.fromEntries(await Promise.all(['admin', 'access', 'auditor', 'editor', 'viewer'].map(async (role) => [role, await login(role)])))
 const a = (await expect(owner, '/api/session')).organizationId
@@ -89,7 +85,7 @@ await Promise.all(Array.from({ length: 32 }, async (_, index) => {
 console.log('PASS resources and concurrent requests remain separated')
 
 for (const cookie of [owner, foreign]) {
-  const pipeline = (await expect(cookie, '/api/pipelines')).pipelines.find((p) => p.name === 'QA Role Flow Pipeline')
+  const pipeline = (await expect(cookie, '/api/pipelines')).pipelines.find((p) => p.name === 'Integration Pipeline')
   const queued = await expect(cookie, `/api/pipelines/${pipeline.id}/run`, 202, 'POST')
   let job
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -98,7 +94,7 @@ for (const cookie of [owner, foreign]) {
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
   assert.equal(job.status, 'succeeded', `worker job: ${job.error ?? ''}`)
-  const output = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'QA Role Flow Output')
+  const output = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'Integration Output')
   assert.ok(output, 'worker output retained tenant')
   await expect(cookie === owner ? foreign : owner, `/api/execution-jobs/${queued.job.id}`, 404)
   await expect(cookie === owner ? foreign : owner, `/api/datasets/${output.id}`, 404)
@@ -106,20 +102,20 @@ for (const cookie of [owner, foreign]) {
 console.log('PASS background jobs and outputs keep their organization ownership')
 
 for (const cookie of [owner, foreign]) {
-  const output = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'QA Role Flow Output')
+  const output = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'Integration Output')
   const graph = { nodes: [
     { id: 'source', type: 'source', data: { datasetId: output.id }, position: { x: 80, y: 120 } },
-    { id: 'output', type: 'output', data: { name: 'QA Trigger Output' }, position: { x: 360, y: 120 } },
+    { id: 'output', type: 'output', data: { name: 'Integration Trigger Output' }, position: { x: 360, y: 120 } },
   ], edges: [{ id: 'edge', source: 'source', target: 'output' }] }
   const pipelines = (await expect(cookie, '/api/pipelines')).pipelines
-  let trigger = pipelines.find((p) => p.name === 'QA Trigger Pipeline')
-  if (!trigger) trigger = (await expect(cookie, '/api/pipelines', 201, 'POST', { name: 'QA Trigger Pipeline', graph })).pipeline
+  let trigger = pipelines.find((p) => p.name === 'Integration Trigger Pipeline')
+  if (!trigger) trigger = (await expect(cookie, '/api/pipelines', 201, 'POST', { name: 'Integration Trigger Pipeline', graph })).pipeline
   await expect(cookie, `/api/pipelines/${trigger.id}`, 200, 'PATCH', { graph, triggerMode: 'upstream', upstreamDatasetIds: [output.id] })
-  const basePipeline = pipelines.find((p) => p.name === 'QA Role Flow Pipeline')
+  const basePipeline = pipelines.find((p) => p.name === 'Integration Pipeline')
   await expect(cookie, `/api/pipelines/${basePipeline.id}/run`, 202, 'POST')
   let triggered
   for (let attempt = 0; attempt < 50; attempt++) {
-    triggered = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'QA Trigger Output')
+    triggered = (await expect(cookie, '/api/datasets')).datasets.find((d) => d.name === 'Integration Trigger Output')
     if (triggered) break
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
@@ -128,7 +124,7 @@ for (const cookie of [owner, foreign]) {
 }
 console.log('PASS version events trigger pipelines inside their own organization')
 
-const tokenName = `QA Isolation Token ${Date.now()}`
+const tokenName = `Integration Isolation Token ${Date.now()}`
 const tokenA = await expect(owner, '/api/tokens', 201, 'POST', { name: tokenName })
 const tokenB = await expect(foreign, '/api/tokens', 201, 'POST', { name: tokenName })
 try {
@@ -162,8 +158,8 @@ try {
 console.log('PASS membership changes immediately invalidate stale role claims')
 const auditA = await expect(owner, '/api/audit'), auditB = await expect(foreign, '/api/audit')
 assert.ok(!JSON.stringify(auditB).includes(email('owner')) && !JSON.stringify(auditA).includes(email('isolation')))
-const searchB = await expect(foreign, '/api/search?q=QA%20owner%20Project')
-assert.ok(!JSON.stringify(searchB).includes('QA owner Project'))
+const searchB = await expect(foreign, '/api/search?q=Integration%20owner%20Project')
+assert.ok(!JSON.stringify(searchB).includes('Integration owner Project'))
 const overviewA = await expect(owner, '/api/settings/overview'), overviewB = await expect(foreign, '/api/settings/overview')
 assert.equal(overviewA.users, 6)
 assert.equal(overviewB.users, 1)

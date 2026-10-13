@@ -37,6 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: bun test tests
       - run: bun run build   # vite build (generates route tree) then tsc --noEmit
 
   # Full-stack gate: compose build + boot + seed + all three harnesses.

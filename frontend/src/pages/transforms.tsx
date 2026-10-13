@@ -1,8 +1,6 @@
 'use client'
 
-// M4 Code Workbooks (Task 5-b) — the /transforms showpiece.
-// Two-pane layout: workbook list (sidebar) + editor (code, inputs, run,
-// preview / logs / run-history). Backend contract: agent-ctx 5-a.
+// Workbook list and editor with input bindings, execution logs and previews.
 
 import { useMemo, useState } from 'react'
 import Link from '@/components/link'

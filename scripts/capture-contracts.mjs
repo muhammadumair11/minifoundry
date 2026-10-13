@@ -1,8 +1,8 @@
-// MiniFoundry — golden contract capture (Phase 1: auth domain).
+// MiniFoundry golden contract capture.
 //
 // Exercises the LEGACY Next.js API (default http://localhost:3000) and writes
 // response fixtures into backend/contracts/<domain>/. The Rust services'
-// contract tests replay the same calls against the new stack and assert
+// verification harness replays calls against the current stack and checks
 // structural equality with these fixtures (see backend/contracts/README.md).
 //
 // Usage: node scripts/capture-contracts.mjs [--domain auth] [--base http://localhost:3000]
@@ -28,6 +28,23 @@ const ADMIN = { email: 'demo-admin@example.invalid', password: '<redacted>' }
 const VIEWER = { email: 'demo-viewer@example.invalid', password: '<redacted>' }
 
 let failures = 0
+
+// Keep live credentials available to the running journey, but never persist
+// them in fixture responses or request metadata.
+function redactCredentials(value) {
+  if (Array.isArray(value)) return value.map(redactCredentials)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      /^(secret|password|currentPassword|newPassword|passwordHash|tokenHash|accessToken|refreshToken|invitationToken)$/i.test(key)
+        ? '<redacted>'
+        : redactCredentials(item),
+    ]))
+  }
+  return typeof value === 'string'
+    ? value.replace(/mf_live_[a-f0-9]{48}/g, '<redacted>')
+    : value
+}
 
 /** One capture step: perform a request, save body + metadata as fixtures. */
 async function capture(domain, name, spec) {
@@ -63,8 +80,8 @@ async function capture(domain, name, spec) {
   }
   const dir = path.join(OUT_ROOT, domain)
   await mkdir(dir, { recursive: true })
-  await writeFile(path.join(dir, `${name}.json`), JSON.stringify(json ?? text, null, 2))
-  await writeFile(path.join(dir, `${name}.meta.json`), JSON.stringify(meta, null, 2))
+  await writeFile(path.join(dir, `${name}.json`), JSON.stringify(redactCredentials(json ?? text), null, 2))
+  await writeFile(path.join(dir, `${name}.meta.json`), JSON.stringify(redactCredentials(meta), null, 2))
   console.log(`  ✓ ${domain}/${name} — ${method} ${p} → ${res.status}`)
   return { status: res.status, json, setCookie, text }
 }

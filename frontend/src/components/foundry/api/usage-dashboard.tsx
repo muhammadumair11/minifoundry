@@ -1,11 +1,6 @@
 'use client'
 
-// M10.1 observability (Task 8-c) — "API usage — last 24h" card on /api-tokens,
-// driven by GET /api/tokens/usage (admin-only, 8-b contract in agent-ctx).
-// First Recharts usage in the app: emerald request area with a rose error
-// overlay over 24 zero-filled UTC hour buckets, stat pills, top templated
-// routes, per-token table and the recent-errors tail. Admin actions: seed
-// demo traffic (400 valve → info toast) and clear logs (confirm dialog).
+// Administrator API usage dashboard, driven by GET /api/tokens/usage.
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'

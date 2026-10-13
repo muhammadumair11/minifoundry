@@ -1,15 +1,11 @@
-// Regression checks against the retained local QA organization. No real email
+// Regression checks against the retained local Integration organization. No real email
 // is sent; the temporary invitation is revoked and secrets are never logged.
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 
-const base = process.env.BASE_URL ?? 'http://localhost:3000'
-const local = await readFile(new URL('../docs/qa/2026-10-12-role-flow/local-test-accounts.md', import.meta.url), 'utf8').catch(() => '')
-const password = process.env.QA_PASSWORD ?? local.match(/test password: `([^`]+)`/)?.[1]
-assert.ok(password, 'Set QA_PASSWORD or keep the local QA credential file')
+import { base, password, fixtureEmail } from './test-config.mjs'
 let passed = 0
 async function login(role) {
-  const response = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `qa.${role}.20261012@example.test`, password }) })
+  const response = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: fixtureEmail(role), password }) })
   assert.equal(response.status, 200, `signin ${role}`)
   return response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ')
 }
@@ -25,7 +21,7 @@ const access = await login('access')
 const foreign = await login('isolation')
 let pendingId
 try {
-  const email = `qa.invitation.${Date.now()}@example.test`
+  const email = `integration.invitation.${Date.now()}@example.test`
   const invited = await request(owner, '/api/organization/invitations', 'POST', { email, role: 'viewer' })
   check('invitation created', () => assert.equal(invited.status, 201))
   pendingId = invited.data.invitation.id
@@ -46,7 +42,7 @@ try {
   assert.equal((await request('', `/api/invitations/${reissued.data.invitation.acceptUrl.split('/').pop()}`)).status, 404)
   check('reissue and revoke invalidate old links', () => {})
 
-  const privileged = await request(owner, '/api/organization/invitations', 'POST', { email: `qa.admin.invitation.${Date.now()}@example.test`, role: 'org_admin' })
+  const privileged = await request(owner, '/api/organization/invitations', 'POST', { email: `integration.admin.invitation.${Date.now()}@example.test`, role: 'org_admin' })
   pendingId = privileged.data.invitation.id
   assert.equal((await request(access, `/api/organization/invitations/${pendingId}/reissue`, 'POST')).status, 403)
   assert.equal((await request(access, `/api/organization/invitations/${pendingId}`, 'DELETE')).status, 403)
@@ -70,7 +66,7 @@ try {
     assert.equal(seeded.data.created.length + seeded.data.skipped.length, 3)
   })
   const pipelines = (await request(owner, '/api/pipelines')).data.pipelines
-  const pipeline = pipelines.find((item) => item.name === 'QA Role Flow Pipeline')
+  const pipeline = pipelines.find((item) => item.name === 'Integration Pipeline')
   const versions = (await request(owner, `/api/pipelines/${pipeline.id}/versions`)).data.versions
   const versionLists = await Promise.all(pipelines.map(async (item) => (await request(owner, `/api/pipelines/${item.id}/versions`)).data.versions))
   const totalVersions = versionLists.reduce((sum, list) => sum + list.length, 0)

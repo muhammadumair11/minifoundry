@@ -1,22 +1,17 @@
 // Local signup regression. Creates two isolated temporary owners, then removes
-// only those exact accounts/organizations; existing QA memberships survive.
+// only those exact accounts/organizations; existing Integration memberships survive.
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
-const base = process.env.BASE_URL ?? 'http://localhost:3000'
-assert.ok(base.startsWith('http://localhost:'), 'Cleanup is restricted to the local test stack')
-const local = await readFile(new URL('../docs/qa/2026-10-12-role-flow/local-test-accounts.md', import.meta.url), 'utf8').catch(() => '')
-const password = process.env.QA_PASSWORD ?? local.match(/test password: `([^`]+)`/)?.[1]
-assert.ok(password)
+import { base, password } from './test-config.mjs'
 const sql = command => execFileSync('docker', ['compose', 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'minifoundry', '-At', '-v', 'ON_ERROR_STOP=1', '-c', command], { encoding: 'utf8' }).trim()
 const before = sql('SELECT count(*) FROM auth.users')
 const nonce = Date.now()
 const temporary = []
 try {
   for (const index of [1, 2]) {
-    const email = `qa.slug.${nonce}.${index}@example.test`
-    const name = `QA Signup Regression ${nonce} ${index}`
-    const response = await fetch(base + '/api/auth/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, name: 'QA temporary signup', organizationName: name }) })
+    const email = `integration.signup.${nonce}.${index}@example.test`
+    const name = `Integration Signup Regression ${nonce} ${index}`
+    const response = await fetch(base + '/api/auth/signup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, name: 'Integration temporary signup', organizationName: name }) })
     assert.equal(response.status, 201, `consecutive signup ${index}`)
     const cookie = response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ')
     const sessionResponse = await fetch(base + '/api/session', { headers: { cookie } })
@@ -36,5 +31,5 @@ try {
     sql(`BEGIN; DELETE FROM auth.users WHERE email = '${item.email}' AND default_organization_id = '${item.id}'; DELETE FROM auth.organizations WHERE id = '${item.id}' AND name = '${item.name}'; COMMIT;`)
   }
   assert.equal(sql('SELECT count(*) FROM auth.users'), before, 'temporary signup cleanup must preserve existing accounts')
-  console.log('PASS temporary signup accounts removed; existing QA accounts preserved')
+  console.log('PASS temporary signup accounts removed; existing Integration accounts preserved')
 }

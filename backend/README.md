@@ -74,12 +74,18 @@ cd ../frontend && bun dev                          # vite on :3000 → gateway :
 ## Testing
 
 ```bash
-cargo test --workspace                # unit + contract tests
+cargo test --workspace                # unit tests
 cargo clippy --workspace --all-targets
 # integration tests need infra:
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-Contract tests replay `contracts/*.meta.json` requests against the service
-(seeded ephemeral Postgres) and assert structural equality with the fixture
-bodies, exact error strings, and status codes.
+From the repository root, run the contract harness against a seeded demo stack:
+
+```bash
+node scripts/verify-contracts.mjs --base http://localhost:8080
+```
+
+It compares deterministic values and error strings directly, and
+uses structural checks for volatile identifiers and history-dependent data.
+See [testing](../docs/testing.md) for the demo and shared-mode integration suites.

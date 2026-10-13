@@ -1,10 +1,7 @@
 'use client'
 
-// M10 Platform API (Task 6-c) — /api-docs: the API Explorer showpiece.
-// Two-pane layout (endpoint list + detail) with a Try-it console: pick or
-// paste a token, send a real GET against /api/foundry/v1/*, inspect status,
-// rate-limit headers and a syntax-highlighted JSON body. Endpoint reference
-// matches the 6-b backend contract exactly (see agent-ctx/6-b).
+// Interactive reference for the token-authenticated read API, with a request
+// console showing status, rate-limit headers and response bodies.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/components/link'

@@ -30,7 +30,7 @@ pub async fn list_tokens(State(state): State<AppState>, headers: HeaderMap) -> A
     let tokens: Vec<TokenRow> = sqlx::query_as(&format!(
         "SELECT {TOKEN_COLS} FROM api_tokens WHERE organization_id = $1 ORDER BY created_at DESC"
     ))
-    .bind(&organization_id)
+    .bind(organization_id)
     .fetch_all(&state.db)
     .await?;
     let out: Vec<serde_json::Value> = tokens.iter().map(serialize_token).collect();
@@ -75,7 +75,7 @@ pub async fn create_token(
          RETURNING {TOKEN_COLS}"
     ))
     .bind(&id)
-    .bind(&organization_id)
+    .bind(organization_id)
     .bind(name)
     .bind(&token_hash)
     .bind(&prefix)

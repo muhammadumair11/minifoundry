@@ -330,6 +330,18 @@ pub fn normalize_notify_target(email: Option<&str>) -> Option<String> {
     }
 }
 
+impl mf_web::TenantService for AppState {
+    fn tenant_pools(&self) -> &mf_db::TenantPools {
+        &self.tenants
+    }
+    fn demo_mode(&self) -> bool {
+        self.mode.demo
+    }
+    fn with_database(&self, db: sqlx::PgPool) -> Self {
+        Self { db, ..self.clone() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,17 +420,5 @@ mod tests {
         }
         assert_eq!(v["versionNumber"], 2);
         assert_eq!(v["decidedAt"], Value::Null);
-    }
-}
-
-impl mf_web::TenantService for AppState {
-    fn tenant_pools(&self) -> &mf_db::TenantPools {
-        &self.tenants
-    }
-    fn demo_mode(&self) -> bool {
-        self.mode.demo
-    }
-    fn with_database(&self, db: sqlx::PgPool) -> Self {
-        Self { db, ..self.clone() }
     }
 }

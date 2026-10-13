@@ -1,14 +1,10 @@
-// Reset ONLY the disposable QA Isolation Control organization, verify the
-// primary QA organization stays intact, then reseed the control separately.
+// Reset ONLY the disposable Integration Isolation Control organization, verify the
+// primary Integration organization stays intact, then reseed the control separately.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
-const base = process.env.BASE_URL ?? 'http://localhost:3000'
-const local = await readFile(new URL('../docs/qa/2026-10-12-role-flow/local-test-accounts.md', import.meta.url), 'utf8').catch(() => '')
-const password = process.env.QA_PASSWORD ?? local.match(/test password: `([^`]+)`/)?.[1]
-assert.ok(password)
+import { base, password, fixtureEmail } from './test-config.mjs'
 async function login(role) {
-  const response = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `qa.${role}.20261012@example.test`, password }) })
+  const response = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: fixtureEmail(role), password }) })
   assert.equal(response.status, 200)
   return response.headers.getSetCookie().map((cookie) => cookie.split(';')[0]).join('; ')
 }
@@ -35,9 +31,9 @@ for (const [service, port] of [['catalog', 8082], ['orchestration', 8083], ['com
   console.log(`PASS ${service} rejects unscoped calls and resets only the control organization`)
 }
 for (const [index, [path, key]] of resources.entries()) {
-  assert.deepEqual((await get(owner, path))[key].map((item) => item.id).sort(), before[index], `primary QA survives ${path}`)
+  assert.deepEqual((await get(owner, path))[key].map((item) => item.id).sort(), before[index], `primary Integration survives ${path}`)
   assert.deepEqual((await get(control, path))[key], [], `control reset ${path}`)
 }
 assert.equal((await get(owner, '/api/settings/overview')).users, 6)
 assert.equal((await get(control, '/api/settings/overview')).users, 1)
-console.log('PASS every primary QA resource and all organization memberships survived the scoped reset')
+console.log('PASS every primary Integration resource and all organization memberships survived the scoped reset')

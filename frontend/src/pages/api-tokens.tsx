@@ -1,11 +1,7 @@
 'use client'
 
-// M10 Platform API (Task 6-c) — /api-tokens: create (admin) with show-once
-// secret, list with prefix chips + usage stats, revoke with confirm.
-// Secrets created here are also remembered in localStorage (max 10) so the
-// API Explorer (/api-docs) can pre-fill them. Backend contract: agent-ctx 6-b.
-// Task 8-c: the 7-c client-side usage mini-dashboard became the full
-// "API usage — last 24h" observability card (GET /api/tokens/usage, 8-b).
+// Token creation, revocation and usage metrics. Browser secrets are scoped to the
+// current user and organization for use in the API Explorer.
 
 import { useState } from 'react'
 import Link from '@/components/link'

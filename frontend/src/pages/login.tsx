@@ -1,12 +1,6 @@
 'use client'
 
-// M9 Real auth (Task 7-c) — /login: split-screen auth showpiece.
-// LEFT (lg+): brand panel on a muted surface with a subtle grid texture.
-// RIGHT: sign-in card (email + password with show/hide, exact server error
-// surfaced inline) + demo identity quick-fill chips. Demo chips FILL the form
-// only (no auto-submit) so the credentials stay visible before signing in.
-// On success: full query-cache invalidation (role-gated data re-resolves for
-// the new identity) + redirect home. Backend contract: agent-ctx 7-b.
+// Sign-in and organization onboarding. A new identity clears cached role-gated data.
 
 import { useEffect, useRef, useState } from 'react'
 import Link from '@/components/link'
