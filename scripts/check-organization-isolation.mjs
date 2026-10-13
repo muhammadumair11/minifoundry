@@ -56,6 +56,8 @@ if (process.env.QA_CREATE_FIXTURES === '1') {
   console.log('PASS recreated two organizations and all six roles')
 }
 if (process.env.QA_RESEED_ISOLATION === '1') await seedRole('isolation')
+// Browser onboarding can create the accounts first; seed only their resources.
+if (process.env.QA_SEED_FIXTURES === '1') for (const role of ['owner', 'isolation']) await seedRole(role)
 const owner = await login('owner'), foreign = await login('isolation')
 const roles = Object.fromEntries(await Promise.all(['admin', 'access', 'auditor', 'editor', 'viewer'].map(async (role) => [role, await login(role)])))
 const a = (await expect(owner, '/api/session')).organizationId

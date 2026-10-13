@@ -465,7 +465,7 @@ function LineageInner() {
             <div>
               <p className="text-sm font-medium text-foreground">No lineage edges yet</p>
               <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-                Run a pipeline to build lineage — every successful run records which source
+                Every successful pipeline run records which source
                 datasets produced which output.
               </p>
             </div>

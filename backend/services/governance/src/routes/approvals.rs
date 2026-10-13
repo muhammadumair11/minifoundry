@@ -151,7 +151,7 @@ pub async fn create_approval(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "editor")?;
-    let role = actor.role.clone();
+    let role = mf_web::audit_role(&actor).to_owned();
 
     let v = crate::routes::parse_body(&body)?;
     let m = crate::routes::as_object(v)?;
@@ -283,7 +283,7 @@ pub async fn decide_approval(
 ) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);
     require_role(&actor, "admin")?;
-    let role = actor.role.clone();
+    let role = mf_web::audit_role(&actor).to_owned();
 
     let approval: Option<ApprovalRow> = sqlx::query_as(&format!(
         "SELECT {APPROVAL_COLS} FROM approval_requests WHERE id = $1"

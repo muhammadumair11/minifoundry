@@ -652,7 +652,7 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                No runs yet — open a pipeline and press <span className="font-mono text-foreground">Run</span>.
+                No runs yet. Pipeline run history will appear here.
               </div>
             )}
           </CardContent>

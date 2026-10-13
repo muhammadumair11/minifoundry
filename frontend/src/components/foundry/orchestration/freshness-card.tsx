@@ -98,7 +98,7 @@ export function FreshnessCard({
           <div className="flex flex-col items-center gap-3 p-8 text-center">
             <Database className="h-8 w-8 text-muted-foreground" aria-hidden />
             <p className="text-sm text-muted-foreground">
-              No datasets yet — ingest data to see freshness here.
+              No datasets yet. Freshness appears here once data is loaded.
             </p>
           </div>
         ) : (

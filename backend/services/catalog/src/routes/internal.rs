@@ -214,7 +214,16 @@ pub async fn internal_get_version(
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
     let version = resolve_internal_version(&state, &id, &n).await?;
-    Ok(json_ok(version_meta_json(&version)))
+    let mut detail = version_meta_json(&version);
+    detail["failingRules"] =
+        json!(
+            crate::publication::failing_error_rules(&state.db, &id, version.version_number,)
+                .await
+                .into_iter()
+                .map(|(name, message)| json!({ "name": name, "message": message }))
+                .collect::<Vec<_>>()
+        );
+    Ok(json_ok(detail))
 }
 
 /// Read rows with offset/limit (indexed storage first, dataJson fallback).

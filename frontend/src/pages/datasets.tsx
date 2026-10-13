@@ -172,8 +172,8 @@ function DatasetsCatalog() {
                 <div>
                   <p className="text-sm font-medium text-foreground">The catalog is empty</p>
                   <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                    Datasets appear here after you ingest data through a connector or run a
-                    pipeline.
+                    Datasets appear here after an editor or administrator loads data through a
+                    connector or pipeline.
                   </p>
                 </div>
                 <Button asChild size="sm">

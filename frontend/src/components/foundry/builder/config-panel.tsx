@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { usePermissions } from '@/lib/use-permissions'
 import { CodeEditor } from '@/components/foundry/code-editor'
 import type {
   AggregateOp,
@@ -230,6 +231,7 @@ export function ConfigPanel({
   nodeCount: number
   edgeCount: number
 }) {
+  const { canEdit } = usePermissions()
   if (selectedEdge) {
     return (
       <div className="flex h-full flex-col gap-3 p-4">
@@ -252,6 +254,7 @@ export function ConfigPanel({
           {nodeCount} nodes · {edgeCount} edges
         </p>
         <div className="rounded-md border border-border bg-muted/40 p-3 text-[11px] leading-5 text-muted-foreground">
+          {canEdit ? <>
           <p className="mb-2 font-medium text-foreground">How to build a pipeline</p>
           <ol className="list-inside list-decimal space-y-1">
             <li>
@@ -268,6 +271,11 @@ export function ConfigPanel({
           <p className="mt-2 text-muted-foreground/80">
             Select a node or connection to edit it. Press Backspace/Delete to remove the selection.
           </p>
+          </> : <>
+            <p className="mb-2 font-medium text-foreground">Inspect this pipeline</p>
+            <p>Select a node or connection to inspect its configuration. Open Runs to review execution history and outputs.</p>
+            <p className="mt-2 text-muted-foreground/80">Editors and administrators manage the graph and run this pipeline.</p>
+          </>}
         </div>
       </div>
     )

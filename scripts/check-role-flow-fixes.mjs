@@ -69,10 +69,16 @@ try {
     assert.equal(seeded.status, 200)
     assert.equal(seeded.data.created.length + seeded.data.skipped.length, 3)
   })
-  const pipeline = (await request(owner, '/api/pipelines')).data.pipelines.find((item) => item.name === 'QA Role Flow Pipeline')
+  const pipelines = (await request(owner, '/api/pipelines')).data.pipelines
+  const pipeline = pipelines.find((item) => item.name === 'QA Role Flow Pipeline')
   const versions = (await request(owner, `/api/pipelines/${pipeline.id}/versions`)).data.versions
+  const versionLists = await Promise.all(pipelines.map(async (item) => (await request(owner, `/api/pipelines/${item.id}/versions`)).data.versions))
+  const totalVersions = versionLists.reduce((sum, list) => sum + list.length, 0)
   const overview = (await request(owner, '/api/settings/overview')).data
-  check('Settings counts saved pipeline versions', () => assert.ok(overview.pipelineVersions >= versions.length && versions.length > 0))
+  check('Settings counts saved pipeline versions', () => {
+    assert.ok(versions.length > 0)
+    assert.equal(overview.pipelineVersions, totalVersions)
+  })
   console.log(`${passed} role-flow checks passed`)
 } finally {
   if (pendingId) await request(owner, `/api/organization/invitations/${pendingId}`, 'DELETE')

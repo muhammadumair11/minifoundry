@@ -113,7 +113,7 @@ export function RunTrendCard() {
               Not enough runs to draw a trend.
             </p>
             <p className="text-xs text-muted-foreground/80">
-              Run a pipeline a couple of times — durations will chart here.
+              Durations appear here after at least two pipeline runs.
             </p>
           </div>
         ) : (

@@ -184,7 +184,7 @@ export function JobsCard() {
             <Workflow className="h-8 w-8 text-muted-foreground" aria-hidden />
             <p className="text-sm text-muted-foreground">
               {statusFilter === 'all'
-                ? 'No runs yet — open a pipeline and press Run.'
+                ? 'No runs yet. Pipeline run history will appear here.'
                 : `No ${statusFilter} runs in the last 100.`}
             </p>
             <Button
