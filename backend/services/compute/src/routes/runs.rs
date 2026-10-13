@@ -2,10 +2,11 @@
 //! /api/transforms/{id}/runs/{runId}/replay — synchronous workbook execution,
 //! per-workbook history and manifest replay.
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use mf_types::Value;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 use std::collections::HashMap;
 

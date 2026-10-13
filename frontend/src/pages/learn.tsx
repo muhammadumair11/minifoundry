@@ -512,7 +512,7 @@ function LearnPageInner() {
         <TabsContent value="start">
           <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ListChecks className="h-3.5 w-3.5" aria-hidden />
-            A hands-on path through the whole platform. Auto-verified steps check REAL platform state — do the action, get the check.
+            Start with the workflows available to your role. Follow the links below to explore and practice.
           </div>
           <CurriculumTracker highlightStep={highlightStep} />
         </TabsContent>

@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let catalog = mf_internal::ServiceClient::from_env("catalog", "CATALOG_INTERNAL_URL", 8082);
 
     let state = AppState {
+        tenants: mf_db::TenantPools::new(&db),
         db,
         nats,
         mode,
@@ -83,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
             get(routes::internal::curriculum_state),
         )
         .route("/internal/reset", post(routes::internal::reset))
+        .layer(axum::middleware::from_fn(mf_web::organization_context))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

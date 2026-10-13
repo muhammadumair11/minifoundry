@@ -18,3 +18,5 @@ thiserror.workspace = true
 chrono.workspace = true
 mf-auth.workspace = true
 mf-types.workspace = true
+mf-db.workspace = true
+mf-events.workspace = true

@@ -38,6 +38,7 @@ import type {
   TransformResponse,
 } from '@/lib/foundry-types'
 import { cn } from '@/lib/utils'
+import { workbookSqlStarter } from '@/lib/workbook-sql'
 
 const LANGUAGES: { value: TransformLanguage; label: string; hint: string }[] = [
   { value: 'sql', label: 'SQL', hint: 'SELECT over real tables named after datasets' },
@@ -120,7 +121,7 @@ function WorkbookForm({
       // A runnable stub per language; the user edits it right away.
       sourceCode:
         language === 'sql'
-          ? `-- ${name.trim()}\nSELECT *\nFROM your_first_input_table\nLIMIT 20`
+          ? workbookSqlStarter(inputIds.map((id) => datasets.find((ds) => ds.id === id)?.name ?? ''))
           : language === 'python'
             ? `# ${name.trim()} — define transform(input); return a list of row dicts\n# input["rows"] = first input, input["datasets"]["Name"] = any input\ndef transform(input):\n    return input["rows"][:20]`
             : `// ${name.trim()} — runs as function(input){...}\n// input.rows = first input, input.datasets["Name"] = any input\nreturn input.rows.slice(0, 20)`,

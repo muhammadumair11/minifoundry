@@ -60,7 +60,21 @@ pub fn spawn_trigger_consumer(state: AppState) {
                 };
                 match mf_events::parse_message::<VersionCreatedEvent>(&msg.message) {
                     Ok(event) => {
-                        if let Err(e) = handle_version_created(&state, &event).await {
+                        use mf_web::TenantService;
+                        let Some(org) = mf_events::message_organization(&msg.message) else {
+                            let _ = msg.ack().await;
+                            continue;
+                        };
+                        let Ok(tenant) = state.for_organization(&org) else {
+                            let _ = msg.ack().await;
+                            continue;
+                        };
+                        if let Err(e) = mf_events::with_organization(
+                            Some(org),
+                            handle_version_created(&tenant, &event),
+                        )
+                        .await
+                        {
                             // Legacy swallowed handler errors per event; a redelivery
                             // is harmless because the eventKey dedupes enqueues.
                             tracing::warn!(error = %e, "trigger handling failed");

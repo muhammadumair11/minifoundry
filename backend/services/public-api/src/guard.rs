@@ -32,6 +32,7 @@ pub const TOKEN_RATE_LIMIT: i64 = 60;
 /// Verified token identity (from auth's /internal/tokens/verify).
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
+    pub organization_id: String,
     pub id: String,
     pub name: String,
     pub prefix: String,
@@ -256,25 +257,31 @@ where
         GuardDecision::RateLimited => {
             let t = token.expect("rate limited implies verified");
             if log {
-                log_usage(state, &t.id, path, 429, started_at);
+                mf_events::with_organization(Some(t.organization_id.clone()), async {
+                    log_usage(state, &t.id, path, 429, started_at);
+                })
+                .await;
             }
             rate_limit_exceeded(&rate)
         }
         GuardDecision::Proceed => {
             let t = token.expect("proceed implies verified");
-            let ctx = GuardCtx {
-                token: t.clone(),
-                rate: rate.clone(),
-            };
-            let resp = match handler(ctx).await {
-                Ok(r) => r,
-                Err(e) => e.into_response(),
-            };
-            let status = resp.status().as_u16();
-            if log {
-                log_usage(state, &t.id, path, status, started_at);
-            }
-            with_rate_limit_headers(resp, &rate)
+            mf_events::with_organization(Some(t.organization_id.clone()), async {
+                let ctx = GuardCtx {
+                    token: t.clone(),
+                    rate: rate.clone(),
+                };
+                let resp = match handler(ctx).await {
+                    Ok(r) => r,
+                    Err(e) => e.into_response(),
+                };
+                let status = resp.status().as_u16();
+                if log {
+                    log_usage(state, &t.id, path, status, started_at);
+                }
+                with_rate_limit_headers(resp, &rate)
+            })
+            .await
         }
     }
 }
@@ -353,6 +360,12 @@ async fn verify_token(state: &AppState, secret: &str) -> Result<TokenInfo, Guard
                 return Err(GuardFail::Unauthorized);
             };
             Ok(TokenInfo {
+                organization_id: t
+                    .get("organizationId")
+                    .and_then(Value::as_str)
+                    .filter(|id| mf_db::valid_organization_id(id))
+                    .ok_or(GuardFail::Unauthorized)?
+                    .to_string(),
                 id: id.to_string(),
                 name: t
                     .get("name")
@@ -423,8 +436,13 @@ pub fn log_usage(state: &AppState, token_id: &str, path: &str, status: u16, star
         duration_ms,
     };
     let nats = state.nats.clone();
+    let organization = mf_events::organization_id();
     tokio::spawn(async move {
-        mf_events::publish_json_quiet(&nats, mf_events::subject::API_USAGE, &event).await;
+        mf_events::with_organization(
+            organization,
+            mf_events::publish_json_quiet(&nats, mf_events::subject::API_USAGE, &event),
+        )
+        .await;
     });
 }
 

@@ -2,9 +2,10 @@
 //! Ports of the legacy transforms route.ts / [id]/route.ts handlers.
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_created, json_ok, require_role, ApiError, ApiResult};
 use sqlx::types::Json;
 use std::collections::HashMap;
@@ -134,6 +135,7 @@ pub async fn create_transform(
     let language = opt_enum(&m, "language", LANGUAGES)?.unwrap_or("sql");
     let source_code = req_str_min1_msg(&m, "sourceCode", "sourceCode is required")?;
     let inputs = opt_str_array(&m, "inputs")?.unwrap_or_default();
+    validate_inputs(&state, &inputs).await?;
     let output_dataset_name =
         req_str_min1_msg(&m, "outputDatasetName", "outputDatasetName is required")?;
 
@@ -181,6 +183,22 @@ pub async fn create_transform(
 }
 
 /// Fetch one transform or the exact legacy 404.
+async fn validate_inputs(state: &AppState, inputs: &[String]) -> ApiResult<()> {
+    for id in inputs {
+        let _: serde_json::Value = state
+            .catalog
+            .get_json(&format!("/internal/datasets/{id}"))
+            .await
+            .map_err(|error| match error {
+                mf_internal::InternalError::Api { status: 404, .. } => {
+                    ApiError::bad_request("input dataset is unavailable in this organization")
+                }
+                other => ApiError::internal(other.to_string()),
+            })?;
+    }
+    Ok(())
+}
+
 pub async fn fetch_transform(state: &AppState, id: &str) -> Result<TransformRow, ApiError> {
     let row: Option<TransformRow> = sqlx::query_as(&format!(
         "SELECT {TRANSFORM_COLS} FROM transforms WHERE id = $1"
@@ -257,6 +275,11 @@ pub async fn update_transform(
     let language = opt_enum(&m, "language", LANGUAGES)?;
     let source_code = opt_str_min1_msg(&m, "sourceCode", "sourceCode is required")?;
     let inputs = opt_str_array(&m, "inputs")?;
+    // Resolve the workbook before validating new bindings to preserve 404s.
+    fetch_transform(&state, &id).await?;
+    if let Some(inputs) = &inputs {
+        validate_inputs(&state, inputs).await?;
+    }
     let output_dataset_name =
         opt_str_min1_msg(&m, "outputDatasetName", "outputDatasetName is required")?;
 

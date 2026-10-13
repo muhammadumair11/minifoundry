@@ -163,7 +163,7 @@ function DataSection() {
     mutationFn: () => apiSend<{ seeded: boolean; datasets: string[] }>('/api/seed', 'POST'),
     onSuccess: (result) => {
       if (result.seeded) {
-        toast.success('Sample domain loaded', {
+        toast.success('Sample datasets loaded', {
           description: `Seeded ${result.datasets.length} datasets: ${result.datasets.join(', ')}`,
         })
       } else {
@@ -208,8 +208,8 @@ function DataSection() {
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
             <p className="max-w-prose text-xs text-muted-foreground">
-              Load the built-in sample domain (connectors, datasets, a pipeline, ontology and
-              governance demo) to explore the platform. Seeding is skipped when data already exists.
+              Load sample connectors and datasets. Then build a pipeline, seed the Ontology demo,
+              or open Workbooks to load code examples. Existing datasets are preserved.
             </p>
             <GatedButton
               allowed={canEdit}
@@ -228,7 +228,7 @@ function DataSection() {
               ) : (
                 <DatabaseZap className="h-3.5 w-3.5" aria-hidden />
               )}
-              Load sample domain
+              Load sample datasets
             </GatedButton>
           </div>
         </CardContent>

@@ -71,7 +71,8 @@ pub async fn login(
         updated.default_organization_id.as_deref(),
     )
     .await?;
-    let actor = actor_from_headers(&headers);
+    let mut actor = actor_from_headers(&headers);
+    actor.organization_id = Some(membership.organization_id.clone());
     audit::audit(
         &state,
         &actor,
@@ -106,7 +107,7 @@ pub async fn logout(
         let detail = format!(
             "email={} role={}",
             actor.email.clone().unwrap_or_default(),
-            actor.role
+            mf_web::audit_role(&actor)
         );
         audit::audit(
             &state,
@@ -154,7 +155,8 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
     .await?;
     match user {
         Some(u) if u.is_active => {
-            let membership = active_membership(&state, &u.id, actor.organization_id.as_deref()).await?;
+            let membership =
+                active_membership(&state, &u.id, actor.organization_id.as_deref()).await?;
             let user_json = serialize_auth_user(&u, &membership, Some(&actor.role));
             Ok(json_ok(
                 serde_json::json!({ "authenticated": true, "user": user_json }),
@@ -208,7 +210,7 @@ pub async fn signup(
     sqlx::query("INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)")
         .bind(&organization_id)
         .bind(&organization_name)
-        .bind(format!("org-{}", &organization_id[..8]))
+        .bind(format!("org-{organization_id}"))
         .execute(&mut *tx)
         .await?;
     let insert = sqlx::query_as(
@@ -241,7 +243,8 @@ pub async fn signup(
         .await?;
     tx.commit().await?;
 
-    let actor = actor_from_headers(&headers);
+    let mut actor = actor_from_headers(&headers);
+    actor.organization_id = Some(organization_id.clone());
     audit::audit(
         &state,
         &actor,

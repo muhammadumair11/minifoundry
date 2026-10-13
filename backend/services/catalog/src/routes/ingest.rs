@@ -2,9 +2,9 @@
 //! ingest/route.ts and ingestions/route.ts).
 
 use axum::body::Bytes;
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 use serde_json::{json, Value};
 use std::collections::HashMap;

@@ -1419,6 +1419,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 
@@ -1431,6 +1432,7 @@ dependencies = [
  "hex",
  "http",
  "mf-auth",
+ "mf-db",
  "mf-internal",
  "mf-types",
  "mf-web",
@@ -1475,6 +1477,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mf-auth",
+ "mf-events",
  "mf-types",
  "reqwest",
  "serde",
@@ -1558,6 +1561,7 @@ dependencies = [
  "chrono",
  "futures",
  "mf-auth",
+ "mf-db",
  "mf-events",
  "mf-types",
  "mf-web",
@@ -1617,6 +1621,8 @@ dependencies = [
  "chrono",
  "http",
  "mf-auth",
+ "mf-db",
+ "mf-events",
  "mf-types",
  "serde",
  "serde_json",

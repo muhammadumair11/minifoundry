@@ -14,6 +14,8 @@ use axum::Json;
 use mf_auth::Actor;
 
 pub mod cookie;
+pub mod tenant;
+pub use tenant::{organization_context, TenantService, TenantState};
 
 // ─── Tracing ────────────────────────────────────────────────────────────
 
@@ -159,6 +161,7 @@ pub fn actor_from_headers(headers: &axum::http::HeaderMap) -> mf_auth::Actor {
         name: get(mf_auth::HEADER_ACTOR_NAME).map(|n| mf_auth::hdr_decode(&n)),
         real_role: get(mf_auth::HEADER_ACTOR_REAL_ROLE),
         organization_id: get(mf_auth::HEADER_ORGANIZATION_ID),
+        organization_role: get("x-mf-organization-role"),
         is_service: get(mf_auth::HEADER_IS_SERVICE).as_deref() == Some("1"),
     }
 }
@@ -191,7 +194,11 @@ pub fn audit_role(actor: &Actor) -> &str {
     if actor.is_service {
         mf_auth::ROLE_SYSTEM
     } else {
-        &actor.role
+        if actor.real_role.is_some() {
+            &actor.role
+        } else {
+            actor.organization_role.as_deref().unwrap_or(&actor.role)
+        }
     }
 }
 
@@ -272,6 +279,19 @@ mod tests {
         let actor = Actor::service();
         assert!(require_role(&actor, "admin").is_ok());
         assert_eq!(audit_role(&actor), "system");
+    }
+
+    #[test]
+    fn audit_preserves_organization_identity_without_changing_permission_level() {
+        let mut actor = Actor {
+            role: "viewer".into(),
+            organization_role: Some("auditor".into()),
+            ..Actor::anonymous()
+        };
+        assert_eq!(audit_role(&actor), "auditor");
+        assert!(require_role(&actor, "editor").is_err());
+        actor.real_role = Some("admin".into());
+        assert_eq!(audit_role(&actor), "viewer");
     }
 
     #[test]

@@ -71,6 +71,10 @@ impl ServiceClient {
 
     fn authed(&self, rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         let rb = rb.header("accept", "application/json");
+        let rb = match mf_events::organization_id() {
+            Some(org) => rb.header("x-mf-organization-id", org),
+            None => rb,
+        };
         match &self.service_token {
             Some(token) => rb.header(mf_auth::SERVICE_TOKEN_HEADER, token),
             None => rb,

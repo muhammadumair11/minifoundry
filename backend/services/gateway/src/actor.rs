@@ -133,6 +133,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
             name: Some(p.name),
             real_role: p.real_role,
             organization_id: Some(p.organization_id),
+            organization_role: organization_role.clone(),
             is_service,
         },
         None => {
@@ -152,6 +153,7 @@ pub async fn resolve(state: &GatewayState, headers: &HeaderMap) -> ResolvedActor
                     name: None,
                     real_role: None,
                     organization_id: None,
+                    organization_role: None,
                     is_service,
                 }
             } else {

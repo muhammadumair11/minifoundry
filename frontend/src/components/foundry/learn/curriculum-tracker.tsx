@@ -31,6 +31,8 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+import { usePermissions } from '@/lib/use-permissions'
+import { ReaderLearningPath } from './reader-learning-path'
 
 interface CurriculumStepStatus {
   id: string
@@ -59,6 +61,7 @@ function loadCurriculum(): Promise<CurriculumStatus> {
 }
 
 export default function CurriculumTracker({ highlightStep }: { highlightStep?: string | null } = {}) {
+  const { canEdit } = usePermissions()
   const queryClient = useQueryClient()
   const [confirmingReset, setConfirmingReset] = useState(false)
 
@@ -66,6 +69,7 @@ export default function CurriculumTracker({ highlightStep }: { highlightStep?: s
     queryKey: ['curriculum'],
     queryFn: loadCurriculum,
     staleTime: 10_000,
+    enabled: canEdit,
   })
 
   // Deep link (?step=<id> from the dashboard Resume button): scroll the
@@ -100,6 +104,7 @@ export default function CurriculumTracker({ highlightStep }: { highlightStep?: s
     onError: (err) => toastApiError(err, 'Could not reset progress'),
   })
 
+  if (!canEdit) return <ReaderLearningPath />
   if (isLoading || !data) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading curriculum progress">

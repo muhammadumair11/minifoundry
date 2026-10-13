@@ -77,7 +77,9 @@ function GatePreviewLine({ preview }: { preview: PublishGatePreview | null | und
             Quality gate will BLOCK publishing v{preview.draftVersion} —
           </span>
           <span>
-            {preview.failing.length} error rule{preview.failing.length === 1 ? '' : 's'} failing
+            {preview.qualityState === 'not_evaluated' || !preview.qualityState
+              ? 'quality has not been evaluated; add an enabled rule and evaluate the draft'
+              : `${preview.failing.length} error rule${preview.failing.length === 1 ? '' : 's'} failing`}
           </span>
         </p>
         <ul className="mt-1 space-y-0.5 pl-4">
@@ -89,7 +91,7 @@ function GatePreviewLine({ preview }: { preview: PublishGatePreview | null | und
           ))}
         </ul>
         <p className="mt-1 text-[10px] text-muted-foreground">
-          Approval still records the ceremony; the draft stays unpublished until quality passes.
+          Approval cannot complete until the draft passes quality. The request stays pending.
         </p>
       </div>
     )
@@ -115,7 +117,7 @@ function GatePreviewLine({ preview }: { preview: PublishGatePreview | null | und
       >
         <CircleSlash className="h-3 w-3 shrink-0" aria-hidden />
         <span>
-          No draft version yet — the gate is on, approving won&apos;t publish anything until a new version lands.
+          No draft version is available. Create a draft before requesting publication.
         </span>
       </p>
     )
@@ -257,7 +259,7 @@ function RequestApprovalDialog({ open, onClose }: { open: boolean; onClose: () =
   })
 
   const targets = useMemo(() => {
-    if (kind === 'publish_dataset') return datasetsQuery.data?.datasets ?? []
+    if (kind === 'publish_dataset') return (datasetsQuery.data?.datasets ?? []).filter((dataset) => dataset.latestDraftVersion != null)
     return pipelinesQuery.data?.pipelines ?? []
   }, [kind, datasetsQuery.data, pipelinesQuery.data])
 
@@ -313,6 +315,7 @@ function RequestApprovalDialog({ open, onClose }: { open: boolean; onClose: () =
                 </SelectItem>
               </SelectContent>
             </Select>
+            {kind === 'publish_dataset' && !datasetsQuery.isLoading && targets.length === 0 && <p className="text-xs text-muted-foreground">No draft datasets are available. Enable a dataset's publication gate and create a new version first.</p>}
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">

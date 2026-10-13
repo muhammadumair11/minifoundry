@@ -292,6 +292,7 @@ pub fn evaluate_one(
 }
 
 pub struct EvaluateQualityResponse {
+    pub quality_state: &'static str,
     pub version_number: i32,
     pub results: Vec<Value>,
     pub passed: i64,
@@ -474,6 +475,7 @@ pub async fn evaluate_rules(
         .collect();
 
     Ok(EvaluateQualityResponse {
+        quality_state,
         version_number,
         results,
         passed,

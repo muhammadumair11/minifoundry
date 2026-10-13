@@ -5,6 +5,7 @@
 // Light-legible: -600 with dark: restore to the original -400.
 
 import { cn } from '@/lib/utils'
+import { roleLabel as organizationRoleLabel } from '@/lib/permissions'
 import type { AuditActorRole, FoundryRole } from '@/lib/foundry-types'
 
 export interface RoleClasses {
@@ -45,13 +46,14 @@ export function getRoleClasses(role: string | null | undefined): RoleClasses {
   if (role === 'admin' || role === 'editor' || role === 'viewer' || role === 'system') {
     return ROLE_CLASSES[role]
   }
+  if (role === 'owner' || role === 'org_admin') return ROLE_CLASSES.admin
   return ROLE_CLASSES.viewer
 }
 
 /** Uppercased short label for a role (used in badges). */
 export function roleLabel(role: string | null | undefined): string {
   if (role === 'system') return 'system'
-  return role ?? 'viewer'
+  return organizationRoleLabel(role ?? 'viewer')
 }
 
 export function RoleBadge({

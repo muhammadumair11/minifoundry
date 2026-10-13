@@ -3,9 +3,10 @@
 //! the auth service's internal routes.
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query};
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{json_ok, ApiError, ApiResult};
 use serde_json::Value;
 use std::collections::HashMap;

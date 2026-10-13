@@ -158,6 +158,20 @@ async fn gateway_handler(
     }
 
     let mut actor_headers = build_actor_headers(&resolved.actor, state.mode.demo);
+    // Only authenticated machine callers may select a tenant explicitly.
+    // Browser-provided x-mf-* headers remain stripped and JWT membership wins.
+    if resolved.actor.is_service && resolved.actor.organization_id.is_none() {
+        if let Some(org) = headers
+            .get("x-mf-organization-id")
+            .and_then(|v| v.to_str().ok())
+            .filter(|id| mf_db::valid_organization_id(id))
+        {
+            actor_headers.push((
+                HeaderName::from_static("x-mf-organization-id"),
+                HeaderValue::from_str(org).unwrap(),
+            ));
+        }
+    }
     if let Some(role) = resolved.organization_role {
         if let Ok(value) = HeaderValue::from_str(&role) {
             actor_headers.push((HeaderName::from_static("x-mf-organization-role"), value));

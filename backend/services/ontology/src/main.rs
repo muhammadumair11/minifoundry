@@ -49,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
     mf_events::ensure_streams(&js).await?;
 
     let state = AppState {
+        tenants: mf_db::TenantPools::new(&db),
         db,
         nats: nats.clone(),
         mode,
@@ -153,6 +154,7 @@ async fn main() -> anyhow::Result<()> {
             get(routes::internal::internal_curriculum_state),
         )
         .route("/internal/reset", post(routes::internal::internal_reset))
+        .layer(axum::middleware::from_fn(mf_web::organization_context))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

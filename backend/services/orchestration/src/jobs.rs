@@ -371,7 +371,13 @@ pub async fn process_next_execution_job(
         return Ok(false);
     };
     // The claimed row already carries the incremented attempt (RETURNING).
-    process_execution_job(state, job, worker_id).await;
+    use mf_web::TenantService;
+    let tenant = state.for_organization(&job.organization_id)?;
+    mf_events::with_organization(
+        Some(job.organization_id.clone()),
+        process_execution_job(&tenant, job, worker_id),
+    )
+    .await;
     Ok(true)
 }
 

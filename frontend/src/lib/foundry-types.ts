@@ -55,6 +55,7 @@ export interface DatasetSummary {
   updatedAt: string
   currentVersion: DatasetCurrentVersion | null
   versionsCount: number
+  latestDraftVersion?: number | null
 }
 
 export interface DatasetsListResponse {
@@ -1362,6 +1363,7 @@ export interface DatasetQualityResponse {
 
 /** POST /api/datasets/[id]/quality/evaluate — run all enabled rules. */
 export interface EvaluateQualityResponse {
+  qualityState?: 'not_evaluated' | 'passed' | 'warned' | 'failed'
   versionNumber: number
   results: { ruleName: string; kind: string; passed: boolean; actual: string | null; message: string | null; severity: string }[]
   passed: number

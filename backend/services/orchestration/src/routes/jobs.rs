@@ -1,9 +1,10 @@
 //! /api/execution-jobs* — the durable jobs table (ports of
 //! src/app/api/execution-jobs/**). Viewer+ reads.
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 use serde_json::{json, Value};
 

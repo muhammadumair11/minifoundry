@@ -360,7 +360,7 @@ export default function OntologyPage() {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button
+          {canEdit && <Button
             size="sm"
             variant="outline"
             disabled={types.length >= 3 || seedMutation.isPending}
@@ -375,7 +375,7 @@ export default function OntologyPage() {
               aria-hidden
             />
             Seed demo ontology
-          </Button>
+          </Button>}
           <NewObjectTypeDialog />
         </div>
       </header>
@@ -402,8 +402,9 @@ export default function OntologyPage() {
             <div>
               <p className="text-base font-medium text-foreground">No object types yet</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Seed the supply-chain demo (shipment, supplier, warehouse with links + actions) or
-                map your own dataset into an object type.
+                {canEdit
+                  ? 'Seed the supply-chain demo or map a dataset into an object type.'
+                  : 'An editor or organization administrator can create object types. You can then inspect objects and follow their links.'}
               </p>
             </div>
           </CardContent>
@@ -518,7 +519,7 @@ export default function OntologyPage() {
               </span>
             )}
           </div>
-          <Button
+          {canEdit && <Button
             size="sm"
             variant="outline"
             className="h-8 gap-1.5 text-xs"
@@ -531,7 +532,7 @@ export default function OntologyPage() {
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
             New action
-          </Button>
+          </Button>}
         </CardHeader>
         <CardContent className="p-0">
           {ontologyActionsQuery.isLoading ? (
@@ -691,7 +692,7 @@ export default function OntologyPage() {
             </div>
           ) : logs.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              No write-backs yet — run an action from an object type to see it here.
+              {canEdit ? 'No write-backs yet — run an action from an object type to see it here.' : 'No write-backs yet. Editors run actions from business objects.'}
             </div>
           ) : (
             <div className="foundry-scroll max-h-96 overflow-auto">

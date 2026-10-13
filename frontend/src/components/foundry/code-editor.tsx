@@ -389,7 +389,7 @@ function ensureProviders(monaco: Monaco) {
         items.push({
           label: t.name,
           kind: monaco.languages.CompletionItemKind.Class,
-          insertText: t.name,
+          insertText: `"${t.name.replaceAll('"', '""')}"`,
           detail: `dataset · ${t.columns.length} columns`,
           range,
           sortText: `0${t.name}`,

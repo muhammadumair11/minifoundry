@@ -139,8 +139,7 @@ export default function ProjectsPage() {
             <div>
               <p className="text-sm font-medium text-foreground">No projects yet</p>
               <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                Create a project to group datasets and pipelines — e.g. “Supply Chain Ops” — then
-                assign resources from the catalog and pipeline builder.
+                {canEdit ? 'Create a project to group datasets and pipelines, then assign resources from the catalog and pipeline builder.' : 'An editor or administrator can create projects. When a project is available, open it to explore its datasets and pipelines.'}
               </p>
             </div>
             <GatedButton

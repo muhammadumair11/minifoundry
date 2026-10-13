@@ -169,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
     let url =
         std::env::var("DATABASE_URL").map_err(|_| anyhow::anyhow!("DATABASE_URL must be set"))?;
     let pool = mf_db::connect(&url, "public", 4).await?;
+    let pool = mf_db::TenantPools::new(&pool).pool("org_demo")?;
 
     match cli.command {
         Commands::Users => {
@@ -237,6 +238,7 @@ fn json_str(s: &str) -> String {
 /// (re-running never clobbers role changes / deactivations), matching the
 /// legacy ensureSeedUsers().
 async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
+    sqlx::query("INSERT INTO auth.organizations (id, name, slug) VALUES ('org_demo', 'MiniFoundry Demo', 'minifoundry-demo') ON CONFLICT (id) DO NOTHING").execute(pool).await?;
     // The auth service owns this table and creates it via its migrations;
     // a fresh stack must boot auth (or run its migrations) before seeding.
     let mut ensured = 0;
@@ -256,6 +258,15 @@ async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
         .execute(pool)
         .await
         .map_err(|e| anyhow::anyhow!("seed user {email} failed (auth migrations applied?): {e}"))?;
+        let user_id: String = sqlx::query_scalar("SELECT id FROM auth.users WHERE email = $1")
+            .bind(email)
+            .fetch_one(pool)
+            .await?;
+        let organization_role = if role == "admin" { "org_admin" } else { role };
+        sqlx::query("INSERT INTO auth.organization_memberships (id, organization_id, user_id, role) VALUES ($1, 'org_demo', $2, $3) ON CONFLICT (organization_id, user_id) DO NOTHING")
+            .bind(mf_db::new_id()).bind(&user_id).bind(organization_role).execute(pool).await?;
+        sqlx::query("UPDATE auth.users SET default_organization_id = COALESCE(default_organization_id, 'org_demo') WHERE id = $1")
+            .bind(user_id).execute(pool).await?;
         ensured += 1;
     }
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM auth.users")
@@ -269,17 +280,18 @@ async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
 /// (idempotent by name), resolving the __SHIPMENTS__ placeholder against
 /// catalog.datasets — the exact legacy seed.ts behavior.
 async fn seed_demo_pipeline(pool: &PgPool) -> anyhow::Result<String> {
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM orchestration.pipelines WHERE name = $1")
-            .bind(DEMO_PIPELINE_NAME)
-            .fetch_optional(pool)
-            .await?;
+    let existing: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM orchestration.pipelines WHERE name = $1 AND organization_id = 'org_demo'",
+    )
+    .bind(DEMO_PIPELINE_NAME)
+    .fetch_optional(pool)
+    .await?;
     if let Some((id,)) = existing {
         return Ok(format!("skipped (already seeded {id})"));
     }
 
     let shipments: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM catalog.datasets WHERE name = 'Shipments' LIMIT 1")
+        sqlx::query_as("SELECT id FROM catalog.datasets WHERE name = 'Shipments' AND organization_id = 'org_demo' LIMIT 1")
             .fetch_optional(pool)
             .await?;
     let (shipments_id,) = shipments.ok_or_else(|| {
@@ -321,6 +333,7 @@ async fn run_demo_pipeline() -> anyhow::Result<String> {
     let pipelines: serde_json::Value = client
         .get(format!("{base}/api/pipelines"))
         .header("x-service-token", &token)
+        .header("x-mf-organization-id", "org_demo")
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("gateway unreachable: {e}"))?
@@ -344,6 +357,7 @@ async fn run_demo_pipeline() -> anyhow::Result<String> {
     let run: serde_json::Value = client
         .post(format!("{base}/api/pipelines/{id}/run"))
         .header("x-service-token", &token)
+        .header("x-mf-organization-id", "org_demo")
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("run enqueue failed: {e}"))?
@@ -363,6 +377,7 @@ async fn run_demo_pipeline() -> anyhow::Result<String> {
         let job: serde_json::Value = match client
             .get(format!("{base}/api/execution-jobs/{job_id}"))
             .header("x-service-token", &token)
+            .header("x-mf-organization-id", "org_demo")
             .send()
             .await
         {
@@ -410,6 +425,7 @@ async fn seed_via_gateway(path: &str) -> anyhow::Result<&'static str> {
     let resp = client
         .post(format!("{}{}", base.trim_end_matches('/'), path))
         .header("x-service-token", &token)
+        .header("x-mf-organization-id", "org_demo")
         .header("content-type", "application/json")
         .body("{}")
         .send()

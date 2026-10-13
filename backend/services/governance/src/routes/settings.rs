@@ -9,9 +9,9 @@
 //! are NEVER reset), then the governance tables are wiped locally and ONE
 //! workspace.reset audit row documents the wipe with the non-zero counts.
 
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiResult};
 use serde_json::{Map, Value};
 

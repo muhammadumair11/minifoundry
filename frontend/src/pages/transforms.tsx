@@ -76,6 +76,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LanguageBadge } from '@/components/foundry/transforms/language-badge'
 import { NewWorkbookDialog } from '@/components/foundry/transforms/new-workbook-dialog'
+import { WorkbookInputsDialog } from '@/components/foundry/transforms/workbook-inputs-dialog'
+import { workbookTableNames } from '@/lib/workbook-sql'
 import { CodeEditor, type SchemaTable } from '@/components/foundry/code-editor'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
 import { formatRelative } from '@/lib/foundry-types'
@@ -136,6 +138,7 @@ export default function TransformsPage() {
     staleTime: 30_000,
   })
   const canEdit = canEditRole(sessionQuery.data?.role)
+  const canRun = canEdit && sessionQuery.data?.demoMode === true
 
   const transforms = transformsQuery.data?.transforms ?? []
   const datasets = datasetsQuery.data?.datasets ?? []
@@ -194,6 +197,8 @@ export default function TransformsPage() {
         </p>
       </header>
 
+      {sessionQuery.data?.demoMode === false && <p role="status" className="shrink-0 border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Workbook execution is unavailable in this workspace. Editors can still edit and save code; Run and Replay are disabled.</p>}
+
       {/* Two panes — the workbook rail and the editor each scroll on their own */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ── Left: workbook list (collapsible to an icon rail on lg) ── */}
@@ -248,7 +253,7 @@ export default function TransformsPage() {
                 </div>
               ) : transforms.length === 0 ? (
                 <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  Nothing here yet — create a workbook or seed the demos below.
+                  {canEdit ? 'Nothing here yet — create a workbook or seed the demos below.' : 'No workbooks yet. An editor or administrator can create one for you to inspect.'}
                 </p>
               ) : (
                 <ul className="space-y-1">
@@ -393,6 +398,7 @@ export default function TransformsPage() {
               datasets={datasets}
               canEdit={canEdit}
               onDeleted={handleDeleted}
+              canRun={canRun}
             />
           )}
         </section>
@@ -494,6 +500,7 @@ function WorkbookEditor({
   detailError,
   datasets,
   canEdit,
+  canRun,
   onDeleted,
 }: {
   transform: TransformSummary
@@ -502,11 +509,13 @@ function WorkbookEditor({
   detailError: string | null
   datasets: DatasetSummary[]
   canEdit: boolean
+  canRun: boolean
   onDeleted: () => void
 }) {
   const queryClient = useQueryClient()
   const [draftCode, setDraftCode] = useState(transform.sourceCode)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [inputsOpen, setInputsOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(transform.name)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'preview' | 'logs' | 'history'>('preview')
@@ -519,15 +528,16 @@ function WorkbookEditor({
   // Schema of the input datasets — feeds Monaco's schema-aware SQL
   // IntelliSense (tables named after datasets + real columns).
   const schemaQuery = useQuery<SchemaTable[]>({
-    queryKey: ['transform-input-schema', transform.id],
+    queryKey: ['transform-input-schema', transform.id, transform.language, transform.inputs.map((input) => [input.datasetId, input.datasetName])],
     queryFn: async () => {
+      const tableNames = workbookTableNames(transform.inputs.map((inp) => inp.datasetName ?? ''))
       const tables = await Promise.all(
-        transform.inputs.map(async (inp): Promise<SchemaTable | null> => {
+        transform.inputs.map(async (inp, index): Promise<SchemaTable | null> => {
           if (!inp.datasetId || !inp.datasetName) return null
           try {
             const d = await apiJson<DatasetDetailResponse>(`/api/datasets/${inp.datasetId}`)
             return {
-              name: inp.datasetName,
+              name: transform.language === 'sql' ? tableNames[index] : inp.datasetName,
               columns: d.current.schema.map((c) => ({ name: c.name, type: c.type })),
             }
           } catch {
@@ -648,7 +658,7 @@ function WorkbookEditor({
   })
 
   const run = () => {
-    if (!canEdit || runMutation.isPending) return
+    if (!canRun || runMutation.isPending) return
     setResultsOpen(true) // surface the results sheet the moment a run starts
     runMutation.mutate()
   }
@@ -740,7 +750,8 @@ function WorkbookEditor({
             reason="requires editor role"
             size="sm"
             onClick={run}
-            disabled={runMutation.isPending || saveMutation.isPending}
+            disabled={!canRun || runMutation.isPending || saveMutation.isPending}
+            title={!canRun ? 'Workbook execution is unavailable in this workspace' : undefined}
             className="relative h-8 gap-1.5 text-xs"
             aria-label="Run workbook"
           >
@@ -801,6 +812,8 @@ function WorkbookEditor({
       {/* ── Inputs strip — one line, horizontally scrollable; the language
           contract hides behind the info glyph ── */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
+        {inputsOpen && canEdit && <WorkbookInputsDialog transform={transform} datasets={datasets} onClose={() => setInputsOpen(false)} />}
+        {canEdit && <Button variant="outline" size="sm" className="h-6 shrink-0 text-xs" onClick={() => setInputsOpen(true)}>Edit inputs</Button>}
         <span className="shrink-0 font-mono text-[9px] font-semibold uppercase tracking-[0.25em] text-muted-foreground/80">
           in
         </span>
@@ -945,8 +958,7 @@ function WorkbookEditor({
               <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/30 p-4 text-center">
                 <Table2 className="h-5 w-5 text-muted-foreground" aria-hidden />
                 <p className="text-xs text-muted-foreground">
-                  No results yet — press <span className="font-mono text-foreground">Run</span> to
-                  execute the workbook.
+                  {canRun ? <>No results yet — press <span className="font-mono text-foreground">Run</span> to execute the workbook.</> : 'No results yet. Workbook execution is unavailable for this account or workspace.'}
                 </p>
               </div>
             )}
@@ -1045,7 +1057,7 @@ function WorkbookEditor({
                           variant="outline"
                           size="sm"
                           className="ml-auto h-6 px-2 text-[10px]"
-                          disabled={replayMutation.isPending}
+                          disabled={!canRun || replayMutation.isPending}
                           onClick={() => replayMutation.mutate(r.id)}
                         >
                           Replay

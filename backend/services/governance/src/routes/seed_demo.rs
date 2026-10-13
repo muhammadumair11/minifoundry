@@ -10,9 +10,9 @@
 //! legacy 400 `Dataset '<name>' not found — seed demo data first
 //! (POST /api/seed)`, a transport failure is a clean 502.
 
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 
 use crate::fanout::{pass_through, percent_encode, FanOutError};

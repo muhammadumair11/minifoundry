@@ -92,6 +92,9 @@ pub struct Actor {
     pub real_role: Option<String>,
     /// Active tenant selected for this session. None only for demo/system actors.
     pub organization_id: Option<String>,
+    /// Live organization role, distinct from the effective service permission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organization_role: Option<String>,
     /// True when the caller presented a valid service token (bypasses role
     /// guards exactly like `isServiceAuthorized()` did in the old routes).
     pub is_service: bool,
@@ -107,6 +110,7 @@ impl Actor {
             name: None,
             real_role: None,
             organization_id: None,
+            organization_role: None,
             is_service: false,
         }
     }
@@ -120,6 +124,7 @@ impl Actor {
             name: None,
             real_role: None,
             organization_id: None,
+            organization_role: None,
             is_service: true,
         }
     }
@@ -133,6 +138,7 @@ impl Actor {
             name: None,
             real_role: None,
             organization_id: None,
+            organization_role: None,
             is_service: false,
         }
     }

@@ -13,6 +13,7 @@ import type { SessionResponse } from '@/lib/foundry-types'
 
 type Organization = { id: string; name: string; role: string }
 type Member = { id: string; name: string; email: string; role: string; isActive: boolean }
+type Invitation = { id: string; email: string; role: string; expiresAt: string; status: 'pending' | 'expired' | 'accepted' | 'revoked' }
 
 export function OrganizationSettings({ rosterOnly = false }: { rosterOnly?: boolean }) {
   const client = useQueryClient()
@@ -28,6 +29,7 @@ export function OrganizationSettings({ rosterOnly = false }: { rosterOnly?: bool
     enabled: access.canViewMembers, retry: false,
   })
   const [email, setEmail] = useState('')
+  const invitations = useQuery<{ invitations: Invitation[] }>({ queryKey: ['organization-invitations', session?.organizationId], queryFn: () => apiJson('/api/organization/invitations'), enabled: access.canManageMembers, retry: false })
   const [role, setRole] = useState('viewer')
   const [inviteUrl, setInviteUrl] = useState('')
   useEffect(() => { setInviteUrl(''); setEmail(''); setRole('viewer') }, [session?.organizationId])
@@ -36,6 +38,7 @@ export function OrganizationSettings({ rosterOnly = false }: { rosterOnly?: bool
     onSuccess: ({ invitation }) => {
       setInviteUrl(new URL(invitation.acceptUrl, window.location.origin).href)
       setEmail('')
+      void client.invalidateQueries({ queryKey: ['organization-invitations'] })
       toast.success('Invitation created. Copy the link and share it with the recipient.')
     },
     onError: (error) => toastApiError(error, 'Could not invite member'),
@@ -49,6 +52,17 @@ export function OrganizationSettings({ rosterOnly = false }: { rosterOnly?: bool
       void client.invalidateQueries({ queryKey: ['organizations'] })
     },
     onError: (error) => toastApiError(error, 'Could not change role'),
+  })
+  const manageInvitation = useMutation({
+    mutationFn: ({ id, reissue }: { id: string; reissue: boolean }): Promise<{ invitation?: { acceptUrl: string } }> => reissue
+      ? apiSend<{ invitation: { acceptUrl: string } }>(`/api/organization/invitations/${id}/reissue`, 'POST')
+      : apiSend<{ invitation?: never }>(`/api/organization/invitations/${id}`, 'DELETE'),
+    onSuccess: (result) => {
+      setInviteUrl(result.invitation ? new URL(result.invitation.acceptUrl, window.location.origin).href : '')
+      void client.invalidateQueries({ queryKey: ['organization-invitations'] })
+      toast.success(result.invitation ? 'New invitation link created. The old link is revoked.' : 'Invitation revoked')
+    },
+    onError: (error) => toastApiError(error, 'Could not update invitation'),
   })
   if (!session?.session || (rosterOnly && !access.canViewMembers)) return null
   return (
@@ -68,6 +82,15 @@ export function OrganizationSettings({ rosterOnly = false }: { rosterOnly?: bool
             <Button type="submit" disabled={invite.isPending}>{invite.isPending ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />} Invite</Button>
           </form>
           {inviteUrl && <div className="space-y-1"><Label htmlFor="created-invitation">Share this invitation link</Label><div className="flex gap-2"><Input id="created-invitation" readOnly value={inviteUrl} /><Button variant="outline" aria-label="Copy invitation link" onClick={async () => { try { await navigator.clipboard.writeText(inviteUrl); toast.success('Link copied') } catch { toast.error('Select and copy the link above') } }}><Copy className="size-4" /></Button></div></div>}
+          <div className="space-y-2"><h3 className="text-sm font-medium">Invitations</h3>
+            {invitations.isLoading && <p className="text-xs text-muted-foreground">Loading invitations…</p>}
+            {invitations.isError && <p role="alert" className="text-xs text-destructive">{invitations.error.message}</p>}
+            {invitations.data?.invitations.length === 0 && <p className="text-xs text-muted-foreground">No invitations yet.</p>}
+            {invitations.data?.invitations.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2">
+              <div className="min-w-0"><p className="break-all text-xs font-medium">{item.email}</p><p className="text-xs text-muted-foreground">{roleLabel(item.role)} · {item.status} · expires {new Date(item.expiresAt).toLocaleString()}</p></div>
+              {(item.status === 'pending' || item.status === 'expired') && <div className="flex gap-2"><Button size="sm" variant="outline" disabled={manageInvitation.isPending} onClick={() => manageInvitation.mutate({ id: item.id, reissue: true })}>Reissue link</Button><Button size="sm" variant="outline" disabled={manageInvitation.isPending} onClick={() => manageInvitation.mutate({ id: item.id, reissue: false })}>Revoke</Button></div>}
+            </div>)}
+          </div>
         </div>}
         {access.canViewMembers && <div className="space-y-2">
           <h3 className="text-sm font-medium">Members</h3>

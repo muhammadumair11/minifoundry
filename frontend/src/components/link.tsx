@@ -21,7 +21,7 @@ function splitHref(href: string): { to: string; search: Record<string, string>; 
   if (qs) {
     for (const [k, v] of new URLSearchParams(qs)) search[k] = v
   }
-  return { to: to || '/', search, hash: hash ? `#${hash}` : undefined }
+  return { to: to || '/', search, hash: hash || undefined }
 }
 
 export default function Link({ href, children, ...rest }: LinkProps) {

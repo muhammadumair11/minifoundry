@@ -2,10 +2,11 @@
 //! governance search/stats/curriculum/reset). Guarded by the shared service
 //! token (pattern copied from services/auth internal routes).
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
 use mf_types::Value;
+use mf_web::TenantState as State;
 use mf_web::{json_ok, ApiError, ApiResult};
 
 use crate::assemble::{dataset_map, full_for_list};
@@ -286,11 +287,21 @@ pub async fn internal_reset(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    sqlx::query(
-        "TRUNCATE action_logs, action_types, object_views, link_types, properties, \
-         object_types, dashboards, applications",
-    )
-    .execute(&state.db)
-    .await?;
+    let mut tx = state.db.begin().await?;
+    for table in [
+        "action_logs",
+        "action_types",
+        "object_views",
+        "link_types",
+        "properties",
+        "object_types",
+        "dashboards",
+        "applications",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table}"))
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
     Ok(json_ok(serde_json::json!({ "ok": true })))
 }

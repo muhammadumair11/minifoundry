@@ -285,12 +285,14 @@ function SignedInChip({ session }: { session: SessionResponse }) {
 /** P3: "resume where you left off" — slim banner above the stat cards that
     deep-links to the next incomplete curriculum step. Hidden until loaded;
     collapses to a subtle chip when the path is finished. */
-function CurriculumResumeBanner() {
+function CurriculumResumeBanner({ canEdit }: { canEdit: boolean }) {
   const { data } = useQuery<CurriculumStatus>({
     queryKey: ['curriculum'],
     queryFn: () => apiJson<CurriculumStatus>('/api/curriculum'),
     staleTime: 15_000,
+    enabled: canEdit,
   })
+  if (!canEdit) return <Link href="/learn" className="my-4 block rounded border bg-card p-3 text-xs">Explore datasets, objects and applications with the learning path for your role.</Link>
   if (!data) return null
   // 'Up next' comes from the API's pick (tour-first for new users, then
   // actionable auto steps before manual check-offs) so the banner and the
@@ -382,6 +384,7 @@ export default function HomePage() {
     queryFn: () => apiJson<SessionResponse>('/api/session'),
     staleTime: 30_000,
   })
+  const canEdit = sessionQuery.data?.role === 'admin' || sessionQuery.data?.role === 'editor'
   const staleDatasets =
     health?.datasets.filter((d) => d.freshnessMinutes > STALE_THRESHOLD_MINUTES).length ?? 0
 
@@ -453,7 +456,7 @@ export default function HomePage() {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button
+          {canEdit && <Button
             size="sm"
             onClick={() => newPipelineMutation.mutate()}
             disabled={newPipelineMutation.isPending}
@@ -464,13 +467,13 @@ export default function HomePage() {
                 <Play className="h-4 w-4" aria-hidden />
               )}
               New pipeline
-            </Button>
-          <Button asChild size="sm" variant="outline">
+            </Button>}
+          {canEdit && <Button asChild size="sm" variant="outline">
             <Link href="/connectors">
               <Upload className="h-4 w-4" aria-hidden />
               Upload data
             </Link>
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -482,11 +485,12 @@ export default function HomePage() {
             <div>
               <p className="text-sm font-medium text-foreground">No data yet</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                The platform is empty. Load the sample supply-chain pack (Suppliers, Warehouses,
-                Shipments, Inventory) to explore datasets, pipelines and lineage.
+                {canEdit
+                  ? 'Load the sample supply-chain pack to explore datasets, pipelines and lineage.'
+                  : 'No datasets are available yet. Ask an editor or organization administrator to load data.'}
               </p>
             </div>
-            <Button size="sm" onClick={handleSeed} disabled={seedMutation.isPending}>
+            {canEdit && <Button size="sm" onClick={handleSeed} disabled={seedMutation.isPending}>
               {seedMutation.isPending ? (
                 <>
                   <Sparkles className="h-4 w-4 animate-pulse" aria-hidden />
@@ -498,13 +502,13 @@ export default function HomePage() {
                   Load sample supply-chain data
                 </>
               )}
-            </Button>
+            </Button>}
           </CardContent>
         </Card>
       )}
 
       {/* P3: resume the guided curriculum from where you left off */}
-      <CurriculumResumeBanner />
+      <CurriculumResumeBanner canEdit={canEdit} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

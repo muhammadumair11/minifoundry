@@ -13,6 +13,7 @@ use crate::catalog::CatalogClient;
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub tenants: mf_db::TenantPools,
     pub nats: async_nats::Client,
     pub mode: Arc<RuntimeMode>,
     pub catalog: Arc<CatalogClient>,
@@ -68,6 +69,7 @@ pub struct RunRow {
 #[derive(Debug, sqlx::FromRow)]
 #[allow(dead_code)] // full row mirror; not every column is read on every path
 pub struct JobRow {
+    pub organization_id: String,
     pub id: String,
     pub pipeline_id: String,
     pub version_number: i32,
@@ -120,7 +122,7 @@ pub const PIPELINE_COLS: &str =
 pub const VERSION_COLS: &str =
     "id, pipeline_id, version_number, graph_json, node_count, note, created_by, created_at";
 pub const RUN_COLS: &str = "id, pipeline_id, status, logs_json, version_number, \"trigger\", attempt, manifest_json, duration_ms, failure_cause, output_dataset_id, output_version_number, replayed_from_run_id, started_at, finished_at";
-pub const JOB_COLS: &str = "id, pipeline_id, version_number, \"trigger\", schedule_id, event_key, payload_json, status, attempt, max_attempts, available_at, lease_owner, lease_until, last_run_id, error, created_at, updated_at, finished_at";
+pub const JOB_COLS: &str = "organization_id, id, pipeline_id, version_number, \"trigger\", schedule_id, event_key, payload_json, status, attempt, max_attempts, available_at, lease_owner, lease_until, last_run_id, error, created_at, updated_at, finished_at";
 pub const SCHEDULE_COLS: &str =
     "id, pipeline_id, name, enabled, interval_minutes, last_run_at, next_run_at, created_at, updated_at";
 
@@ -333,4 +335,16 @@ pub fn serialize_job_detail(job: &JobRow) -> Value {
         "lastRunId": job.last_run_id,
         "error": job.error,
     })
+}
+
+impl mf_web::TenantService for AppState {
+    fn tenant_pools(&self) -> &mf_db::TenantPools {
+        &self.tenants
+    }
+    fn demo_mode(&self) -> bool {
+        self.mode.demo
+    }
+    fn with_database(&self, db: sqlx::PgPool) -> Self {
+        Self { db, ..self.clone() }
+    }
 }

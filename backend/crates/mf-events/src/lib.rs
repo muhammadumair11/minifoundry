@@ -15,6 +15,27 @@
 use anyhow::Context;
 use async_nats::jetstream::{self, consumer, stream};
 use serde::{Deserialize, Serialize};
+tokio::task_local! { static ORGANIZATION: Option<String>; }
+
+pub fn organization_id() -> Option<String> {
+    ORGANIZATION.try_with(Clone::clone).ok().flatten()
+}
+
+pub async fn with_organization<F: std::future::Future>(
+    organization: Option<String>,
+    future: F,
+) -> F::Output {
+    ORGANIZATION.scope(organization, future).await
+}
+
+/// Historical unscoped messages cannot be attributed safely to a new tenant.
+pub fn message_organization(msg: &async_nats::Message) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(&msg.payload)
+        .ok()?
+        .get("organizationId")?
+        .as_str()
+        .map(str::to_owned)
+}
 
 // ─── Subjects ───────────────────────────────────────────────────────────
 
@@ -227,7 +248,11 @@ pub async fn publish_json<T: Serialize>(
     subject: &str,
     payload: &T,
 ) -> anyhow::Result<()> {
-    let bytes = serde_json::to_vec(payload).context("serialize event")?;
+    let mut value = serde_json::to_value(payload).context("serialize event")?;
+    if let Some(organization) = organization_id() {
+        value["organizationId"] = organization.into();
+    }
+    let bytes = serde_json::to_vec(&value).context("serialize scoped event")?;
     client
         .publish(subject.to_string(), bytes.into())
         .await
@@ -261,6 +286,20 @@ pub fn parse_message<T: serde::de::DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn concurrent_fanout_scopes_do_not_cross_or_persist() {
+        tokio::join!(
+            with_organization(Some("org_a".into()), async {
+                tokio::task::yield_now().await;
+                assert_eq!(organization_id().as_deref(), Some("org_a"));
+            }),
+            with_organization(Some("org_b".into()), async {
+                tokio::task::yield_now().await;
+                assert_eq!(organization_id().as_deref(), Some("org_b"));
+            }),
+        );
+        assert_eq!(organization_id(), None);
+    }
 
     #[test]
     fn version_created_event_camel_case() {

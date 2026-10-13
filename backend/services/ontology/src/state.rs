@@ -11,6 +11,7 @@ use mf_types::Value;
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub tenants: mf_db::TenantPools,
     pub nats: async_nats::Client,
     pub mode: Arc<RuntimeMode>,
     /// Catalog service client (dataset rows/schemas/versions; masking via the
@@ -151,3 +152,15 @@ pub const DASHBOARD_COLS: &str =
     "id, title, description, layout_json, created_by, created_at, updated_at";
 pub const APPLICATION_COLS: &str =
     "id, name, description, config_json, created_by, created_at, updated_at";
+
+impl mf_web::TenantService for AppState {
+    fn tenant_pools(&self) -> &mf_db::TenantPools {
+        &self.tenants
+    }
+    fn demo_mode(&self) -> bool {
+        self.mode.demo
+    }
+    fn with_database(&self, db: sqlx::PgPool) -> Self {
+        Self { db, ..self.clone() }
+    }
+}

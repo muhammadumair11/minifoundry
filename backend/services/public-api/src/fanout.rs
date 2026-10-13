@@ -105,6 +105,9 @@ impl FanOut {
 
     fn base_headers(&self, mut rb: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         rb = rb.header("accept", "application/json");
+        if let Some(org) = mf_events::organization_id() {
+            rb = rb.header("x-mf-organization-id", org);
+        }
         if let Some(token) = &self.service_token {
             rb = rb.header(mf_auth::SERVICE_TOKEN_HEADER, token);
         }
@@ -203,6 +206,7 @@ pub fn service_admin_actor() -> Actor {
         name: None,
         real_role: None,
         organization_id: None,
+        organization_role: None,
         is_service: true,
     }
 }

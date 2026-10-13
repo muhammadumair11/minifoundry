@@ -156,6 +156,7 @@ function Builder() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<AppEdge>([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const [compactConfigOpen, setCompactConfigOpen] = useState(true)
   const sourceDatasetIds = useMemo(() => [...new Set(nodes
     .filter((node) => node.type === 'source' && node.data.datasetId)
     .map((node) => node.data.datasetId as string))].sort(), [nodes])
@@ -292,6 +293,7 @@ function Builder() {
   )
 
   const onSelectionChange = useCallback(({ nodes: selected, edges: selectedEdges }: OnSelectionChangeParams) => {
+    if (selected.length || selectedEdges.length) setCompactConfigOpen(true)
     setSelectedNodeId(selected[0]?.id ?? null)
     setSelectedEdgeId(selectedEdges[0]?.id ?? null)
   }, [])
@@ -311,6 +313,7 @@ function Builder() {
       }
       setNodes((nds) => [...nds, newNode])
       setSelectedNodeId(newNode.id)
+      setCompactConfigOpen(true)
       setSelectedEdgeId(null)
       toast.info(`${NODE_META[type].label} node added`, {
         description: NODE_META[type].hint,
@@ -668,8 +671,8 @@ function Builder() {
         </div>
 
         {/* ── Main area + Run panel share vertical space ── */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
+          <div className="flex min-h-[240px] flex-1 shrink-0 overflow-hidden lg:h-0 lg:min-h-0">
             {canEdit && <NodePalette onAdd={addNode} className="hidden lg:flex" />}
 
             <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -683,6 +686,7 @@ function Builder() {
                 nodesConnectable={canEdit}
                 onSelectionChange={onSelectionChange}
                 onEdgeClick={(_, edge) => {
+                  setCompactConfigOpen(true)
                   setSelectedEdgeId(edge.id)
                   setSelectedNodeId(null)
                 }}
@@ -723,8 +727,11 @@ function Builder() {
 
           {/* Mobile config panel */}
           {(selectedNode || selectedEdge) && (
-            <div className="h-0 flex-1 overflow-hidden border-t border-border bg-muted/30 lg:hidden">
-              <fieldset disabled={!canEdit} className="h-full"><ConfigPanel
+            <section className="shrink-0 border-t border-border bg-muted/30 lg:hidden" aria-label="Selected node configuration">
+              <Button variant="ghost" size="sm" className="h-8 w-full justify-between rounded-none text-xs" aria-expanded={compactConfigOpen} aria-controls="compact-pipeline-configuration" onClick={() => setCompactConfigOpen((open) => !open)}>
+                Configuration <ChevronDown className={compactConfigOpen ? 'size-3 rotate-180' : 'size-3'} />
+              </Button>
+              {compactConfigOpen && <div id="compact-pipeline-configuration" className="h-[min(14rem,35dvh)] overflow-auto"><fieldset disabled={!canEdit} className="h-full"><ConfigPanel
                 node={selectedNode}
                 selectedEdge={selectedEdge}
                 onDeleteEdge={canEdit ? deleteEdgeById : () => {}}
@@ -734,13 +741,13 @@ function Builder() {
                 onDelete={canEdit ? deleteNodeById : () => {}}
                 nodeCount={nodes.length}
                 edgeCount={edges.length}
-              /></fieldset>
-            </div>
+              /></fieldset></div>}
+            </section>
           )}
 
           {/* Runs and canvas take equal shares of the available space. */}
           {runPanelOpen && (
-            <div className="h-0 flex-1 overflow-hidden">
+            <div className="h-64 shrink-0 overflow-hidden lg:h-0 lg:flex-1">
               <RunPanel
                 runs={runs}
                 selectedRun={selectedRun}

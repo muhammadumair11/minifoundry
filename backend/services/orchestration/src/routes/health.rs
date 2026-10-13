@@ -8,9 +8,9 @@
 //! GET /internal/health/datasets (a down catalog degrades to `datasets: []`
 //! with a tracing warn — orchestration must stay up for its own metrics).
 
-use axum::extract::State;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
+use mf_web::TenantState as State;
 use mf_web::{json_ok, ApiResult};
 use serde_json::{json, Map, Value};
 

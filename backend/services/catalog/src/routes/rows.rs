@@ -4,10 +4,11 @@
 //! sides at the caller's role (per the port spec — legacy diff predates
 //! masking, recorded as a deliberate security alignment).
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::Response;
 use mf_types::{Row, Value};
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 use serde_json::json;
 use std::collections::HashMap;

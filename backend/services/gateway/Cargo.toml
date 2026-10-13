@@ -24,5 +24,6 @@ sha2.workspace = true
 hex.workspace = true
 mf-web.workspace = true
 mf-auth.workspace = true
+mf-db.workspace = true
 mf-types.workspace = true
 mf-internal.workspace = true

@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { SessionResponse } from '@/lib/foundry-types'
+import { setSavedTokenScope } from '@/components/foundry/api/saved-tokens'
 
 export type OrganizationsResponse = {
   organizations: Array<{ id: string; name: string; role: string }>
@@ -46,6 +47,7 @@ export function fetchAuthBootstrap(): Promise<AuthBootstrap | null> {
 
 /** Seed both caches before any identity/permission query observer mounts. */
 export function seedAuthQueries(client: QueryClient, bootstrap?: AuthBootstrap | null): void {
+  setSavedTokenScope(bootstrap?.role === 'admin' ? bootstrap.session?.email ?? (bootstrap.demoMode ? 'demo' : null) : null, bootstrap?.organizationId ?? (bootstrap?.demoMode ? 'org_demo' : null))
   if (!bootstrap) return
   const { organizations, ...session } = bootstrap
   const role = session.role

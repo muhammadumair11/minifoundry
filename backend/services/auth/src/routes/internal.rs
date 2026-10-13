@@ -175,6 +175,13 @@ pub async fn verify_token(
 
     match token {
         Some(t) if t.revoked_at.is_none() => {
+            let organization: Option<String> =
+                sqlx::query_scalar("SELECT organization_id FROM api_tokens WHERE id = $1")
+                    .bind(&t.id)
+                    .fetch_one(&state.db)
+                    .await?;
+            let organization =
+                organization.ok_or_else(|| ApiError::unauthorized("token has no organization"))?;
             // fire-and-forget usage tracking — must never delay the response
             let db = state.db.clone();
             let id = t.id.clone();
@@ -190,6 +197,7 @@ pub async fn verify_token(
             Ok(json_ok(serde_json::json!({
                 "token": {
                     "id": t.id,
+                    "organizationId": organization,
                     "name": t.name,
                     "prefix": t.prefix,
                     "requestCount": t.request_count,
@@ -223,6 +231,11 @@ pub async fn rate_limit(
 /// GET /internal/stats — auth-domain counts for governance settings/overview.
 pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
+    let organization = headers
+        .get("x-mf-organization-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|id| mf_db::valid_organization_id(id))
+        .ok_or_else(|| ApiError::forbidden("organization context required"))?;
 
     let (users, api_tokens, active_tokens, api_request_logs, refresh_tokens): (
         i64,
@@ -231,12 +244,13 @@ pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
         i64,
         i64,
     ) = sqlx::query_as(
-        "SELECT (SELECT count(*) FROM users), \
-                    (SELECT count(*) FROM api_tokens), \
-                    (SELECT count(*) FROM api_tokens WHERE revoked_at IS NULL), \
-                    (SELECT count(*) FROM api_request_logs), \
-                    (SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL)",
+        "SELECT (SELECT count(*) FROM organization_memberships WHERE organization_id = $1 AND is_active), \
+                    (SELECT count(*) FROM api_tokens WHERE organization_id = $1), \
+                    (SELECT count(*) FROM api_tokens WHERE organization_id = $1 AND revoked_at IS NULL), \
+                    (SELECT count(*) FROM api_request_logs WHERE token_id IN (SELECT id FROM api_tokens WHERE organization_id = $1)), \
+                    (SELECT count(*) FROM refresh_tokens WHERE organization_id = $1 AND revoked_at IS NULL)",
     )
+    .bind(organization)
     .fetch_one(&state.db)
     .await?;
 
@@ -253,20 +267,28 @@ pub async fn stats(State(state): State<AppState>, headers: HeaderMap) -> ApiResu
 /// settings/reset preserved accounts). Called by governance's reset fan-out.
 pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
+    let organization = headers
+        .get("x-mf-organization-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|id| mf_db::valid_organization_id(id))
+        .ok_or_else(|| ApiError::forbidden("organization context required"))?;
 
     let logs: i64 = sqlx::query_scalar(
-        "WITH deleted AS (DELETE FROM api_request_logs RETURNING id) SELECT count(*) FROM deleted",
+        "WITH deleted AS (DELETE FROM api_request_logs WHERE token_id IN (SELECT id FROM api_tokens WHERE organization_id = $1) RETURNING id) SELECT count(*) FROM deleted",
     )
+    .bind(organization)
     .fetch_one(&state.db)
     .await?;
     let tokens: i64 = sqlx::query_scalar(
-        "WITH deleted AS (DELETE FROM api_tokens RETURNING id) SELECT count(*) FROM deleted",
+        "WITH deleted AS (DELETE FROM api_tokens WHERE organization_id = $1 RETURNING id) SELECT count(*) FROM deleted",
     )
+    .bind(organization)
     .fetch_one(&state.db)
     .await?;
     let refresh: i64 = sqlx::query_scalar(
-        "WITH deleted AS (DELETE FROM refresh_tokens RETURNING id) SELECT count(*) FROM deleted",
+        "WITH deleted AS (DELETE FROM refresh_tokens WHERE organization_id = $1 RETURNING id) SELECT count(*) FROM deleted",
     )
+    .bind(organization)
     .fetch_one(&state.db)
     .await?;
 

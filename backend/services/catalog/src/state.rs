@@ -11,6 +11,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub tenants: mf_db::TenantPools,
     pub nats: async_nats::Client,
     pub mode: Arc<RuntimeMode>,
     /// Governance internal client (column markings, publication approvals).
@@ -29,6 +30,7 @@ impl AppState {
             .filter(|n| *n > 0)
             .unwrap_or(5000);
         Ok(Self {
+            tenants: mf_db::TenantPools::new(&db),
             db,
             nats,
             mode: Arc::new(RuntimeMode::from_env()),
@@ -401,4 +403,16 @@ pub fn serialize_ingestion_list_item(
         "startedAt": ts(&i.started_at),
         "finishedAt": ts_opt(&i.finished_at),
     })
+}
+
+impl mf_web::TenantService for AppState {
+    fn tenant_pools(&self) -> &mf_db::TenantPools {
+        &self.tenants
+    }
+    fn demo_mode(&self) -> bool {
+        self.mode.demo
+    }
+    fn with_database(&self, db: sqlx::PgPool) -> Self {
+        Self { db, ..self.clone() }
+    }
 }

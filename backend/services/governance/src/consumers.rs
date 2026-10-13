@@ -48,7 +48,19 @@ async fn run_consumer(
                     continue;
                 }
             };
-            handle(state.clone(), msg.message.clone()).await;
+            use mf_web::TenantService;
+            let Some(org) = mf_events::message_organization(&msg.message) else {
+                // Unattributed historical messages must not enter new tenants.
+                let _ = msg.ack().await;
+                continue;
+            };
+            match state.for_organization(&org) {
+                Ok(tenant) => {
+                    mf_events::with_organization(Some(org), handle(tenant, msg.message.clone()))
+                        .await
+                }
+                Err(e) => tracing::warn!(error = %e, "invalid event organization; skipping"),
+            }
             let _ = msg.ack().await;
         }
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;

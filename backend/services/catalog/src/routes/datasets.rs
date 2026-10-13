@@ -3,9 +3,10 @@
 //! is shared with the internal datasets endpoints.
 
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -71,16 +72,30 @@ pub async fn list_datasets(pool: &PgPool, limit: i64, offset: i64) -> Result<Val
         .map(|h| (h.dataset_id.clone(), h))
         .collect();
 
+    let drafts: Vec<(String, i32)> = sqlx::query_as(
+        "SELECT dataset_id, max(version_number) FROM dataset_versions \
+         WHERE dataset_id = ANY($1) AND branch = 'main' AND lifecycle = 'draft' GROUP BY dataset_id",
+    )
+    .bind(&page_ids)
+    .fetch_all(pool)
+    .await?;
+    let draft_by_dataset: HashMap<String, i32> = drafts.into_iter().collect();
+
     let items: Vec<Value> = datasets
         .iter()
         .map(|d| {
             let head = head_by_dataset.get(&d.id);
             let versions_count = stat_by_id.get(&d.id).map(|s| s.0).unwrap_or(0);
-            serialize_dataset_summary(
+            let mut summary = serialize_dataset_summary(
                 d,
                 head.map(|h| (&h.version_number, &h.row_count, &h.schema_json.0[..])),
                 versions_count,
-            )
+            );
+            summary["latestDraftVersion"] = draft_by_dataset
+                .get(&d.id)
+                .map(|n| json!(n))
+                .unwrap_or(Value::Null);
+            summary
         })
         .collect();
 

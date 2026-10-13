@@ -11,9 +11,10 @@
 //! applications → connectors), per-section caps (10 metadata / 5 object hits
 //! per type), 20 results total.
 
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, ApiResult};
 use serde_json::Value;
 use std::collections::HashMap;

@@ -13,10 +13,10 @@
 //! the gateway resolves that cookie to `learner:<uuid>` on later requests).
 
 use axum::body::Bytes;
-use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::response::Response;
 use chrono::{DateTime, Utc};
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -404,7 +404,7 @@ pub async fn get_curriculum_status(state: &AppState, actor_key: &str) -> Result<
     let enrolled_at: DateTime<Utc> = sqlx::query_scalar(
         "INSERT INTO curriculum_progress (id, actor_key, step_id, source) \
          VALUES ($1, $2, '__started__', 'system') \
-         ON CONFLICT (actor_key, step_id) DO UPDATE SET step_id = EXCLUDED.step_id \
+         ON CONFLICT (organization_id, actor_key, step_id) DO UPDATE SET step_id = EXCLUDED.step_id \
          RETURNING completed_at",
     )
     .bind(mf_db::new_id())
@@ -515,7 +515,7 @@ pub async fn post_curriculum(
     if done {
         sqlx::query(
             "INSERT INTO curriculum_progress (id, actor_key, step_id, source) \
-             VALUES ($1, $2, $3, 'manual') ON CONFLICT (actor_key, step_id) DO NOTHING",
+             VALUES ($1, $2, $3, 'manual') ON CONFLICT (organization_id, actor_key, step_id) DO NOTHING",
         )
         .bind(mf_db::new_id())
         .bind(&actor_key)

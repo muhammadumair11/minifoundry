@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/components/link'
+import { usePermissions } from '@/lib/use-permissions'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -339,6 +340,7 @@ interface TryResult {
 // ── Page ─────────────────────────────────────────────────────────────
 
 export default function ApiDocsPage() {
+  const { canAdminister } = usePermissions()
   const [selectedId, setSelectedId] = useState<string>('whoami')
   const endpoint = ENDPOINTS.find((e) => e.id === selectedId) ?? ENDPOINTS[0]
 
@@ -583,13 +585,13 @@ export default function ApiDocsPage() {
             send real requests — governance markings included.
           </p>
         </div>
-        <Link
+        {canAdminister && <Link
           href="/api-tokens"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/60 px-3 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
         >
           <KeyRound className="h-3 w-3" aria-hidden />
           manage tokens <ExternalLink className="h-3 w-3" aria-hidden />
-        </Link>
+        </Link>}
       </div>
 
       {/* Rate limits strip */}
@@ -673,11 +675,7 @@ export default function ApiDocsPage() {
             <div className="border-t border-border px-4 py-3">
               <p className="flex items-start gap-2 text-[11px] leading-4 text-muted-foreground/80">
                 <BookOpenText className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                Create tokens on{' '}
-                <Link href="/api-tokens" className="text-foreground underline-offset-2 hover:underline">
-                  /api-tokens
-                </Link>
-                {' '}— secrets made there are remembered in this browser (max 10).
+                {canAdminister ? <>Create tokens on <Link href="/api-tokens" className="text-foreground underline-offset-2 hover:underline">/api-tokens</Link> — secrets made there are remembered in this browser (max 10).</> : 'Ask an Organization Owner or Organization Admin for an API token to use the explorer.'}
               </p>
             </div>
           </div>
@@ -953,11 +951,7 @@ export default function ApiDocsPage() {
                   {/* 401 hint */}
                   {result.status === 401 && (
                     <div className="rounded border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
-                      The API rejected the credential. Create a fresh token on{' '}
-                      <Link href="/api-tokens" className="font-semibold underline underline-offset-2">
-                        /api-tokens
-                      </Link>{' '}
-                      and paste its secret here — revoked or mistyped secrets always 401.
+                      {canAdminister ? <>The API rejected the credential. Create a fresh token on <Link href="/api-tokens" className="font-semibold underline underline-offset-2">/api-tokens</Link> and paste its secret here.</> : 'The API rejected the credential. Ask an Organization Owner or Organization Admin for a valid token.'}
                     </div>
                   )}
 

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GatedButton } from '@/components/foundry/governance/gated-button'
 import { apiSend, toastApiError } from '@/lib/foundry-api'
+import { qualityFeedback } from '@/lib/quality-feedback'
 import type { DatasetDetailResponse, EvaluateQualityResponse } from '@/lib/foundry-types'
 import { cn } from '@/lib/utils'
 
@@ -74,13 +75,10 @@ export default function DatasetPublicationBanner({
     mutationFn: () =>
       apiSend<EvaluateQualityResponse>(`/api/datasets/${datasetId}/quality/evaluate`, 'POST'),
     onSuccess: (res) => {
-      const failures = res.results.filter((r) => !r.passed)
-      if (failures.length === 0) {
-        toast.success(`Quality passed on v${res.versionNumber} — ${res.passed} rule${res.passed === 1 ? '' : 's'} ok`)
-      } else {
-        toast.warning(`Quality: ${res.failed} of ${res.results.length} rules failed on v${res.versionNumber}`)
-      }
+      const feedback = qualityFeedback(res)
+      toast[feedback.level](feedback.message, { description: feedback.description })
       invalidateAll()
+      void queryClient.invalidateQueries({ queryKey: ['approvals'] })
     },
     onError: (err) => toastApiError(err, 'Evaluation failed'),
   })

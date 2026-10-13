@@ -31,6 +31,7 @@ impl Clients {
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub tenants: mf_db::TenantPools,
     pub nats: async_nats::Client,
     pub mode: Arc<mf_auth::RuntimeMode>,
     /// Cookie `Secure` flag (same MF_COOKIE_SECURE knob as the auth service).
@@ -407,5 +408,17 @@ mod tests {
         }
         assert_eq!(v["versionNumber"], 2);
         assert_eq!(v["decidedAt"], Value::Null);
+    }
+}
+
+impl mf_web::TenantService for AppState {
+    fn tenant_pools(&self) -> &mf_db::TenantPools {
+        &self.tenants
+    }
+    fn demo_mode(&self) -> bool {
+        self.mode.demo
+    }
+    fn with_database(&self, db: sqlx::PgPool) -> Self {
+        Self { db, ..self.clone() }
     }
 }

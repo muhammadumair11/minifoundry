@@ -13,6 +13,8 @@ use chrono::{DateTime, Utc};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::PgPool;
 use std::str::FromStr;
+mod tenant;
+pub use tenant::{valid_organization_id, TenantPools};
 
 /// Build a pool for `database_url` with `search_path` pinned to `schema`.
 ///
@@ -29,6 +31,8 @@ pub async fn connect(
     if !existing_options.contains("search_path") {
         opts = opts.options([("search_path", schema)]);
     }
+    // Trusted startup/worker pool. HTTP handlers always use TenantPools.
+    opts = opts.options([("mf.organization_id", "*")]);
     let pool = PgPoolOptions::new()
         .max_connections(max_connections)
         .acquire_timeout(std::time::Duration::from_secs(10))

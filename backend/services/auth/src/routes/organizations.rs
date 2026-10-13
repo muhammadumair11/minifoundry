@@ -28,6 +28,110 @@ fn can_grant(actor_role: &str, target: &str) -> bool {
     }
 }
 
+async fn invitation_manager(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> ApiResult<(String, String, String)> {
+    let actor = actor_from_headers(headers);
+    let org = actor
+        .organization_id
+        .ok_or_else(|| ApiError::unauthorized("active organization required"))?;
+    let uid = actor
+        .uid
+        .ok_or_else(|| ApiError::unauthorized("authentication required"))?;
+    let membership = active_membership(state, &uid, Some(&org)).await?;
+    if !can_manage_members(&membership.role) {
+        return Err(ApiError::forbidden(
+            "member management requires organization administration",
+        ));
+    }
+    Ok((org, uid, membership.role))
+}
+
+pub async fn list_invitations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    let (org, _, role) = invitation_manager(&state, &headers).await?;
+    type Invitation = (
+        String,
+        String,
+        String,
+        chrono::DateTime<Utc>,
+        Option<chrono::DateTime<Utc>>,
+        Option<chrono::DateTime<Utc>>,
+    );
+    let rows: Vec<Invitation> = sqlx::query_as(
+        "SELECT id, email, role, expires_at, accepted_at, revoked_at FROM organization_invitations WHERE organization_id=$1 AND ($2 <> 'access_manager' OR role IN ('editor','viewer')) ORDER BY created_at DESC LIMIT 200"
+    ).bind(org).bind(role).fetch_all(&state.db).await?;
+    Ok(json_ok(
+        serde_json::json!({ "invitations": rows.into_iter().map(|(id,email,role,expires,accepted,revoked)| {
+        let status = if accepted.is_some() { "accepted" } else if revoked.is_some() { "revoked" } else if expires < Utc::now() { "expired" } else { "pending" };
+        serde_json::json!({ "id": id, "email": email, "role": role, "expiresAt": expires, "status": status })
+    }).collect::<Vec<_>>() }),
+    ))
+}
+
+pub async fn revoke_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let (org, _, actor_role) = invitation_manager(&state, &headers).await?;
+    let target: Option<(String,)> = sqlx::query_as(
+        "SELECT role FROM organization_invitations WHERE id=$1 AND organization_id=$2",
+    )
+    .bind(&id)
+    .bind(&org)
+    .fetch_optional(&state.db)
+    .await?;
+    let role = target
+        .ok_or_else(|| ApiError::not_found("invitation not found"))?
+        .0;
+    if !can_grant(&actor_role, &role) {
+        return Err(ApiError::forbidden("cannot manage that invitation role"));
+    }
+    let updated = sqlx::query("UPDATE organization_invitations SET revoked_at=now() WHERE id=$1 AND organization_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL")
+        .bind(&id).bind(&org).execute(&state.db).await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::conflict(
+            "invitation was already accepted or revoked",
+        ));
+    }
+    Ok(json_ok(serde_json::json!({ "ok": true })))
+}
+
+pub async fn reissue_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let (org, uid, actor_role) = invitation_manager(&state, &headers).await?;
+    let mut tx = state.db.begin().await?;
+    let target: Option<(String, String)> = sqlx::query_as("SELECT email, role FROM organization_invitations WHERE id=$1 AND organization_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL FOR UPDATE")
+        .bind(&id).bind(&org).fetch_optional(&mut *tx).await?;
+    let (email, role) =
+        target.ok_or_else(|| ApiError::not_found("pending or expired invitation not found"))?;
+    if !can_grant(&actor_role, &role) {
+        return Err(ApiError::forbidden("cannot manage that invitation role"));
+    }
+    let mut raw = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut raw);
+    let token = hex::encode(raw);
+    let hash = hex::encode(Sha256::digest(token.as_bytes()));
+    let new_id = mf_db::new_id();
+    sqlx::query("UPDATE organization_invitations SET revoked_at=now() WHERE id=$1")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO organization_invitations (id, organization_id, email, role, token_hash, expires_at, created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7)")
+        .bind(&new_id).bind(&org).bind(&email).bind(&role).bind(hash).bind(Utc::now()+Duration::days(7)).bind(uid).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(json_created(
+        serde_json::json!({ "invitation": { "id": new_id, "email": email, "role": role, "acceptUrl": format!("/invite/{token}") } }),
+    ))
+}
+
 /// GET /api/organizations — organizations visible to the signed-in user.
 pub async fn list(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let actor = actor_from_headers(&headers);

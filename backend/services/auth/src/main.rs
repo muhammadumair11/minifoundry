@@ -68,7 +68,15 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/organization/invitations",
-            post(routes::organizations::invite),
+            get(routes::organizations::list_invitations).post(routes::organizations::invite),
+        )
+        .route(
+            "/api/organization/invitations/{id}/reissue",
+            post(routes::organizations::reissue_invitation),
+        )
+        .route(
+            "/api/organization/invitations/{id}",
+            delete(routes::organizations::revoke_invitation),
         )
         .route(
             "/api/organization/members/{id}",
@@ -118,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/internal/stats", get(routes::internal::stats))
         .route("/internal/reset", post(routes::internal::reset))
+        .layer(axum::middleware::from_fn(mf_web::organization_context))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")
@@ -173,8 +182,8 @@ fn spawn_apiusage_consumer(state: AppState) {
                 match mf_events::parse_message::<mf_events::ApiUsageEvent>(&msg.message) {
                     Ok(ev) => {
                         let result = sqlx::query(
-                            "INSERT INTO api_request_logs (id, token_id, route, status, duration_ms) \
-                             VALUES ($1, $2, $3, $4, $5)",
+                            "INSERT INTO api_request_logs (id, token_id, route, status, duration_ms, organization_id) \
+                             SELECT $1, $2, $3, $4, $5, organization_id FROM api_tokens WHERE id = $2",
                         )
                         .bind(mf_db::new_id())
                         .bind(&ev.token_id)

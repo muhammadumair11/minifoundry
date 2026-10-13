@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/table'
 import { GatedButton } from '@/components/foundry/governance/gated-button'
 import { apiJson, apiSend, toastApiError } from '@/lib/foundry-api'
+import { qualityFeedback } from '@/lib/quality-feedback'
 import type {
   DatasetQualityResponse,
   EvaluateQualityResponse,
@@ -103,15 +104,11 @@ export default function DatasetQualityPanel({
     mutationFn: () =>
       apiSend<EvaluateQualityResponse>(`/api/datasets/${datasetId}/quality/evaluate`, 'POST'),
     onSuccess: (res) => {
-      const failures = res.results.filter((r) => !r.passed)
-      if (failures.length === 0) {
-        toast.success(`Quality passed — ${res.passed} rule${res.passed === 1 ? '' : 's'} ok on v${res.versionNumber}`)
-      } else {
-        toast.warning(`Quality failed — ${res.failed} of ${res.results.length} rules on v${res.versionNumber}`, {
-          description: failures.map((f) => `${f.ruleName} (${f.actual ?? 'failed'})`).join(' · '),
-        })
-      }
+      const feedback = qualityFeedback(res)
+      toast[feedback.level](feedback.message, { description: feedback.description })
       invalidate()
+      void queryClient.invalidateQueries({ queryKey: ['dataset', datasetId] })
+      void queryClient.invalidateQueries({ queryKey: ['approvals'] })
     },
     onError: (err) => toastApiError(err, 'Evaluation failed'),
   })

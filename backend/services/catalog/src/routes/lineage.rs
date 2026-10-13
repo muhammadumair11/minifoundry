@@ -1,9 +1,9 @@
 //! /api/lineage[...] — dataset graph, impact BFS and version-level lineage
 //! (ports lineage/route.ts, lineage/impact/route.ts, lineage/versions/route.ts).
 
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};

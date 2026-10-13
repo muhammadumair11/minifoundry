@@ -41,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(true);
 
     let state = AppState {
+        tenants: mf_db::TenantPools::new(&db),
         db,
         nats: nats.clone(),
         mode,
@@ -124,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/internal/stats", get(routes::internal::stats))
         .route("/internal/reset", post(routes::internal::reset))
+        .layer(axum::middleware::from_fn(mf_web::organization_context))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")

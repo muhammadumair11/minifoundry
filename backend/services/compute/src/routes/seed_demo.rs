@@ -6,9 +6,9 @@
 //! Python demo transforms when absent. Editor+ role.
 
 use axum::body::Bytes;
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 use sqlx::types::Json;
 
@@ -30,7 +30,7 @@ GROUP BY s.name, s.country
 ORDER BY totalSpend DESC"#;
 
 const JS_SOURCE: &str = r#"// Risk-flag every active shipment with simple heuristics.
-const out = input.rows.map(function (r) {
+const out = input.rows.filter(function (r) { return r.status !== 'delivered' }).map(function (r) {
   const eta = Number(r.etaDays) || 0
   const value = Math.round((Number(r.quantity) || 0) * (Number(r.unitPrice) || 0) * 100) / 100
   const risk = r.status === 'delayed' ? 'high' : eta >= 10 ? 'medium' : 'low'
@@ -51,6 +51,8 @@ const PYTHON_SOURCE: &str = r#"# Score active shipments into a fulfillment prior
 def transform(input):
     scored = []
     for r in input["rows"]:
+        if r.get("status") == "delivered":
+            continue
         eta = int(r.get("etaDays") or 0)
         qty = int(r.get("quantity") or 0)
         price = float(r.get("unitPrice") or 0.0)
@@ -140,6 +142,17 @@ pub async fn seed_demo(
                 Some(id) => by_name.push((name, id.to_string())),
                 None => missing.push(name),
             },
+            _ if *name == "Active Shipments" => {
+                // The catalog sample pack contains Shipments; a derived
+                // Active Shipments pipeline is optional. The demo code filters
+                // delivered rows itself so either input has the same meaning.
+                match catalog::get_dataset_by_name(&state.catalog, "Shipments").await {
+                    Ok(Some(ds)) if ds.get("id").and_then(|v| v.as_str()).is_some() => {
+                        by_name.push((name, ds["id"].as_str().unwrap().to_string()))
+                    }
+                    _ => missing.push("Shipments"),
+                }
+            }
             _ => missing.push(name),
         }
     }

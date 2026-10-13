@@ -14,3 +14,4 @@ thiserror.workspace = true
 tracing.workspace = true
 mf-types.workspace = true
 mf-auth.workspace = true
+mf-events.workspace = true

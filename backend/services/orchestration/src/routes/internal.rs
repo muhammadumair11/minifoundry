@@ -4,9 +4,10 @@
 
 use std::collections::HashMap;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query};
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{json_ok, ApiError, ApiResult};
 use serde_json::{json, Value};
 
@@ -119,6 +120,9 @@ pub async fn internal_stats(
     let (runs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs")
         .fetch_one(&state.db)
         .await?;
+    let (pipeline_versions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pipeline_versions")
+        .fetch_one(&state.db)
+        .await?;
     let (runs_success,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'success'")
             .fetch_one(&state.db)
@@ -140,6 +144,7 @@ pub async fn internal_stats(
             .await?;
     Ok(json_ok(json!({
         "pipelines": pipelines,
+        "pipelineVersions": pipeline_versions,
         "runs": runs,
         "runsSuccess": runs_success,
         "runsFailed": runs_failed,
@@ -218,10 +223,19 @@ pub async fn internal_reset(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    sqlx::query("TRUNCATE pipeline_runs, execution_jobs, schedules, pipeline_versions, pipelines")
-        .execute(&state.db)
-        .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
-    tracing::warn!("internal reset: orchestration tables truncated");
+    let mut tx = state.db.begin().await?;
+    for table in [
+        "pipeline_runs",
+        "execution_jobs",
+        "schedules",
+        "pipeline_versions",
+        "pipelines",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table}"))
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    tracing::warn!("internal reset: organization orchestration data deleted");
     Ok(json_ok(json!({ "ok": true })))
 }

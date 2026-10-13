@@ -38,6 +38,7 @@ pub fn spawn_scheduler(state: AppState) {
 
 #[derive(sqlx::FromRow)]
 struct DueSchedule {
+    organization_id: String,
     id: String,
     pipeline_id: String,
     name: String,
@@ -47,7 +48,7 @@ struct DueSchedule {
 
 async fn scheduler_tick(state: &AppState) -> Result<(), sqlx::Error> {
     let due: Vec<DueSchedule> = sqlx::query_as(
-        "SELECT s.id, s.pipeline_id, s.name, s.next_run_at, p.name AS pipeline_name \
+        "SELECT s.organization_id, s.id, s.pipeline_id, s.name, s.next_run_at, p.name AS pipeline_name \
          FROM schedules s JOIN pipelines p ON p.id = s.pipeline_id \
          WHERE s.enabled AND s.next_run_at IS NOT NULL AND s.next_run_at <= now() \
          ORDER BY s.next_run_at ASC",
@@ -56,60 +57,71 @@ async fn scheduler_tick(state: &AppState) -> Result<(), sqlx::Error> {
     .await?;
 
     for schedule in due {
-        // Mirrors the run-route schedule branch (the legacy scheduler POSTed
-        // { scheduleId } to /api/pipelines/{id}/run with the service token).
-        let due_at = schedule.next_run_at;
-        let event_key = format!("schedule:{}:{}", schedule.id, mf_types::ts::format(&due_at));
-        let job = jobs::enqueue_pipeline_job(
-            state,
-            &schedule.pipeline_id,
-            EnqueueOptions {
-                trigger: "schedule",
-                event_key,
-                schedule_id: Some(schedule.id.clone()),
-                max_attempts: Some(1),
-                graph_version_number: None,
-                payload: serde_json::json!({}),
-            },
+        use mf_web::TenantService;
+        let tenant = state.for_organization(&schedule.organization_id)?;
+        mf_events::with_organization(
+            Some(schedule.organization_id.clone()),
+            trigger_schedule(&tenant, schedule),
         )
-        .await;
-        let job = match job {
-            Ok(job) => job,
-            Err(e) => {
-                tracing::warn!(
-                    schedule = %schedule.id,
-                    error = %e,
-                    "scheduler: enqueue failed (window NOT reserved; retries next tick)"
-                );
-                continue;
-            }
-        };
+        .await?;
+    }
+    Ok(())
+}
 
-        // Reserve this window AFTER the job is safely stored (CAS on the exact
-        // due timestamp — a concurrent replica's reserve becomes a no-op).
-        let reserved = sqlx::query(
-            "UPDATE schedules SET last_run_at = now(), \
+async fn trigger_schedule(state: &AppState, schedule: DueSchedule) -> Result<(), sqlx::Error> {
+    // Mirrors the run-route schedule branch (the legacy scheduler POSTed
+    // { scheduleId } to /api/pipelines/{id}/run with the service token).
+    let due_at = schedule.next_run_at;
+    let event_key = format!("schedule:{}:{}", schedule.id, mf_types::ts::format(&due_at));
+    let job = jobs::enqueue_pipeline_job(
+        state,
+        &schedule.pipeline_id,
+        EnqueueOptions {
+            trigger: "schedule",
+            event_key,
+            schedule_id: Some(schedule.id.clone()),
+            max_attempts: Some(1),
+            graph_version_number: None,
+            payload: serde_json::json!({}),
+        },
+    )
+    .await;
+    let job = match job {
+        Ok(job) => job,
+        Err(e) => {
+            tracing::warn!(
+                schedule = %schedule.id,
+                error = %e,
+                "scheduler: enqueue failed (window NOT reserved; retries next tick)"
+            );
+            return Ok(());
+        }
+    };
+
+    // Reserve this window AFTER the job is safely stored (CAS on the exact
+    // due timestamp — a concurrent replica's reserve becomes a no-op).
+    let reserved = sqlx::query(
+        "UPDATE schedules SET last_run_at = now(), \
                 next_run_at = now() + make_interval(mins => interval_minutes), updated_at = now() \
              WHERE id = $1 AND next_run_at = $2",
-        )
-        .bind(&schedule.id)
-        .bind(due_at)
-        .execute(&state.db)
-        .await?;
-        if reserved.rows_affected() == 0 {
-            tracing::debug!(schedule = %schedule.id, "scheduler: window already reserved by another tick");
-        }
-
-        audit_system(
-            state,
-            "pipeline.run",
-            "pipeline",
-            Some(&schedule.pipeline_id),
-            Some(&schedule.pipeline_name),
-            Some(&format!("schedule {} job={}", schedule.name, job.id)),
-        )
-        .await;
+    )
+    .bind(&schedule.id)
+    .bind(due_at)
+    .execute(&state.db)
+    .await?;
+    if reserved.rows_affected() == 0 {
+        tracing::debug!(schedule = %schedule.id, "scheduler: window already reserved by another tick");
     }
+
+    audit_system(
+        state,
+        "pipeline.run",
+        "pipeline",
+        Some(&schedule.pipeline_id),
+        Some(&schedule.pipeline_name),
+        Some(&format!("schedule {} job={}", schedule.name, job.id)),
+    )
+    .await;
     Ok(())
 }
 

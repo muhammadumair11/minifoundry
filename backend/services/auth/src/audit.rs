@@ -70,5 +70,13 @@ pub async fn audit(state: &AppState, actor: &Actor, opts: AuditOptions<'_>) {
         resource_name: opts.resource_name.map(String::from),
         detail: opts.detail.map(String::from),
     };
-    mf_events::publish_json_quiet(&state.nats, mf_events::subject::AUDIT, &event).await;
+    let organization = actor
+        .organization_id
+        .clone()
+        .or_else(mf_events::organization_id);
+    mf_events::with_organization(
+        organization,
+        mf_events::publish_json_quiet(&state.nats, mf_events::subject::AUDIT, &event),
+    )
+    .await;
 }

@@ -26,9 +26,6 @@ export const Route = createRootRoute({
     if (AUTH_FREE_PATHS.includes(location.pathname) || location.pathname.startsWith('/invite/')) return { authBootstrap: null }
     if (location.pathname.startsWith('/api-tokens')) invalidateAuthBootstrap()
     const s = await fetchAuthBootstrap()
-    if (location.pathname.startsWith('/api-tokens') && s && s.role !== 'admin') {
-      throw redirect({ to: '/settings' })
-    }
     if (s && s.session === null && s.role === 'anonymous') {
       const next = `${location.pathname}${location.searchStr ?? ''}`
       throw redirect({ to: '/login', search: { next } })

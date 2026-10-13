@@ -3,10 +3,10 @@
 //! object types backed by the seeded datasets, two one-to-many links and
 //! three write-back actions. Re-runs are silent no-ops per entity.
 
-use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Response;
 use mf_types::Value;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, require_role, ApiError, ApiResult};
 
 use crate::audit::{self, AuditOptions};

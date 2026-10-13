@@ -2,9 +2,10 @@
 //! compute section). Guarded by the shared service token (same
 //! require_service pattern as services/auth).
 
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::http::HeaderMap;
 use axum::response::Response;
+use mf_web::TenantState as State;
 use mf_web::{json_ok, ApiError, ApiResult};
 use std::collections::HashMap;
 
@@ -153,8 +154,12 @@ pub async fn curriculum_state(
 /// fan-out; runs first — FK).
 pub async fn reset(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     require_service(&state, &headers)?;
-    sqlx::query("TRUNCATE TABLE transform_runs, transforms")
-        .execute(&state.db)
-        .await?;
+    let mut tx = state.db.begin().await?;
+    for table in ["transform_runs", "transforms"] {
+        sqlx::query(&format!("DELETE FROM {table}"))
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
     Ok(json_ok(serde_json::json!({ "ok": true })))
 }

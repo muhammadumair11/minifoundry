@@ -198,6 +198,7 @@ async fn main() -> anyhow::Result<()> {
             get(routes::internal::internal_curriculum_state),
         )
         .route("/internal/reset", post(routes::internal::internal_reset))
+        .layer(axum::middleware::from_fn(mf_web::organization_context))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT")
@@ -255,15 +256,27 @@ fn spawn_approval_consumer(state: AppState) {
                 };
                 match mf_events::parse_message::<mf_events::ApprovalDecidedEvent>(&msg.message) {
                     Ok(ev) => {
+                        use mf_web::TenantService;
+                        let Some(org) = mf_events::message_organization(&msg.message) else {
+                            let _ = msg.ack().await;
+                            continue;
+                        };
+                        let Ok(tenant) = state.for_organization(&org) else {
+                            let _ = msg.ack().await;
+                            continue;
+                        };
                         if ev.kind == "publish_dataset" && ev.status == "approved" {
                             match ev.version_number {
                                 Some(version_number) => {
-                                    let result = routes::internal::handle_approval_decided(
-                                        &state,
-                                        &ev.target_id,
-                                        version_number as i32,
-                                        &ev.approval_id,
-                                        &ev.decided_by,
+                                    let result = mf_events::with_organization(
+                                        Some(org),
+                                        routes::internal::handle_approval_decided(
+                                            &tenant,
+                                            &ev.target_id,
+                                            version_number as i32,
+                                            &ev.approval_id,
+                                            &ev.decided_by,
+                                        ),
                                     )
                                     .await;
                                     match result {

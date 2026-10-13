@@ -3,10 +3,11 @@
 //! by catalog (role query param); the rows envelope's `maskedColumns` (single
 //! masking authority) is surfaced as the additive `_masked` list.
 
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::{HeaderMap, Uri};
 use axum::response::Response;
 use mf_types::Value;
+use mf_web::TenantState as State;
 use mf_web::{actor_from_headers, json_ok, ApiError, ApiResult};
 
 use crate::dbx;

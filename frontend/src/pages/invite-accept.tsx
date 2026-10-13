@@ -360,7 +360,7 @@ export default function InviteAcceptPage() {
               </form>
 
               <p className="mt-4 text-center text-xs text-muted-foreground">
-                By accepting, you agree to MiniFoundry&apos;s Terms of Service and Privacy Policy.
+                Accepting joins this organization with the role shown above. Your existing account password is kept if you already have an account.
               </p>
 
               <div className="mt-4 text-center">

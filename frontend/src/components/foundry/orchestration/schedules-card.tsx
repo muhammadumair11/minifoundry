@@ -322,9 +322,9 @@ export function SchedulesCard() {
           <div className="flex flex-col items-center gap-3 p-8 text-center">
             <CalendarClock className="h-8 w-8 text-muted-foreground" aria-hidden />
             <div>
-              <p className="text-sm font-medium text-foreground">No schedules — automate a pipeline</p>
+              <p className="text-sm font-medium text-foreground">{canEdit ? 'No schedules — automate a pipeline' : 'No schedules yet'}</p>
               <p className="mx-auto mt-1 max-w-xs text-xs text-muted-foreground">
-                Schedules run pipelines on a fixed interval without manual clicks.
+                {canEdit ? 'Schedules run pipelines on a fixed interval without manual clicks.' : 'An editor or administrator can schedule a pipeline. You can inspect its schedule and job history here.'}
               </p>
             </div>
             <Button
