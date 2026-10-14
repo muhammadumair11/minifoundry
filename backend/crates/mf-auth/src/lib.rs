@@ -10,7 +10,7 @@
 //! - Sessions: signed JWTs (HS256 over `AUTH_SECRET`) carried in the HttpOnly
 //!   `foundry-session` cookie + rotating `foundry-refresh` token. Claims mirror
 //!   the old HMAC payload: { uid, email, name, role, realRole?, iat, exp }.
-//! - Runtime modes: demo (default) vs shared (`MF_DEMO_MODE=false`), service
+//! - Runtime modes: demo (explicit opt-in) vs shared (`MF_DEMO_MODE=false`), service
 //!   token via `MF_SERVICE_TOKEN` compared in constant time.
 
 use chrono::{DateTime, Utc};
@@ -148,7 +148,7 @@ impl Actor {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeMode {
-    /// True when `MF_DEMO_MODE` is unset/true/1/yes.
+    /// True only when `MF_DEMO_MODE` is true/1/yes.
     pub demo: bool,
     /// Configured service token (empty/None when unset).
     pub service_token: Option<String>,
@@ -156,13 +156,13 @@ pub struct RuntimeMode {
 
 impl RuntimeMode {
     pub fn from_env() -> Self {
-        let raw = std::env::var("MF_DEMO_MODE").unwrap_or_else(|_| "true".into());
+        let raw = std::env::var("MF_DEMO_MODE").unwrap_or_else(|_| "false".into());
         let raw = raw.trim().to_lowercase();
-        let demo = raw != "false" && raw != "0" && raw != "no";
+        let demo = matches!(raw.as_str(), "true" | "1" | "yes");
         let service_token = std::env::var("MF_SERVICE_TOKEN")
             .ok()
             .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty());
+            .filter(|t| validate_configured_secret(t).is_ok());
         Self {
             demo,
             service_token,
@@ -201,20 +201,45 @@ impl RuntimeMode {
     }
 }
 
-/// Resolve `AUTH_SECRET`: required in shared mode (fail-fast), dev fallback in
-/// demo mode only — same rules as auth-service.ts.
+/// Validate deployment secrets without exposing their values in errors.
+pub fn validate_configured_secret(value: &str) -> Result<(), String> {
+    let value = value.trim();
+    let lower = value.to_ascii_lowercase();
+    if value.len() < 32
+        || [
+            "your-",
+            "placeholder",
+            "change",
+            "dev-secret",
+            "service-token",
+            "redacted",
+            "removed",
+        ]
+        .iter()
+        .any(|marker| lower.contains(marker))
+        || value
+            .chars()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            < 10
+    {
+        return Err("configure an independently generated secret of at least 32 characters".into());
+    }
+    Ok(())
+}
+
+/// Signing secrets are required in every mode; shared mode also requires
+/// a valid service token. There is no public development fallback.
 pub fn resolve_auth_secret(mode: &RuntimeMode) -> Result<String, String> {
-    if let Ok(secret) = std::env::var("AUTH_SECRET") {
-        let secret = secret.trim().to_string();
-        if !secret.is_empty() {
-            return Ok(secret);
-        }
+    if !mode.demo && mode.service_token.is_none() {
+        return Err(
+            "MF_SERVICE_TOKEN must be configured with a strong secret in shared mode".into(),
+        );
     }
-    if mode.demo {
-        eprintln!("[minifoundry] AUTH_SECRET is not set — using the development fallback in demo mode only.");
-        return Ok("<redacted>".into());
-    }
-    Err("AUTH_SECRET must be configured before MiniFoundry can run in shared mode".into())
+    let secret =
+        std::env::var("AUTH_SECRET").map_err(|_| "AUTH_SECRET must be configured".to_string())?;
+    validate_configured_secret(&secret).map_err(|e| format!("AUTH_SECRET: {e}"))?;
+    Ok(secret.trim().to_string())
 }
 
 // ─── Session payload / JWT ──────────────────────────────────────────────
@@ -414,10 +439,10 @@ mod tests {
 
     #[test]
     fn scrypt_round_trip_and_legacy_format() {
-        let stored = hash_password("<redacted>").unwrap();
+        let stored = hash_password("unit-test-password").unwrap();
         assert!(stored.starts_with("scrypt:"));
         assert_eq!(stored.split(':').count(), 3);
-        assert!(verify_password("<redacted>", &stored));
+        assert!(verify_password("unit-test-password", &stored));
         assert!(!verify_password("wrong", &stored));
         assert!(!verify_password("x", "garbage"));
     }
@@ -472,6 +497,23 @@ mod tests {
     fn demo_mode_env_parsing() {
         assert!(RuntimeMode::from_parts(true, None).demo);
         assert_eq!(RuntimeMode::from_parts(false, None).mode_label(), "shared");
+    }
+
+    #[test]
+    fn deployment_secrets_reject_missing_weak_and_placeholder_values() {
+        for invalid in [
+            "",
+            "short",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "<redacted>",
+        ] {
+            assert!(validate_configured_secret(invalid).is_err());
+        }
+        assert!(validate_configured_secret(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        )
+        .is_ok());
+        assert!(resolve_auth_secret(&RuntimeMode::from_parts(false, None)).is_err());
     }
 
     #[test]

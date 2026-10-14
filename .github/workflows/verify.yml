@@ -48,6 +48,8 @@ jobs:
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
+      - name: Generate disposable test credentials
+        run: node scripts/configure-env.mjs --demo-users
       - name: Build stack
         run: docker compose build
       - name: Boot stack

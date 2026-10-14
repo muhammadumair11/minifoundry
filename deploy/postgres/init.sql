@@ -3,34 +3,34 @@
 -- schema and runs its own sqlx migrations at boot; no cross-schema grants,
 -- so domain separation is enforced by the database itself.
 --
--- Passwords below are LOCAL DEV defaults (compose). Real deployments must
--- override POSTGRES_PASSWORD and the role passwords via provisioning.
+-- Roles start disabled; role-passwords.sh enables them with private
+-- passwords supplied through the deployment environment.
 
 -- ─── roles (idempotent) ────────────────────────────────────────────────
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_auth') THEN
-        CREATE ROLE mf_auth LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_auth NOLOGIN;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_catalog') THEN
-        CREATE ROLE mf_catalog LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_catalog NOLOGIN;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_orchestration') THEN
-        CREATE ROLE mf_orchestration LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_orchestration NOLOGIN;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_compute') THEN
-        CREATE ROLE mf_compute LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_compute NOLOGIN;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_ontology') THEN
-        CREATE ROLE mf_ontology LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_ontology NOLOGIN;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_governance') THEN
-        CREATE ROLE mf_governance LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_governance NOLOGIN;
     END IF;
     -- mf-seed runs as the postgres superuser in compose; this role exists
     -- for deployments that want a non-superuser seeder granted per schema.
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mf_seed') THEN
-        CREATE ROLE mf_seed LOGIN PASSWORD '<redacted>';
+        CREATE ROLE mf_seed NOLOGIN;
     END IF;
 END
 $$;

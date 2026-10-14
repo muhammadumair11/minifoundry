@@ -19,6 +19,7 @@ param(
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'load-env.ps1')
 
 Write-Host "=== 1/4 infra ===" -ForegroundColor Cyan
 docker compose -f (Join-Path $root 'docker-compose.dev.yml') up -d --wait
@@ -31,10 +32,12 @@ if ($SkipBuild) { $stackArgs += @('-SkipBuild') }
 if ($LASTEXITCODE -ne 0) { throw "dev-stack failed" }
 
 Write-Host "=== 3/4 seed demo workspace ===" -ForegroundColor Cyan
+$env:DATABASE_URL = "postgres://postgres:$([uri]::EscapeDataString($env:POSTGRES_PASSWORD))@host.docker.internal:5432/minifoundry"
 $seedArgs = @('run', '--rm', '-v', 'mf-cargo-target:/t:ro',
-    '-e', 'DATABASE_URL=postgres://postgres:<redacted>@host.docker.internal:5432/minifoundry',
+    '-e', 'DATABASE_URL',
     '-e', 'GATEWAY_URL=http://host.docker.internal:8080',
-    '-e', 'MF_SERVICE_TOKEN=<redacted>',
+    '-e', 'MF_SERVICE_TOKEN',
+    '-e', 'MF_DEMO_USER_PASSWORD',
     'debian:bookworm-slim', '/t/debug/mf-seed', 'all')
 docker @seedArgs
 $seedExit = $LASTEXITCODE

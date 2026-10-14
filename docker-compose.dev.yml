@@ -6,7 +6,7 @@
 #   docker compose -f docker-compose.dev.yml up -d
 #
 # Host connection strings:
-#   postgres://mf_catalog:<redacted>@localhost:5432/minifoundry  (etc.)
+#   Set DATABASE_URL using the private role password from your .env.
 #   NATS_URL=nats://localhost:4222
 #
 # NOTE: init.sql only runs on FIRST volume init — same as the main compose.
@@ -19,12 +19,20 @@ services:
     environment:
       POSTGRES_DB: minifoundry
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure a private password}
+      MF_AUTH_DB_PASSWORD: ${MF_AUTH_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_CATALOG_DB_PASSWORD: ${MF_CATALOG_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_ORCHESTRATION_DB_PASSWORD: ${MF_ORCHESTRATION_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_COMPUTE_DB_PASSWORD: ${MF_COMPUTE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_ONTOLOGY_DB_PASSWORD: ${MF_ONTOLOGY_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_GOVERNANCE_DB_PASSWORD: ${MF_GOVERNANCE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_SEED_DB_PASSWORD: ${MF_SEED_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
     ports:
       - "5432:5432"
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
       - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./deploy/postgres/role-passwords.sh:/docker-entrypoint-initdb.d/01-role-passwords.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d minifoundry"]
       interval: 5s

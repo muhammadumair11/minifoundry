@@ -16,13 +16,15 @@
 # Usage:
 #   bash scripts/smoke.sh [BASE_URL]        # default http://localhost:8080
 # Env:
-#   MF_SMOKE_ADMIN_EMAIL / MF_SMOKE_ADMIN_PASSWORD (default seeded demo admin)
+#   MF_SMOKE_ADMIN_EMAIL / MF_SMOKE_ADMIN_PASSWORD / MF_DEMO_USER_PASSWORD
 
 set -u
+# Generated .env contains only trusted configuration; keep it private.
+if [[ -f .env ]]; then set -a; source .env; set +a; fi
 BASE="${1:-http://localhost:8080}"
 ADMIN_EMAIL="${MF_SMOKE_ADMIN_EMAIL:-demo-admin@example.invalid}"
-ADMIN_PASSWORD="${MF_SMOKE_ADMIN_PASSWORD:-foundry-demo}"
-SERVICE_TOKEN="${MF_SERVICE_TOKEN:-<redacted>}"
+ADMIN_PASSWORD="${MF_SMOKE_ADMIN_PASSWORD:-${MF_DEMO_USER_PASSWORD:?Set MF_DEMO_USER_PASSWORD}}"
+SERVICE_TOKEN="${MF_SERVICE_TOKEN:?Set MF_SERVICE_TOKEN}"
 JAR_ADMIN="$(mktemp)"; JAR_VIEWER="$(mktemp)"
 trap 'rm -f "$JAR_ADMIN" "$JAR_VIEWER"' EXIT
 
@@ -54,7 +56,7 @@ assert "me authenticated" 200 -b "$JAR_ADMIN" "$BASE/api/auth/me"
 assert "session shape" 200 -b "$JAR_ADMIN" "$BASE/api/session"
 assert "users list (admin)" 200 -b "$JAR_ADMIN" "$BASE/api/users"
 assert "login viewer" 200 -c "$JAR_VIEWER" -H 'content-type: application/json' \
-  -d '{"email":"demo-viewer@example.invalid","password":"<redacted>"}' "$BASE/api/auth/login"
+  -d "{\"email\":\"demo-viewer@example.invalid\",\"password\":\"$ADMIN_PASSWORD\"}" "$BASE/api/auth/login"
 assert "users list forbidden (viewer)" 403 -b "$JAR_VIEWER" "$BASE/api/users"
 [[ "$BODY" == *'requires admin role (current: viewer)'* ]] && ok "403 exact legacy message" || bad "403 message" "$BODY"
 

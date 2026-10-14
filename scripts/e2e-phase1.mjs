@@ -1,3 +1,4 @@
+import { demoPassword } from './demo-credentials.mjs'
 // MiniFoundry — Phase 1 E2E: auth service + gateway + SPA API surface.
 // Runs against the NEW stack (default http://localhost:8080 = gateway).
 // Validates the login/session/token flows through the gateway, including
@@ -12,8 +13,8 @@ const argVal = (name, dflt) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : dflt
 }
 const BASE = argVal('base', process.env.MF_E2E_BASE ?? 'http://localhost:8080')
-const ADMIN = { email: 'demo-admin@example.invalid', password: '<redacted>' }
-const VIEWER = { email: 'demo-viewer@example.invalid', password: '<redacted>' }
+const ADMIN = { email: 'demo-admin@example.invalid', password: demoPassword }
+const VIEWER = { email: 'demo-viewer@example.invalid', password: demoPassword }
 
 let passed = 0
 let failed = 0

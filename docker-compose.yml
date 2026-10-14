@@ -12,8 +12,8 @@ name: minifoundry
 
 x-backend-env: &backend-env
   MF_DEMO_MODE: ${MF_DEMO_MODE:-false}
-  MF_SERVICE_TOKEN: ${MF_SERVICE_TOKEN:-<redacted>}
-  AUTH_SECRET: ${AUTH_SECRET:-<redacted>}
+  MF_SERVICE_TOKEN: ${MF_SERVICE_TOKEN:?Generate .env with node scripts/configure-env.mjs}
+  AUTH_SECRET: ${AUTH_SECRET:?Generate .env with node scripts/configure-env.mjs}
   NATS_URL: nats://nats:4222
   AUTH_INTERNAL_URL: http://auth:8081
   CATALOG_INTERNAL_URL: http://catalog:8082
@@ -44,10 +44,18 @@ services:
     environment:
       POSTGRES_DB: minifoundry
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure a private password}
+      MF_AUTH_DB_PASSWORD: ${MF_AUTH_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_CATALOG_DB_PASSWORD: ${MF_CATALOG_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_ORCHESTRATION_DB_PASSWORD: ${MF_ORCHESTRATION_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_COMPUTE_DB_PASSWORD: ${MF_COMPUTE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_ONTOLOGY_DB_PASSWORD: ${MF_ONTOLOGY_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_GOVERNANCE_DB_PASSWORD: ${MF_GOVERNANCE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      MF_SEED_DB_PASSWORD: ${MF_SEED_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env with node scripts/configure-env.mjs}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./deploy/postgres/role-passwords.sh:/docker-entrypoint-initdb.d/01-role-passwords.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d minifoundry"]
       interval: 5s
@@ -121,7 +129,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8081"
-      DATABASE_URL: postgres://mf_auth:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_auth:${MF_AUTH_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +144,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8082"
-      DATABASE_URL: postgres://mf_catalog:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_catalog:${MF_CATALOG_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,7 +159,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8083"
-      DATABASE_URL: postgres://mf_orchestration:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_orchestration:${MF_ORCHESTRATION_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -166,7 +174,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8084"
-      DATABASE_URL: postgres://mf_compute:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_compute:${MF_COMPUTE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,7 +189,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8085"
-      DATABASE_URL: postgres://mf_ontology:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_ontology:${MF_ONTOLOGY_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,7 +204,7 @@ services:
     environment:
       <<: *backend-env
       PORT: "8086"
-      DATABASE_URL: postgres://mf_governance:<redacted>@postgres:5432/minifoundry
+      DATABASE_URL: postgres://mf_governance:${MF_GOVERNANCE_DB_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,7 +234,8 @@ services:
     init: true
     environment:
       <<: *backend-env
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?Configure a private password}@postgres:5432/minifoundry
+      MF_DEMO_USER_PASSWORD: ${MF_DEMO_USER_PASSWORD:-}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:?Generate .env with node scripts/configure-env.mjs}@postgres:5432/minifoundry
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,3 +1,4 @@
+import { demoPassword } from './demo-credentials.mjs'
 // MiniFoundry golden contract capture.
 //
 // Exercises the LEGACY Next.js API (default http://localhost:3000) and writes
@@ -24,8 +25,8 @@ const DOMAINS = args.includes('--domain')
   ? [argVal('domain', 'auth')]
   : ['auth', 'platform', 'reads']
 
-const ADMIN = { email: 'demo-admin@example.invalid', password: '<redacted>' }
-const VIEWER = { email: 'demo-viewer@example.invalid', password: '<redacted>' }
+const ADMIN = { email: 'demo-admin@example.invalid', password: demoPassword }
+const VIEWER = { email: 'demo-viewer@example.invalid', password: demoPassword }
 
 let failures = 0
 

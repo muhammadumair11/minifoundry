@@ -1,3 +1,4 @@
 # sqlx embeds the migration text and hashes its exact bytes. Preserve the
 # deployed LF checksums when checking out or building on Windows.
 *.sql text eol=lf
+*.sh text eol=lf

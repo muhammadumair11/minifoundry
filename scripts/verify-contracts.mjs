@@ -1,3 +1,4 @@
+import { demoPassword } from './demo-credentials.mjs'
 // MiniFoundry — contract verifier: replays the captured request flows against
 // a running stack (default: the NEW stack via gateway at http://localhost:8080)
 // and structurally compares responses to backend/contracts/<domain>/*.json.
@@ -30,7 +31,7 @@ const argVal = (name, dflt) => {
 const BASE = argVal('base', process.env.MF_VERIFY_BASE ?? 'http://localhost:8080')
 const DOMAINS = args.includes('--domain') ? [argVal('domain', 'reads')] : ['auth', 'platform', 'reads']
 
-const ADMIN = { email: 'demo-admin@example.invalid', password: '<redacted>' }
+const ADMIN = { email: 'demo-admin@example.invalid', password: demoPassword }
 
 let pass = 0
 let fail = 0
@@ -291,7 +292,7 @@ async function verifyAuth() {
   const impCookie = mergeJar(cookie, jar(imp.headers.getSetCookie?.() ?? []))
   await replay('auth', 'session-impersonated', { cookie: impCookie })
 
-  const viewer = await loginAs({ email: 'demo-viewer@example.invalid', password: '<redacted>' })
+  const viewer = await loginAs({ email: 'demo-viewer@example.invalid', password: demoPassword })
   await replay('auth', 'session-role-forbidden', { cookie: viewer.cookie, body: { role: 'admin' } })
 
   // users

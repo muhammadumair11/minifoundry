@@ -23,6 +23,7 @@ param(
 # convert into terminating errors. Failures are handled via explicit exit codes.
 $ErrorActionPreference = 'Continue'
 $root = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'load-env.ps1')
 
 # Robust to being invoked via `powershell -File` (which passes "a,b,c" as a
 # single string instead of an array).
@@ -33,21 +34,21 @@ if ($Services -contains 'all') {
 }
 
 $spec = @{
-    'auth'          = @{ pkg = 'mf-auth-service'; port = 8081; db = 'mf_auth:<redacted>'; image = 'debian:bookworm-slim' }
-    'catalog'       = @{ pkg = 'mf-catalog';      port = 8082; db = 'mf_catalog:<redacted>'; image = 'debian:bookworm-slim' }
-    'orchestration' = @{ pkg = 'mf-orchestration'; port = 8083; db = 'mf_orchestration:<redacted>'; image = 'debian:bookworm-slim' }
+    'auth'          = @{ pkg = 'mf-auth-service'; port = 8081; db = 'mf_auth'; image = 'debian:bookworm-slim' }
+    'catalog'       = @{ pkg = 'mf-catalog';      port = 8082; db = 'mf_catalog'; image = 'debian:bookworm-slim' }
+    'orchestration' = @{ pkg = 'mf-orchestration'; port = 8083; db = 'mf_orchestration'; image = 'debian:bookworm-slim' }
     # compute executes Python workbooks -> runtime image must carry python3
-    'compute'       = @{ pkg = 'mf-compute';      port = 8084; db = 'mf_compute:<redacted>'; image = 'python:3.12-slim' }
-    'ontology'      = @{ pkg = 'mf-ontology';     port = 8085; db = 'mf_ontology:<redacted>'; image = 'debian:bookworm-slim' }
-    'governance'    = @{ pkg = 'mf-governance';   port = 8086; db = 'mf_governance:<redacted>'; image = 'debian:bookworm-slim' }
+    'compute'       = @{ pkg = 'mf-compute';      port = 8084; db = 'mf_compute'; image = 'python:3.12-slim' }
+    'ontology'      = @{ pkg = 'mf-ontology';     port = 8085; db = 'mf_ontology'; image = 'debian:bookworm-slim' }
+    'governance'    = @{ pkg = 'mf-governance';   port = 8086; db = 'mf_governance'; image = 'debian:bookworm-slim' }
     'public-api'    = @{ pkg = 'mf-public-api';   port = 8087; db = $null; image = 'debian:bookworm-slim' }
     'gateway'       = @{ pkg = 'mf-gateway';      port = 8080; db = $null; image = 'debian:bookworm-slim' }
 }
 
 $commonEnv = @(
     '-e', 'MF_DEMO_MODE=false',
-    '-e', 'MF_SERVICE_TOKEN=<redacted>',
-    '-e', 'AUTH_SECRET=<redacted>',
+    '-e', 'MF_SERVICE_TOKEN',
+    '-e', 'AUTH_SECRET',
     '-e', 'MF_COOKIE_SECURE=0',
     '-e', 'NATS_URL=nats://host.docker.internal:4222',
     '-e', 'AUTH_INTERNAL_URL=http://host.docker.internal:8081',
@@ -79,7 +80,11 @@ foreach ($svc in $Services) {
     docker rm -f $name 2>$null | Out-Null
     $envArgs = @('-e', "PORT=$($s.port)")
     if ($s.db) {
-        $envArgs += @('-e', "DATABASE_URL=postgres://$($s.db)@host.docker.internal:5432/minifoundry")
+        $passwordKey = "MF_$($svc.ToUpperInvariant())_DB_PASSWORD"
+        $rolePassword = [Environment]::GetEnvironmentVariable($passwordKey, 'Process')
+        if (-not $rolePassword) { throw "Set $passwordKey in .env" }
+        $env:DATABASE_URL = "postgres://$($s.db):$([uri]::EscapeDataString($rolePassword))@host.docker.internal:5432/minifoundry"
+        $envArgs += @('-e', 'DATABASE_URL')
     }
     docker run -d --name $name --init -p "$($s.port):$($s.port)" `
         -v mf-cargo-target:/t:ro @commonEnv @envArgs `

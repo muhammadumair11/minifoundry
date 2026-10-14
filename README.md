@@ -16,23 +16,23 @@ MiniFoundry runs as a React application backed by Rust microservices, PostgreSQL
 
 ## Run locally
 
-Install Docker with Compose. Copy the example environment file, then build and seed the demo:
+Install Docker with Compose. Generate private configuration, then build the stack:
 
 ```bash
-cp .env.example .env
+node scripts/configure-env.mjs
 docker compose up -d --build
 docker compose --profile tools run --rm seed all
 ```
 
-In PowerShell, use `Copy-Item .env.example .env` for the first command.
+The generator creates `.env` with independent random secrets and refuses to overwrite an existing file. Keep this file private.
 
-Open [localhost:3000](http://localhost:3000). The seeded demo accounts are `demo-admin@example.invalid`, `demo-editor@example.invalid` and `demo-viewer@example.invalid`, all with password `<redacted>`. These are intentional local demo credentials.
+Open [localhost:3000](http://localhost:3000) and use signup to create your account. No default login credentials are created. Disposable test users are opt-in: on a fresh local test stack, run the generator with `--demo-users`; their password stays in your private `.env`.
 
-Stop the stack with `docker compose down`. Data persists in Docker volumes.
+Stop the stack with `docker compose down`. Data persists in Docker volumes. Existing installations must also rotate database-role passwords inside PostgreSQL, revoke previously exposed API tokens, and disable old demo accounts; changing files alone does not update persisted credentials.
 
 ## Runtime modes
 
-The example environment enables **demo mode** (`MF_DEMO_MODE=true`): anonymous requests can explore the sandbox, and the role simulator is available.
+The default is **shared mode** (`MF_DEMO_MODE=false`). Explicitly enabling **demo mode** (`MF_DEMO_MODE=true`) means anonymous requests can explore the sandbox, and the role simulator is available.
 
 **Shared mode** (`MF_DEMO_MODE=false`) requires sign-in and enforces active organization membership. Signup creates an organization; its Owner can invite users into the other roles. Domain resources, background jobs, API tokens and audit events carry organization scope. Workbook execution is disabled in shared mode; users with edit permission can still save code and input bindings. Configure signing and service secrets in `.env` for your deployment.
 

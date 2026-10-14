@@ -45,10 +45,8 @@ Native dev (fast iteration; infra in Docker):
 ```bash
 docker compose -f docker-compose.dev.yml up -d    # postgres :5432, nats :4222
 cd backend
-DATABASE_URL=postgres://mf_auth:<redacted>@localhost:5432/minifoundry \
-  NATS_URL=nats://localhost:4222 PORT=8081 \
-  MF_SERVICE_TOKEN=<redacted> \
-  cargo run -p mf-auth-service
+# Export DATABASE_URL, MF_SERVICE_TOKEN and AUTH_SECRET from your private .env.
+NATS_URL=nats://localhost:4222 PORT=8081 cargo run -p mf-auth-service
 # ...one shell per service; gateway needs AUTH_SECRET set to the same value.
 cd ../frontend && bun dev                          # vite on :3000 → gateway :8080
 ```

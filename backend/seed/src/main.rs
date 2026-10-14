@@ -30,7 +30,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Seed the three demo users (admin/editor/viewer, password '<redacted>').
+    /// Seed disposable demo users only when MF_DEMO_USER_PASSWORD is configured.
     Users,
     /// Seed the full demo workspace in dependency order:
     /// users → datasets/connectors (/api/seed) → demo pipeline (DB) →
@@ -45,9 +45,6 @@ enum Commands {
         yes: bool,
     },
 }
-
-/// Password for every demo user (legacy DEMO_USER_PASSWORD).
-const DEMO_USER_PASSWORD: &str = "<redacted>";
 
 /// Legacy SEED_USERS — email/name/role of the demo trio.
 const SEED_USERS: [(&str, &str, &str); 3] = [
@@ -238,13 +235,18 @@ fn json_str(s: &str) -> String {
 /// (re-running never clobbers role changes / deactivations), matching the
 /// legacy ensureSeedUsers().
 async fn seed_users(pool: &PgPool) -> anyhow::Result<usize> {
+    let password = std::env::var("MF_DEMO_USER_PASSWORD").unwrap_or_default();
+    if password.trim().is_empty() {
+        return Ok(0);
+    }
+    mf_auth::validate_configured_secret(&password).map_err(anyhow::Error::msg)?;
     sqlx::query("INSERT INTO auth.organizations (id, name, slug) VALUES ('org_demo', 'MiniFoundry Demo', 'minifoundry-demo') ON CONFLICT (id) DO NOTHING").execute(pool).await?;
     // The auth service owns this table and creates it via its migrations;
     // a fresh stack must boot auth (or run its migrations) before seeding.
     let mut ensured = 0;
     for (email, name, role) in SEED_USERS {
-        let password_hash = mf_auth::hash_password(DEMO_USER_PASSWORD)
-            .map_err(|e| anyhow::anyhow!("scrypt failed: {e}"))?;
+        let password_hash =
+            mf_auth::hash_password(&password).map_err(|e| anyhow::anyhow!("scrypt failed: {e}"))?;
         sqlx::query(
             "INSERT INTO auth.users (id, email, name, role, password_hash) \
              VALUES ($1, $2, $3, $4, $5) \

@@ -1,3 +1,4 @@
+import { demoPassword } from './demo-credentials.mjs'
 // MiniFoundry — auth flows E2E: signup + password change + session lifecycle.
 // Runs against the gateway (default http://localhost:8080).
 //
@@ -165,7 +166,7 @@ async function main() {
 
   // ── admin can see + promote the new user (authorization lifecycle) ──
   const adminLogin = await req('POST', '/api/auth/login', {
-    body: { email: 'demo-admin@example.invalid', password: '<redacted>' },
+    body: { email: 'demo-admin@example.invalid', password: demoPassword },
   })
   const adminJar = jar(adminLogin.setCookie)
   const list = await req('GET', '/api/users', { cookie: adminJar })
