@@ -272,7 +272,7 @@ async function verifyAuth() {
   const cookie = admin.cookie
 
   // login contract (body already validated by loginAs success; verify shape)
-  await replay('auth', 'login-ok', { skipBody: false, cookie, noBody: false })
+  await replay('auth', 'login-ok', { skipBody: false, cookie, body: ADMIN })
   await replay('auth', 'login-bad-password', { body: { email: ADMIN.email, password: 'wrong' } })
   await replay('auth', 'login-unknown-email', { body: { email: 'nobody@minifoundry.dev', password: 'x' } })
   await replay('auth', 'login-invalid-body', { body: { email: '' } })
